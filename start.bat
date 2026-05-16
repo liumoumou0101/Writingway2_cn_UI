@@ -142,17 +142,13 @@ if "!MODEL_FOUND!"=="1" (
 echo [*] No .gguf files found in models folder
 echo [!] No model files found in models\ folder
 echo.
-echo You can either:
-echo 1. Download a model and place it in the models\ folder
-echo 2. Start anyway and configure API mode ^(Claude, OpenRouter, etc.^)
+echo Starting without local AI model.
+echo You can still use API mode ^(Claude, OpenRouter, LM Studio, etc.^).
 echo.
 echo Recommended models:
 echo  - Qwen2.5-3B-Instruct (2.5GB, fast)
 echo  - Qwen2.5-7B-Instruct (5GB, better quality)
 echo  - Download from: https://huggingface.co/models?search=gguf
-echo.
-choice /C YN /M "Start without local model"
-if errorlevel 2 exit /b 1
 echo.
 echo [*] Starting without local AI - you can use API mode
 goto start_web
@@ -214,7 +210,7 @@ echo ================================
 echo.
 
 REM Start Python HTTP server and open browser
-echo [*] Starting web server on port 8000...
+echo [*] Starting app server on port 8000...
 echo [*] Opening Writingway in 3 seconds...
 echo.
 echo ================================
@@ -245,8 +241,8 @@ echo.
 REM Open browser
 start "" http://localhost:8000/main.html
 
-REM Start Python web server (blocks here)
-python -m http.server 8000
+REM Start Writingway app server (blocks here)
+python tools\writingway-server.py
 
 REM Cleanup when Python server stops
 echo.

@@ -1120,6 +1120,14 @@ document.addEventListener('alpine:init', () => {
                 this.showExportModal = true;
             },
 
+            async saveProjectToDisk() {
+                if (window.FileSystemSave && typeof window.FileSystemSave.saveCurrentProject === 'function') {
+                    await window.FileSystemSave.saveCurrentProject(this);
+                } else {
+                    alert('Filesystem save module is not loaded.');
+                }
+            },
+
             // Confirm and execute export based on selected format
             async confirmExport() {
                 this.showExportModal = false;
@@ -2135,7 +2143,42 @@ document.addEventListener('alpine:init', () => {
                 await this.loadChapters();
             },
 
-            // ========== GitHub Backup Methods ==========
+            // ========== Backup Methods ==========
+
+            backupProviderName(provider = this.backupProvider) {
+                if (window.BackupManager && typeof window.BackupManager.providerLabel === 'function') {
+                    return window.BackupManager.providerLabel(provider);
+                }
+                return provider || 'Backup';
+            },
+
+            backupProviderIsAvailable(provider = this.backupProvider) {
+                return provider === 'github' || provider === 'local';
+            },
+
+            backupProviderRequiresGitHubToken() {
+                return this.backupProvider === 'github';
+            },
+
+            backupNeedsAttention() {
+                if (!this.backupEnabled) return true;
+                if (!this.backupProviderIsAvailable()) return true;
+                if (this.backupProvider === 'github' && !this.githubToken) return true;
+                return false;
+            },
+
+            backupWarningMessage() {
+                if (!this.backupEnabled) {
+                    return 'AUTO BACKUP NOT ENABLED! Data will be lost on deleting the browser cache or site data.';
+                }
+                if (!this.backupProviderIsAvailable()) {
+                    return `${this.backupProviderName()} backup is not available yet.`;
+                }
+                if (this.backupProvider === 'github' && !this.githubToken) {
+                    return 'GitHub backup is enabled, but no token is configured yet.';
+                }
+                return '';
+            },
 
             async openBackupSettings() {
                 this.showBackupSettings = true;
@@ -2146,10 +2189,26 @@ document.addEventListener('alpine:init', () => {
             },
 
             async saveBackupSettings() {
-                // Validate token first
-                if (this.githubToken) {
+                if (!this.backupProviderIsAvailable()) {
+                    this.backupEnabled = false;
+                    this.backupStatus = `${this.backupProviderName()} is coming soon`;
+                    if (window.BackupManager) {
+                        window.BackupManager.stopAutoBackup();
+                        window.BackupManager.saveBackupSettings(this);
+                    }
+                    alert(`${this.backupProviderName()} backup is not implemented yet.`);
+                    return;
+                }
+
+                if (this.backupProviderRequiresGitHubToken() && !this.githubToken) {
+                    this.backupStatus = 'GitHub token required';
+                    alert('Please enter a GitHub token for GitHub Gist backups.');
+                    return;
+                }
+
+                if (this.backupProviderRequiresGitHubToken() && this.githubToken) {
                     this.backupStatus = 'Validating token...';
-                    const result = await window.GitHubBackup.validateToken(this.githubToken);
+                    const result = await window.BackupManager.validateGitHubToken(this.githubToken);
 
                     if (!result.valid) {
                         alert('Invalid GitHub token: ' + result.error);
@@ -2160,15 +2219,17 @@ document.addEventListener('alpine:init', () => {
                     this.githubUsername = result.username;
                 }
 
-                // Save settings
-                window.GitHubBackup.saveBackupSettings(this);
+                if (this.backupProvider !== 'github') {
+                    this.githubUsername = '';
+                }
 
-                // Start or stop auto-backup based on enabled state
-                if (this.backupEnabled && this.githubToken) {
-                    window.GitHubBackup.startAutoBackup(this);
-                    this.backupStatus = 'Auto-backup enabled';
+                window.BackupManager.saveBackupSettings(this);
+
+                if (window.BackupManager.isAutoBackupReady(this)) {
+                    window.BackupManager.startAutoBackup(this);
+                    this.backupStatus = `Auto-backup enabled: ${this.backupProviderName()}`;
                 } else {
-                    window.GitHubBackup.stopAutoBackup();
+                    window.BackupManager.stopAutoBackup();
                     this.backupStatus = 'Auto-backup disabled';
                 }
 
@@ -2176,22 +2237,22 @@ document.addEventListener('alpine:init', () => {
             },
 
             async backupNow() {
-                if (!this.githubToken || !this.currentProject) {
-                    alert('Please configure GitHub token and select a project first.');
+                if (!window.BackupManager.canBackup(this)) {
+                    alert(`Please configure ${this.backupProviderName()} backup and select a project first.`);
                     return;
                 }
 
-                this.backupStatus = 'Backing up...';
-                const result = await window.GitHubBackup.backupToGist(this);
+                this.backupStatus = `Backing up to ${this.backupProviderName()}...`;
+                const result = await window.BackupManager.backupNow(this);
 
                 if (result.success) {
                     this.lastBackupTime = new Date();
-                    this.backupStatus = 'Backed up';
+                    this.backupStatus = `Backed up to ${this.backupProviderName()}`;
                     if (result.gistId) {
                         this.currentProjectGistId = result.gistId;
-                        window.GitHubBackup.saveBackupSettings(this);
                     }
-                    alert('Backup successful!');
+                    window.BackupManager.saveBackupSettings(this);
+                    alert(`Backup successful: ${this.backupProviderName()}`);
                 } else {
                     this.backupStatus = 'Backup failed';
                     alert('Backup failed: ' + result.error);
@@ -2199,13 +2260,13 @@ document.addEventListener('alpine:init', () => {
             },
 
             async openRestoreModal() {
-                if (!this.githubToken || !this.currentProjectGistId) {
-                    alert('No backup configured for this project.');
+                if (!window.BackupManager.canRestore(this)) {
+                    alert(`No restorable ${this.backupProviderName()} backups are configured for this project.`);
                     return;
                 }
 
                 this.backupStatus = 'Loading backups...';
-                const result = await window.GitHubBackup.listBackups(this);
+                const result = await window.BackupManager.listBackups(this);
 
                 if (result.success) {
                     this.backupList = result.backups;
@@ -2222,17 +2283,17 @@ document.addEventListener('alpine:init', () => {
                 this.backupList = [];
             },
 
-            async restoreBackup(versionUrl) {
+            async restoreBackup(backupRef) {
                 if (!confirm('This will replace your current project with the backup. Continue?')) {
                     return;
                 }
 
                 this.backupStatus = 'Restoring...';
-                const result = await window.GitHubBackup.restoreFromBackup(this, versionUrl);
+                const result = await window.BackupManager.restoreBackup(this, backupRef);
 
                 if (result.success) {
                     this.backupStatus = 'Restored';
-                    alert('Backup restored successfully!');
+                    alert(`${this.backupProviderName()} backup restored successfully!`);
                     this.showRestoreModal = false;
                     this.backupList = [];
                 } else {

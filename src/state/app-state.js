@@ -109,6 +109,7 @@ function createAppState() {
         isSaving: false,
         saveStatus: 'Saved',
         saveTimeout: null,
+        filesystemSaveTimeout: null,
 
         // ========== Generation Acceptance Flow ==========
         lastGenStart: null,
@@ -211,6 +212,13 @@ function createAppState() {
         modelsFetched: false, // Whether we've already fetched models for current provider
 
         // ========== GitHub Backup State ==========
+        backupProvider: 'github',
+        backupProviderOptions: [
+            { id: 'github', name: 'GitHub Gist', available: true },
+            { id: 'local', name: 'Local Versioning', available: true },
+            { id: 'onedrive', name: 'OneDrive', available: false },
+            { id: 'gdrive', name: 'Google Drive', available: false }
+        ],
         githubToken: '',
         githubUsername: '',
         backupEnabled: false,
@@ -220,6 +228,10 @@ function createAppState() {
         showRestoreModal: false,
         backupList: [],
         currentProjectGistId: '',
+        filesystemSaving: false,
+        filesystemSaveStatus: '',
+        filesystemSaveTone: 'success',
+        lastFilesystemSavePath: '',
 
         // ========== Generation Parameters ==========
         temperature: 0.8,

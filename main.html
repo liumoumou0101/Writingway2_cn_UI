@@ -29,6 +29,7 @@
     <script defer src="src/modules/compendium-manager.js"></script>
     <script defer src="src/modules/ai-settings.js"></script>
     <script defer src="src/modules/github-backup.js"></script>
+    <script defer src="src/modules/filesystem-save.js"></script>
     <script defer src="src/modules/tab-sync.js"></script>
     <script defer src="src/template-loader.js"></script>
     <script defer src="src/workshop.js"></script>
@@ -223,36 +224,47 @@
                         <h1>Writingway</h1>
                         <p>AI-Powered Creative Writing</p>
 
-                        <!-- Main Menu Button -->
-                        <div x-data="{ mainMenuOpen: false }" style="position:absolute;top:12px;right:12px;">
-                            <button class="btn btn-secondary" @click.stop="mainMenuOpen = !mainMenuOpen"
-                                style="padding:6px 12px;font-size:18px;" title="Main Menu">☰</button>
-                            <div x-show="mainMenuOpen" x-cloak @click.away="mainMenuOpen = false" x-transition
-                                class="action-menu" style="right:0;left:auto;min-width:200px;">
-                                <button @click.stop="backToProjects(); mainMenuOpen=false">◄ Back to Projects</button>
-                                <div style="border-top:1px solid var(--border);margin:6px 0"></div>
-                                <button @click.stop="showNewProjectModal = true; mainMenuOpen=false">➕ New
-                                    Project</button>
-                                <button
-                                    @click.stop="document.getElementById('importProjectInput').click(); mainMenuOpen=false">📥
-                                    Import Project</button>
-                                <div style="border-top:1px solid var(--border);margin:6px 0"></div>
-                                <button @click.stop="exportProject(); mainMenuOpen=false" :disabled="!currentProject">📦
-                                    Export Current Project</button>
-                                <div style="border-top:1px solid var(--border);margin:6px 0"></div>
-                                <button @click.stop="openCompendium(); mainMenuOpen=false">📚 Compendium</button>
-                                <button @click.stop="showWorkshopChat = true; mainMenuOpen=false">💬 Workshop
-                                    Chat</button>
-                                <button @click.stop="showAISettings = true; mainMenuOpen=false">⚙️ AI Settings</button>
-                                <button @click.stop="showPromptsPanel = true; mainMenuOpen=false">📝 Manage
-                                    Prompts</button>
-                                <button @click.stop="openBackupSettings(); mainMenuOpen=false">☁️ Cloud Backup</button>
-                                <div style="border-top:1px solid var(--border);margin:6px 0"></div>
-                                <button @click.stop="checkForUpdates(); mainMenuOpen=false"
-                                    :disabled="checkingForUpdates">
-                                    <span x-show="!checkingForUpdates">🔄 Check for Updates</span>
-                                    <span x-show="checkingForUpdates">⏳ Checking...</span>
-                                </button>
+                        <!-- Header Actions -->
+                        <div style="position:absolute;top:12px;right:12px;display:flex;align-items:center;gap:8px;">
+                            <button class="btn btn-secondary" @click.stop="saveProjectToDisk()"
+                                :disabled="!currentProject || filesystemSaving"
+                                :title="filesystemSaving ? 'Saving project to disk...' : 'Save current project to disk'"
+                                style="padding:6px 12px;font-size:18px;min-width:44px;"
+                                aria-label="Save current project to disk">
+                                <span x-show="!filesystemSaving">💾</span>
+                                <span x-show="filesystemSaving">…</span>
+                            </button>
+
+                            <div x-data="{ mainMenuOpen: false }">
+                                <button class="btn btn-secondary" @click.stop="mainMenuOpen = !mainMenuOpen"
+                                    style="padding:6px 12px;font-size:18px;" title="Main Menu">☰</button>
+                                <div x-show="mainMenuOpen" x-cloak @click.away="mainMenuOpen = false" x-transition
+                                    class="action-menu" style="right:0;left:auto;min-width:200px;">
+                                    <button @click.stop="backToProjects(); mainMenuOpen=false">◄ Back to Projects</button>
+                                    <div style="border-top:1px solid var(--border);margin:6px 0"></div>
+                                    <button @click.stop="showNewProjectModal = true; mainMenuOpen=false">➕ New
+                                        Project</button>
+                                    <button
+                                        @click.stop="document.getElementById('importProjectInput').click(); mainMenuOpen=false">📥
+                                        Import Project</button>
+                                    <div style="border-top:1px solid var(--border);margin:6px 0"></div>
+                                    <button @click.stop="exportProject(); mainMenuOpen=false" :disabled="!currentProject">📦
+                                        Export Current Project</button>
+                                    <div style="border-top:1px solid var(--border);margin:6px 0"></div>
+                                    <button @click.stop="openCompendium(); mainMenuOpen=false">📚 Compendium</button>
+                                    <button @click.stop="showWorkshopChat = true; mainMenuOpen=false">💬 Workshop
+                                        Chat</button>
+                                    <button @click.stop="showAISettings = true; mainMenuOpen=false">⚙️ AI Settings</button>
+                                    <button @click.stop="showPromptsPanel = true; mainMenuOpen=false">📝 Manage
+                                        Prompts</button>
+                                    <button @click.stop="openBackupSettings(); mainMenuOpen=false">☁️ Cloud Backup</button>
+                                    <div style="border-top:1px solid var(--border);margin:6px 0"></div>
+                                    <button @click.stop="checkForUpdates(); mainMenuOpen=false"
+                                        :disabled="checkingForUpdates">
+                                        <span x-show="!checkingForUpdates">🔄 Check for Updates</span>
+                                        <span x-show="checkingForUpdates">⏳ Checking...</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -280,8 +292,9 @@
                             @click="openBackupSettings()" @mouseenter="$el.style.background='rgba(76,175,80,0.1)'"
                             @mouseleave="$el.style.background='transparent'" title="Click for backup settings">
                             <span>☁️</span>
-                            <span x-text="backupStatus || 'Auto-backup active'"></span>
+                            <span x-text="backupStatus || ('Auto-backup: ' + backupProviderName())"></span>
                         </div>
+
                     </div>
 
                     <div class="project-info" x-data="{ openMenu:false }"
@@ -423,8 +436,8 @@
                 <!-- Main Content Area (wrapper for banner + editor) -->
                 <div class="main-content-area">
                     <!-- Auto-Backup Warning Banner (non-dismissable) -->
-                    <div x-show="!backupEnabled || !githubToken" x-cloak class="backup-warning-banner">
-                        AUTO BACKUP NOT ENABLED! Data will be lost on deleting the browser cache or site data.
+                    <div x-show="backupNeedsAttention()" x-cloak class="backup-warning-banner">
+                        <span x-text="backupWarningMessage()"></span>
                     </div>
 
                     <!-- Editor -->
@@ -452,6 +465,14 @@
                                     <span class="save-indicator" :class="{ 'saving': isSaving }"
                                         x-text="saveStatus"></span>
                                 </div>
+                            </div>
+                        </div>
+                        <div x-show="filesystemSaveStatus" x-cloak
+                            style="display:flex;justify-content:flex-end;align-items:center;width:100%;margin-top:8px;font-size:12px;font-weight:600;">
+                            <div :style="filesystemSaveTone === 'error'
+                                    ? 'color:#ff8a80;'
+                                    : (filesystemSaveTone === 'info' ? 'color:var(--text-secondary);' : 'color:#66bb6a;')">
+                                <span x-text="filesystemSaveStatus"></span>
                             </div>
                         </div>
                     </div>
@@ -1517,31 +1538,59 @@
             </div>
         </div>
 
-        <!-- GitHub Backup Settings Panel -->
+        <!-- Backup Settings Panel -->
         <div class="slide-panel-right" :class="{ 'open': showBackupSettings }" x-cloak>
             <div class="slide-panel-header">
-                <h3 style="margin:0;">☁️ Cloud Backup</h3>
+                <h3 style="margin:0;">☁️ Backups</h3>
                 <button class="btn btn-secondary" @click="closeBackupSettings()">Close</button>
             </div>
             <div class="slide-panel-body" style="padding:20px;">
-                <div
+                <div style="margin-bottom:20px;">
+                    <label style="display:block;font-weight:600;margin-bottom:8px;">Backup Provider</label>
+                    <select x-model="backupProvider"
+                        style="width:100%;padding:10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);">
+                        <template x-for="provider in backupProviderOptions" :key="provider.id">
+                            <option :value="provider.id"
+                                x-text="provider.available ? provider.name : (provider.name + ' (Coming Soon)')"></option>
+                        </template>
+                    </select>
+                    <p style="font-size:12px;color:var(--text-secondary);margin-top:8px;">
+                        Choose where Writingway stores automatic project backups.
+                    </p>
+                </div>
+
+                <div x-show="backupProvider === 'github'"
                     style="background:rgba(74,158,255,0.1);border:1px solid rgba(74,158,255,0.3);border-radius:8px;padding:16px;margin-bottom:24px;">
-                    <h4 style="margin:0 0 12px 0;color:var(--text-primary);">Setup Instructions</h4>
+                    <h4 style="margin:0 0 12px 0;color:var(--text-primary);">GitHub Gist Setup</h4>
                     <ol style="margin:0;padding-left:20px;line-height:1.8;font-size:14px;">
                         <li>Go to <a href="https://github.com/settings/tokens" target="_blank"
-                                style="color:#4a9eff;">GitHub
-                                Settings → Developer settings → Personal access tokens</a>
-                        </li>
+                                style="color:#4a9eff;">GitHub Settings → Developer settings → Personal access tokens</a></li>
                         <li>Click "Generate new token (classic)"</li>
-                        <li>Give it a name (e.g., "Writingway Backup")</li>
-                        <li>Expiration: Select <strong>"No expiration"</strong> for convenience</li>
-                        <li>Select the <strong>gist</strong> permission (only this one)</li>
-                        <li>Click "Generate token" and copy the token</li>
-                        <li>Paste it below</li>
+                        <li>Give it a name such as "Writingway Backup"</li>
+                        <li>Select the <strong>gist</strong> permission only</li>
+                        <li>Paste the token below</li>
                     </ol>
                 </div>
 
-                <div style="margin-bottom:20px;">
+                <div x-show="backupProvider === 'local'"
+                    style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.3);border-radius:8px;padding:16px;margin-bottom:24px;">
+                    <h4 style="margin:0 0 12px 0;color:var(--text-primary);">Local Versioning</h4>
+                    <p style="margin:0;font-size:14px;line-height:1.7;color:var(--text-secondary);">
+                        Each backup is written to the <code>project-backups/</code> folder inside Writingway.
+                        This keeps timestamped restore points on this machine without requiring any cloud login.
+                    </p>
+                </div>
+
+                <div x-show="backupProvider === 'onedrive' || backupProvider === 'gdrive'"
+                    style="background:rgba(255,193,7,0.1);border:1px solid rgba(255,193,7,0.3);border-radius:8px;padding:16px;margin-bottom:24px;">
+                    <h4 style="margin:0 0 12px 0;color:var(--text-primary);" x-text="backupProviderName() + ' Integration'"></h4>
+                    <p style="margin:0;font-size:14px;line-height:1.7;color:var(--text-secondary);">
+                        This provider is listed for planning, but its sign-in and sync flow is not implemented yet.
+                        Use GitHub Gist or Local Versioning for working backups today.
+                    </p>
+                </div>
+
+                <div x-show="backupProvider === 'github'" style="margin-bottom:20px;">
                     <label style="display:block;font-weight:600;margin-bottom:8px;">GitHub Token</label>
                     <input type="password" x-model="githubToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                         style="width:100%;padding:10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:monospace;font-size:13px;">
@@ -1578,16 +1627,25 @@
 
                 <div style="border-top:1px solid var(--border);padding-top:20px;">
                     <button class="btn btn-secondary" @click="openRestoreModal()"
-                        :disabled="!githubToken || !currentProjectGistId" style="width:100%;">
+                        :disabled="!currentProject || (backupProvider === 'github' && (!githubToken || !currentProjectGistId)) || (backupProvider !== 'github' && backupProvider !== 'local')"
+                        style="width:100%;">
                         📥 Restore from Backup
                     </button>
                 </div>
 
-                <div
+                <div x-show="backupProvider === 'github'"
                     style="margin-top:20px;padding:16px;background:rgba(255,193,7,0.1);border:1px solid rgba(255,193,7,0.3);border-radius:8px;">
                     <p style="margin:0;font-size:13px;line-height:1.6;">
                         <strong>Note:</strong> Each project is backed up to its own private GitHub Gist.
-                        Backups include all chapters, scenes, content, compendium entries, and prompts.
+                        Backups include chapters, scenes, content, compendium entries, prompts, and other project data.
+                    </p>
+                </div>
+
+                <div x-show="backupProvider === 'local'"
+                    style="margin-top:20px;padding:16px;background:rgba(74,158,255,0.1);border:1px solid rgba(74,158,255,0.3);border-radius:8px;">
+                    <p style="margin:0;font-size:13px;line-height:1.6;">
+                        <strong>Note:</strong> Local backups are stored as timestamped JSON snapshots under
+                        <code>project-backups/</code>. They stay on this machine unless you sync that folder yourself.
                     </p>
                 </div>
             </div>
@@ -1610,7 +1668,7 @@
                         Select a backup version to restore. This will replace your current project data.
                     </p>
                     <div style="display:flex;flex-direction:column;gap:12px;">
-                        <template x-for="backup in backupList" :key="backup.version">
+                        <template x-for="backup in backupList" :key="backup.id || backup.version">
                             <div
                                 style="padding:16px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;">
                                 <div
@@ -1619,10 +1677,13 @@
                                         <div style="font-weight:600;color:var(--text-primary);"
                                             x-text="new Date(backup.timestamp).toLocaleString()"></div>
                                         <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
-                                            Version: <span x-text="backup.version.substring(0, 7)"></span>
+                                            <span x-show="backup.provider === 'github'">Version: <span
+                                                    x-text="backup.version.substring(0, 7)"></span></span>
+                                            <span x-show="backup.provider === 'local'">File: <span
+                                                    x-text="backup.id"></span></span>
                                         </div>
                                     </div>
-                                    <button class="btn btn-primary" @click="restoreBackup(backup.url)"
+                                    <button class="btn btn-primary" @click="restoreBackup(backup.ref)"
                                         style="padding:8px 16px;font-size:13px;">
                                         Restore
                                     </button>
