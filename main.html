@@ -1247,7 +1247,7 @@
                         Mode</label>
                     <div style="display:flex;gap:12px;">
                         <button class="btn" :class="aiMode === 'api' ? 'btn-primary' : 'btn-secondary'"
-                            @click="aiMode = 'api'; if (aiProvider === 'openrouter' && !aiModel) aiModel = 'google/gemini-2.0-flash-exp:free';"
+                            @click="aiMode = 'api'; if (aiProvider === 'openrouter' && !aiModel) aiModel = 'google/gemini-2.5-flash';"
                             :style="hasLocalAIAvailable() ? 'flex:1;display:flex;flex-direction:column;align-items:center;padding:12px;' : 'width:100%;display:flex;flex-direction:column;align-items:center;padding:12px;'">
                             <div style="font-size:20px;margin-bottom:4px;">☁️</div>
                             <div style="font-weight:600;text-align:center;">API / Local API</div>

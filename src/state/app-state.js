@@ -270,9 +270,12 @@ function createAppState() {
                 { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
             ],
             google: [
-                { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', recommended: true },
-                { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-                { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' }
+                { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', recommended: true },
+                { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+                { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
+                { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
+                { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
+                { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite' }
             ],
             lmstudio: [], // Models fetched dynamically from LM Studio server
             nanogpt: [] // NanoGPT models entered manually by user

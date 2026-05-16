@@ -276,7 +276,7 @@
                 'X-Title': 'Writingway'
             };
             body = {
-                model: model || 'google/gemini-2.0-flash-exp:free',
+                model: model || 'google/gemini-2.5-flash',
                 messages: messages,
                 stream: !shouldDisableStreaming // Disable streaming for thinking models or if forced
             };
@@ -324,7 +324,7 @@
         } else if (provider === 'google') {
             // Google AI uses a different API format - extract text from messages
             const text = messages.map(m => m.content).join('\n\n');
-            url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash-exp'}:streamGenerateContent?key=${apiKey}`;
+            url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.5-flash'}:streamGenerateContent?key=${apiKey}`;
             headers = { 'Content-Type': 'application/json' };
             body = {
                 contents: [{ parts: [{ text: text }] }]

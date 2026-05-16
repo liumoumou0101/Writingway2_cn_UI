@@ -45,7 +45,7 @@
                             .map(m => ({
                                 id: m.id,
                                 name: m.name || m.id,
-                                recommended: m.id.includes(':free') || m.id.includes('gemini-2.0-flash')
+                                recommended: m.id.includes(':free') || m.id.includes('gemini-2.5-flash')
                             }));
                         app.modelsFetched = true;
                     }
