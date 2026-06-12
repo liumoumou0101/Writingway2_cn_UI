@@ -5,15 +5,74 @@
         return !!(app && app.runtimeInfo && app.runtimeInfo.localAIAvailable);
     }
 
+    const DEEPSEEK_MODELS = [
+        { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro - Creative', recommended: true },
+        { id: 'deepseek-v4-pro-thinking', name: 'DeepSeek V4 Pro - Deep Reasoning' },
+        { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash - Fast Draft' },
+        { id: 'deepseek-v4-flash-thinking', name: 'DeepSeek V4 Flash - Fast Reasoning' }
+    ];
+
+    function cloneDeepSeekModels() {
+        return DEEPSEEK_MODELS.map(model => ({ ...model }));
+    }
+
+    function ensureDeepSeekModels(app) {
+        if (!app.providerModels) app.providerModels = {};
+        app.providerModels.deepseek = cloneDeepSeekModels();
+    }
+
+    function migrateDeepSeekModel(model) {
+        if (model === 'deepseek-chat') return 'deepseek-v4-flash';
+        if (model === 'deepseek-reasoner') return 'deepseek-v4-flash-thinking';
+        return model;
+    }
+
+    function isDeepSeekThinkingSelection(app) {
+        if (!app || app.aiProvider !== 'deepseek') return false;
+        const model = (app.aiModel || '').toLowerCase();
+        return model === 'deepseek-reasoner' || model.endsWith('-thinking');
+    }
+
     const AISettings = {
+        isDeepSeekThinkingModel(app) {
+            return isDeepSeekThinkingSelection(app);
+        },
+
+        handleProviderChange(app) {
+            if (!app) return;
+
+            if (app.aiProvider === 'deepseek') {
+                ensureDeepSeekModels(app);
+            }
+
+            const models = app.providerModels && app.providerModels[app.aiProvider]
+                ? app.providerModels[app.aiProvider]
+                : [];
+            app.aiModel = models.length > 0
+                ? (models.find(model => model.recommended)?.id || models[0].id)
+                : '';
+            app.modelsFetched = false;
+
+            if (app.aiProvider === 'lmstudio') {
+                app.aiEndpoint = app.aiEndpoint || 'http://localhost:1234';
+                this.fetchProviderModels(app);
+            }
+
+            if (app.aiProvider === 'nanogpt') {
+                app.aiEndpoint = app.aiEndpoint || 'https://nano-gpt.com/api';
+            }
+
+            this.saveGenerationParams(app);
+        },
+
         /**
          * Fetch available models from the current provider
          * @param {Object} app - Alpine app instance
          */
         async fetchProviderModels(app) {
             // Fetch available models from the current provider
-            // LM Studio doesn't require an API key
-            if (app.aiMode !== 'api' || (!app.aiApiKey && app.aiProvider !== 'lmstudio')) return;
+            // LM Studio and DeepSeek (hardcoded list) don't require an API key to fetch models
+            if (app.aiMode !== 'api' || (!app.aiApiKey && app.aiProvider !== 'lmstudio' && app.aiProvider !== 'deepseek')) return;
             if (app.fetchingModels) return; // Prevent duplicate fetches
 
             try {
@@ -71,6 +130,9 @@
                 } else if (app.aiProvider === 'anthropic') {
                     // Anthropic doesn't have a public models API, keep hardcoded list
                     // (Their models are well-known and don't change often)
+                    app.modelsFetched = true;
+                } else if (app.aiProvider === 'deepseek') {
+                    ensureDeepSeekModels(app);
                     app.modelsFetched = true;
                 } else if (app.aiProvider === 'google') {
                     // Google AI doesn't have a public models list API for free tier
@@ -340,15 +402,17 @@
                     app.aiMode = settings.mode || 'api';
                     app.aiProvider = settings.provider || 'anthropic';
                     app.aiApiKey = settings.apiKey || '';
-                    const savedModel = settings.model || '';
+                    const savedModel = app.aiProvider === 'deepseek'
+                        ? migrateDeepSeekModel(settings.model || '')
+                        : (settings.model || '');
                     app.aiEndpoint = settings.endpoint || '';
                     app.temperature = settings.temperature || 0.8;
                     app.maxTokens = settings.maxTokens || 300;
                     app.useProviderDefaults = settings.useProviderDefaults || false;
                     app.forceNonStreaming = settings.forceNonStreaming || false;
 
-                    // Fetch fresh model list if we have API credentials (or LM Studio which doesn't need a key)
-                    if (app.aiMode === 'api' && (app.aiApiKey || app.aiProvider === 'lmstudio')) {
+                    // Fetch fresh model list if we have API credentials (or LM Studio/DeepSeek which don't strictly need a key to load the list)
+                    if (app.aiMode === 'api' && (app.aiApiKey || app.aiProvider === 'lmstudio' || app.aiProvider === 'deepseek')) {
                         await this.fetchProviderModels(app);
                     }
 
