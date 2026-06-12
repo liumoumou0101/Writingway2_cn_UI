@@ -5,12 +5,12 @@
     const UpdateChecker = {
         // Build timestamp - update this when you push a new version
         // This represents when this version was created
-        buildDate: new Date('2026-05-16T15:46:00Z').getTime(), // Update before each push
+        buildDate: new Date('2026-06-12T09:50:56Z').getTime(), // Update before each push
 
         // GitHub repository info
-        repoOwner: 'aomukai',
-        repoName: 'Writingway2',
-        branch: 'main',
+        repoOwner: 'liumoumou0101',
+        repoName: 'Writingway2_cn_UI',
+        branch: 'codex/deepseek-v4-cn-ui',
 
         // Updater service endpoint
         updaterUrl: 'http://127.0.0.1:8001',

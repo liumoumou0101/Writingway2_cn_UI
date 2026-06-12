@@ -12,6 +12,7 @@ function createAppState() {
         selectedProjectId: null,
 
         // ========== UI Modal State ==========
+        uiLanguage: 'zh',
         showRenameProjectModal: false,
         renameProjectName: '',
         showExportModal: false,
@@ -122,6 +123,7 @@ function createAppState() {
         // ========== Beat Input & Generation ==========
         beatInput: '',
         isGenerating: false,
+        generationAbortController: null,
         isSaving: false,
         saveStatus: 'Saved',
         saveTimeout: null,
@@ -130,6 +132,9 @@ function createAppState() {
         // ========== Generation Acceptance Flow ==========
         lastGenStart: null,
         lastGenText: '',
+        lastReasoningText: '',
+        reasoningInProgress: false,
+        showReasoningModal: false,
         showGenActions: false,
         showGeneratedHighlight: false,
         lastBeat: '',
@@ -268,6 +273,12 @@ function createAppState() {
                 { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
                 { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
                 { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
+            ],
+            deepseek: [
+                { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro - Creative', recommended: true },
+                { id: 'deepseek-v4-pro-thinking', name: 'DeepSeek V4 Pro - Deep Reasoning' },
+                { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash - Fast Draft' },
+                { id: 'deepseek-v4-flash-thinking', name: 'DeepSeek V4 Flash - Fast Reasoning' }
             ],
             google: [
                 { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', recommended: true },

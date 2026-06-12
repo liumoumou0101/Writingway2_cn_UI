@@ -79,8 +79,63 @@ document.addEventListener('alpine:init', () => {
                 }
             },
 
+            t(key) {
+                if (window.I18N && typeof window.I18N.t === 'function') {
+                    return window.I18N.t(this.uiLanguage, key);
+                }
+                return key;
+            },
+
+            setUILanguage(lang) {
+                const normalized = window.I18N && typeof window.I18N.normalizeLanguage === 'function'
+                    ? window.I18N.normalizeLanguage(lang)
+                    : (lang === 'en' ? 'en' : 'zh');
+                this.uiLanguage = normalized;
+                try {
+                    localStorage.setItem('writingway:uiLanguage', normalized);
+                    document.documentElement.lang = normalized === 'zh' ? 'zh-CN' : 'en';
+                } catch (e) { /* ignore */ }
+            },
+
+            toggleUILanguage() {
+                this.setUILanguage(this.uiLanguage === 'zh' ? 'en' : 'zh');
+            },
+
+            localizedDefaultTitle(title, type) {
+                const text = String(title || '');
+                const chapterMatch = text.match(/^Chapter\s+(\d+)$/i);
+                const sceneMatch = text.match(/^Scene\s+(\d+)$/i);
+
+                if (type === 'chapter' && chapterMatch) {
+                    return this.uiLanguage === 'zh' ? `第 ${chapterMatch[1]} 章` : `${this.t('structure.chapter')} ${chapterMatch[1]}`;
+                }
+                if (type === 'scene' && sceneMatch) {
+                    return this.uiLanguage === 'zh' ? `${this.t('structure.scene')} ${sceneMatch[1]}` : `${this.t('structure.scene')} ${sceneMatch[1]}`;
+                }
+                return text;
+            },
+
+            localizedPromptCategory(category) {
+                return this.t(`prompts.category.${category}`) || category;
+            },
+
+            localizedCompendiumCategory(category) {
+                return this.t(`compendium.category.${category}`) || category;
+            },
+
+            localizedPromptTitle(title) {
+                return String(title || '') === 'New Prompt' ? this.t('prompts.newPrompt') : (title || '');
+            },
+
             // Initialize
             async init() {
+                try {
+                    const savedLanguage = localStorage.getItem('writingway:uiLanguage');
+                    this.setUILanguage(savedLanguage || (window.I18N && window.I18N.defaultLanguage) || 'zh');
+                } catch (e) {
+                    this.setUILanguage('zh');
+                }
+
                 this.updateLoadingScreen(10, 'Initializing...', 'Checking startup method...');
 
                 // Detect if opened via file:// protocol and warn user
@@ -505,6 +560,17 @@ document.addEventListener('alpine:init', () => {
 
             async fetchProviderModels() {
                 await window.AISettings.fetchProviderModels(this);
+            },
+            handleAIProviderChange() {
+                window.AISettings.handleProviderChange(this);
+            },
+            isDeepSeekThinkingModel() {
+                return window.AISettings && window.AISettings.isDeepSeekThinkingModel(this);
+            },
+            stopGeneration() {
+                if (this.generationAbortController) {
+                    this.generationAbortController.abort();
+                }
             },
             async scanLocalModels() {
                 await window.AISettings.scanLocalModels(this);
@@ -2162,6 +2228,7 @@ document.addEventListener('alpine:init', () => {
                 this.lastGenStart = null;
                 this.lastGenText = '';
                 this.lastBeat = '';
+                this.showReasoningModal = false;
                 // ensure scene saved
                 await this.saveScene();
             },
@@ -2196,6 +2263,9 @@ document.addEventListener('alpine:init', () => {
                 this.showGeneratedHighlight = false;
                 this.lastGenStart = null;
                 this.lastGenText = '';
+                this.lastReasoningText = '';
+                this.reasoningInProgress = false;
+                this.showReasoningModal = false;
                 this.lastBeat = '';
                 this.beatInput = '';
                 await this.saveScene();

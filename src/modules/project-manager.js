@@ -202,6 +202,7 @@
                         try {
                             app.currentPrompt = Object.assign({}, dbRow);
                             app.promptEditorContent = dbRow.content || '';
+                            app.promptEditorSystemContent = dbRow.systemContent || '';
                         } catch (e) { /* ignore */ }
                         return;
                     }

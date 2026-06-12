@@ -11,40 +11,33 @@
         const povName = (options.povCharacter && options.povCharacter.trim()) ? options.povCharacter.trim() : 'the protagonist';
         const tenseText = (options.tense === 'present') ? 'present tense' : 'past tense';
         const povText = options.pov || '3rd person limited';
-        const povSentence = `You are a co-author tasked with assisting your partner. You are writing a story from the point of view of ${povName} in ${tenseText}, in ${povText}.`;
+        const povSentence = `You are a co-author helping continue a story from the point of view of ${povName}, in ${tenseText}, using ${povText}.`;
 
         // Use custom system prompt if provided, otherwise fall back to default
         let systemPrompt;
         if (options.systemPrompt && typeof options.systemPrompt === 'string' && options.systemPrompt.trim()) {
-            // Replace placeholders in custom system prompt
             systemPrompt = options.systemPrompt.trim()
                 .replace(/\{povName\}/gi, povName)
                 .replace(/\{tense\}/gi, tenseText)
                 .replace(/\{pov\}/gi, povText);
         } else {
-            // Default fallback system prompt
-            systemPrompt = `${povSentence} You are a creative writing assistant. The author provides a BEAT (what happens next) and you expand it into vivid, engaging prose. Write 2-3 paragraphs that bring the beat to life. Match the author's tone and style. Use sensory details. Show, don't tell.`;
+            systemPrompt = `${povSentence} Use the same language as the author's beat and surrounding scene text unless the author explicitly requests another language. If the author writes in Chinese, write in Chinese. If the author writes in English, write in English. Expand the beat into vivid, natural prose. Match the author's tone and style, use sensory details, and show rather than explain.`;
         }
 
         let contextText = '';
         if (sceneContext && sceneContext.length > 0) {
-            // Include the full scene context - modern models have large context windows
             contextText = `\n\nCURRENT SCENE SO FAR:\n${sceneContext}`;
         }
 
-        // If a prose prompt template is provided, include it before the BEAT so the model can use it.
-        // When `options.preview === true` we avoid adding explicit debug markers so the preview is cleaner.
         let proseTemplateText = '';
         if (options.prosePrompt && typeof options.prosePrompt === 'string' && options.prosePrompt.trim()) {
             if (options.preview) {
                 proseTemplateText = `\n\n${options.prosePrompt.trim()}`;
             } else {
-                // Add explicit markers to make the template visible during debugging/inspection
                 proseTemplateText = `\n\n--- PROMPT TEMPLATE START ---\n${options.prosePrompt.trim()}\n--- PROMPT TEMPLATE END ---`;
             }
         }
 
-        // If compendium entries are provided, include them as references before the BEAT.
         let compendiumText = '';
         if (options.compendiumEntries && Array.isArray(options.compendiumEntries) && options.compendiumEntries.length > 0) {
             compendiumText = '\n\nCOMPENDIUM REFERENCES:\n';
@@ -57,7 +50,6 @@
             }
         }
 
-        // If scene summaries are provided, include them as context before the BEAT.
         let sceneSummariesText = '';
         if (options.sceneSummaries && Array.isArray(options.sceneSummaries) && options.sceneSummaries.length > 0) {
             sceneSummariesText = '\n\nPREVIOUS SCENES:\n';
@@ -73,31 +65,21 @@
         }
 
         let userContent = `${contextText}${proseTemplateText}`;
-        if (compendiumText) {
-            userContent += compendiumText;
-        }
-        if (sceneSummariesText) {
-            userContent += sceneSummariesText;
-        }
+        if (compendiumText) userContent += compendiumText;
+        if (sceneSummariesText) userContent += sceneSummariesText;
 
-        // Strip mention tags from beat since they're already resolved and included above
         let cleanedBeat = beat;
-        // Remove @[Title] compendium mentions
         cleanedBeat = cleanedBeat.replace(/@\[([^\]]+)\]/g, '');
-        // Remove #[Title] scene mentions
         cleanedBeat = cleanedBeat.replace(/#\[([^\]]+)\]/g, '');
-        // Clean up extra whitespace
         cleanedBeat = cleanedBeat.replace(/\s+/g, ' ').trim();
 
-        userContent += `\n\nBEAT TO EXPAND:\n${cleanedBeat}\n\nWrite the next 2-3 paragraphs:`;
+        userContent += `\n\nBEAT TO EXPAND:\n${cleanedBeat}\n\nContinue in the same language as the beat. Write the next 2-3 paragraphs:`;
 
-        // Return object with both messages array (for APIs) and string format (for local)
         const result = {
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userContent }
             ],
-            // Legacy string format for local models with chat template
             asString: function () {
                 return `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${userContent}<|im_end|>\n<|im_start|>assistant\n`;
             }
@@ -106,7 +88,6 @@
     }
 
     async function streamGeneration(prompt, onToken, app) {
-        // Get AI settings from app if provided
         const aiMode = app?.aiMode || 'local';
         const aiProvider = app?.aiProvider || 'anthropic';
         const aiApiKey = app?.aiApiKey || '';
@@ -116,54 +97,106 @@
         const temperature = app?.temperature || 0.8;
         const maxTokens = app?.maxTokens || 300;
 
-        // Convert prompt to appropriate format
         let promptStr = prompt;
         let messages = null;
 
         if (typeof prompt === 'object' && prompt.messages) {
-            // buildPrompt() result with messages and asString()
             messages = prompt.messages;
             if (aiMode === 'local') {
-                // Use string format for local server
                 promptStr = prompt.asString();
             }
         } else if (Array.isArray(prompt)) {
-            // Raw messages array (e.g., from workshop chat)
             messages = prompt;
             if (aiMode === 'local') {
-                // Convert messages array to ChatML format for local server
                 promptStr = messagesToChatML(messages);
             }
         }
 
-        if (aiMode === 'api') {
-            // API Mode - use configured provider with messages
-            return await streamGenerationAPI(messages || promptStr, onToken, aiProvider, aiApiKey, aiModel, aiEndpoint, temperature, maxTokens, app, useProviderDefaults);
-        } else {
-            // Local Mode - use llama-server with string prompt
-            return await streamGenerationLocal(promptStr, onToken, aiEndpoint, temperature, maxTokens, useProviderDefaults);
+        try {
+            if (aiMode === 'api') {
+                return await streamGenerationAPI(messages || promptStr, onToken, aiProvider, aiApiKey, aiModel, aiEndpoint, temperature, maxTokens, app, useProviderDefaults);
+            } else {
+                return await streamGenerationLocal(promptStr, onToken, aiEndpoint, temperature, maxTokens, useProviderDefaults, app?.generationAbortController?.signal);
+            }
+        } finally {
+            if (app) app.reasoningInProgress = false;
         }
     }
 
-    /**
-     * Convert messages array to ChatML format string
-     * @param {Array} messages - Array of {role, content} objects
-     * @returns {string} - Formatted ChatML string
-     */
     function messagesToChatML(messages) {
         if (!Array.isArray(messages)) return '';
-
         let result = '';
         for (const msg of messages) {
             result += `<|im_start|>${msg.role}\n${msg.content}<|im_end|>\n`;
         }
-        // Add assistant start tag for completion
         result += '<|im_start|>assistant\n';
         return result;
     }
 
-    async function streamGenerationLocal(prompt, onToken, endpoint, temperature, maxTokens, useProviderDefaults) {
-        // Local llama-server completion
+    function resolveDeepSeekModel(model) {
+        const selectedModel = (model || 'deepseek-v4-pro').trim();
+        const legacyModels = {
+            'deepseek-chat': { realModel: 'deepseek-v4-flash', enableThinking: false },
+            'deepseek-reasoner': { realModel: 'deepseek-v4-flash', enableThinking: true }
+        };
+
+        if (legacyModels[selectedModel]) {
+            return legacyModels[selectedModel];
+        }
+
+        if (selectedModel === 'deepseek-v4-pro-thinking') {
+            return { realModel: 'deepseek-v4-pro', enableThinking: true };
+        }
+
+        if (selectedModel === 'deepseek-v4-flash-thinking') {
+            return { realModel: 'deepseek-v4-flash', enableThinking: true };
+        }
+
+        return {
+            realModel: selectedModel,
+            enableThinking: false
+        };
+    }
+
+    function appendReasoning(app, text) {
+        if (!app || !text) return;
+        app.lastReasoningText = (app.lastReasoningText || '') + text;
+        app.reasoningInProgress = true;
+    }
+
+    function createNoContentError(app, provider) {
+        if (provider === 'deepseek' && app?.lastReasoningText) {
+            return new Error('DeepSeek returned reasoning content but no final prose. Try increasing Max Length, or switch to a non-thinking DeepSeek mode.');
+        }
+        return new Error('No content received from API.');
+    }
+
+    function isAbortError(error) {
+        return error && (error.name === 'AbortError' || String(error.message || '').toLowerCase().includes('aborted'));
+    }
+
+    function formatAPIError(provider, status, errorText) {
+        if (provider !== 'deepseek') {
+            return `API returned ${status}: ${errorText}`;
+        }
+
+        const lower = String(errorText || '').toLowerCase();
+        if (status === 401 || status === 403) {
+            return `DeepSeek authentication failed (${status}). Check your API key.`;
+        }
+        if (status === 402 || lower.includes('insufficient') || lower.includes('balance')) {
+            return `DeepSeek account balance or quota is insufficient (${status}). Check your DeepSeek billing/usage page.`;
+        }
+        if (status === 400 && (lower.includes('model') || lower.includes('thinking') || lower.includes('temperature'))) {
+            return `DeepSeek rejected the request (${status}). The selected model or thinking/temperature settings may be incompatible. ${errorText}`;
+        }
+        if (status === 429) {
+            return `DeepSeek rate limit reached (${status}). Wait a moment and try again.`;
+        }
+        return `DeepSeek API returned ${status}: ${errorText}`;
+    }
+
+    async function streamGenerationLocal(prompt, onToken, endpoint, temperature, maxTokens, useProviderDefaults, signal) {
         const requestBody = {
             prompt: prompt,
             top_p: 0.9,
@@ -171,7 +204,6 @@
             stream: true
         };
 
-        // Only include temperature and maxTokens if not using provider defaults
         if (!useProviderDefaults) {
             requestBody.n_predict = maxTokens || 300;
             requestBody.temperature = temperature || 0.8;
@@ -180,7 +212,8 @@
         const response = await fetch(endpoint + '/completion', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify(requestBody),
+            signal
         });
 
         if (!response.ok) {
@@ -196,7 +229,6 @@
             if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
-
             const lines = buffer.split('\n');
             buffer = lines.pop();
 
@@ -204,25 +236,17 @@
                 if (line.startsWith('data: ')) {
                     try {
                         const data = JSON.parse(line.slice(6));
-                        if (data.content) {
-                            onToken(data.content);
-                        }
-                        if (data.stop) {
-                            return;
-                        }
-                    } catch (e) {
-                        // ignore parse errors
-                    }
+                        if (data.content) onToken(data.content);
+                        if (data.stop) return;
+                    } catch (e) { /* ignore */ }
                 }
             }
         }
     }
 
     async function streamGenerationAPI(prompt, onToken, provider, apiKey, model, customEndpoint, temperature, maxTokens, app, useProviderDefaults) {
-        // API Mode - construct request based on provider
         let url, headers, body;
 
-        // Convert prompt to messages if needed
         let messages;
         if (Array.isArray(prompt)) {
             messages = prompt;
@@ -234,37 +258,26 @@
 
         const temp = temperature || 0.8;
         const maxTok = maxTokens || 300;
-
-        // Check if user has explicitly forced non-streaming mode
         const userForcedNonStreaming = app?.forceNonStreaming || false;
 
-        // Detect thinking models that don't support streaming
-        // This includes known patterns and can be expanded as new models emerge
-        // TODO: Consider adding a user-facing "Force non-streaming" toggle in AI settings
-        // for models that aren't auto-detected but still need it
         const modelLower = (model || '').toLowerCase();
         const isThinkingModel = model && (
-            // OpenAI o-series (o1, o3, o4, etc.)
             /\bo[0-9][-_]/.test(model) ||
-            // Explicit reasoning/thinking indicators
             modelLower.includes('reasoning') ||
             modelLower.includes('think') ||
             modelLower.includes('thought') ||
-            // Known thinking model families
             modelLower.includes('deepseek-reasoner') ||
             modelLower.includes('qwq') ||
-            modelLower.includes('r1') && modelLower.includes('deepseek')
+            modelLower.includes('deepseek-v4-pro-thinking') ||
+            (modelLower.includes('r1') && modelLower.includes('deepseek')) ||
+            modelLower.includes('thinking')
         );
 
         const shouldDisableStreaming = userForcedNonStreaming || isThinkingModel;
 
         if (shouldDisableStreaming) {
-            if (userForcedNonStreaming) {
-                console.log('🔧 Non-streaming mode forced by user setting');
-            }
-            if (isThinkingModel) {
-                console.log('🧠 Thinking model detected:', model, '- will use non-streaming mode');
-            }
+            if (userForcedNonStreaming) console.log('🔧 Non-streaming mode forced by user setting');
+            if (isThinkingModel) console.log('🧠 Thinking model detected:', model, '- will use non-streaming mode');
         }
 
         if (provider === 'openrouter') {
@@ -278,9 +291,8 @@
             body = {
                 model: model || 'google/gemini-2.5-flash',
                 messages: messages,
-                stream: !shouldDisableStreaming // Disable streaming for thinking models or if forced
+                stream: !shouldDisableStreaming
             };
-            // Only include temperature/max_tokens if not using provider defaults
             if (!useProviderDefaults) {
                 body.temperature = temp;
                 body.max_tokens = maxTok;
@@ -295,14 +307,12 @@
             body = {
                 model: model || 'claude-3-5-sonnet-20241022',
                 messages: messages,
-                stream: true // Anthropic models all support streaming
+                stream: true
             };
-            // Only include temperature/max_tokens if not using provider defaults
             if (!useProviderDefaults) {
                 body.temperature = temp;
                 body.max_tokens = maxTok;
             } else {
-                // Anthropic requires max_tokens to be set, use a high default
                 body.max_tokens = 4096;
             }
         } else if (provider === 'openai') {
@@ -314,22 +324,46 @@
             body = {
                 model: model || 'gpt-4o-mini',
                 messages: messages,
-                stream: !shouldDisableStreaming // Disable streaming for thinking models or if forced
+                stream: !shouldDisableStreaming
             };
-            // Only include temperature/max_tokens if not using provider defaults
             if (!useProviderDefaults) {
                 body.temperature = temp;
                 body.max_tokens = maxTok;
             }
+        } else if (provider === 'deepseek') {
+            url = 'https://api.deepseek.com/chat/completions';
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            };
+
+            const deepSeekModel = resolveDeepSeekModel(model);
+
+            body = {
+                model: deepSeekModel.realModel,
+                messages: messages,
+                stream: deepSeekModel.enableThinking ? false : !shouldDisableStreaming,
+                thinking: {
+                    type: deepSeekModel.enableThinking ? 'enabled' : 'disabled'
+                }
+            };
+
+            if (deepSeekModel.enableThinking) {
+                body.reasoning_effort = 'high';
+                if (!useProviderDefaults) {
+                    body.max_tokens = maxTok;
+                }
+            } else if (!useProviderDefaults) {
+                body.temperature = temp;
+                body.max_tokens = maxTok;
+            }
         } else if (provider === 'google') {
-            // Google AI uses a different API format - extract text from messages
             const text = messages.map(m => m.content).join('\n\n');
             url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.5-flash'}:streamGenerateContent?key=${apiKey}`;
             headers = { 'Content-Type': 'application/json' };
             body = {
                 contents: [{ parts: [{ text: text }] }]
             };
-            // Only include generationConfig if not using provider defaults
             if (!useProviderDefaults) {
                 body.generationConfig = {
                     temperature: temp,
@@ -337,8 +371,6 @@
                 };
             }
         } else if (provider === 'nanogpt') {
-            // NanoGPT uses OpenAI-compatible API
-            // Normalize endpoint: strip trailing slashes
             let endpoint = (customEndpoint || 'https://nano-gpt.com/api').replace(/\/+$/, '');
             url = `${endpoint}/chat/completions`;
             headers = {
@@ -350,26 +382,20 @@
                 messages: messages,
                 stream: !shouldDisableStreaming
             };
-            // Only include temperature/max_tokens if not using provider defaults
             if (!useProviderDefaults) {
                 body.temperature = temp;
                 body.max_tokens = maxTok;
             }
         } else if (provider === 'lmstudio') {
-            // LM Studio uses OpenAI-compatible API
-            // Normalize endpoint: strip trailing slashes and any /v1/* paths
             let endpoint = (customEndpoint || 'http://localhost:1234').replace(/\/+$/, '');
             endpoint = endpoint.replace(/\/v1(\/.*)?$/, '');
             url = `${endpoint}/v1/chat/completions`;
-            headers = {
-                'Content-Type': 'application/json'
-            };
+            headers = { 'Content-Type': 'application/json' };
             body = {
                 model: model,
                 messages: messages,
                 stream: true
             };
-            // Only include temperature/max_tokens if not using provider defaults
             if (!useProviderDefaults) {
                 body.temperature = temp;
                 body.max_tokens = maxTok;
@@ -385,60 +411,37 @@
                 messages: messages,
                 stream: true
             };
-            // Only include temperature/max_tokens if not using provider defaults
             if (!useProviderDefaults) {
                 body.temperature = temp;
                 body.max_tokens = maxTok;
             }
         }
 
-        // Debug logging for API requests
-        console.log('🚀 API Request to:', provider);
-        console.log('📨 Messages being sent:', JSON.stringify(messages, null, 2));
-        if (useProviderDefaults) {
-            console.log('⚙️ Using provider defaults (temperature and max_tokens not specified)');
-        } else {
-            console.log('⚙️ Temperature:', temp, 'Max Tokens:', maxTok);
-        }
-
         const response = await fetch(url, {
             method: 'POST',
             headers: headers,
-            body: JSON.stringify(body)
+            body: JSON.stringify(body),
+            signal: app?.generationAbortController?.signal
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('❌ API Error:', response.status, errorText);
-            throw new Error(`API returned ${response.status}: ${errorText}`);
+            throw new Error(formatAPIError(provider, response.status, errorText));
         }
 
-        // Check if response is actually streaming or if it's a complete response
         const contentType = response.headers.get('content-type');
-        console.log('📋 Response Content-Type:', contentType);
 
-        // Some thinking models don't support streaming and return complete JSON
         if (contentType?.includes('application/json') && !contentType?.includes('text/event-stream')) {
-            console.log('📦 Non-streaming response detected (likely thinking model)');
             const data = await response.json();
-            console.log('📄 Full response data:', JSON.stringify(data, null, 2));
-
-            // Extract content and finish_reason from non-streaming response
             let content = null;
+            let reasoningContent = null;
             let finishReason = null;
-            if (provider === 'openrouter' || provider === 'openai' || provider === 'nanogpt' || provider === 'lmstudio' || provider === 'custom') {
-                content = data.choices?.[0]?.message?.content;
-                finishReason = data.choices?.[0]?.finish_reason;
 
-                // For thinking models (o1, o3, etc.) that return encrypted reasoning,
-                // check if content is empty but there's a finish_reason
-                if (!content && finishReason) {
-                    console.warn('⚠️ Thinking model returned empty content. This usually means:');
-                    console.warn('   - Max tokens was hit during reasoning phase');
-                    console.warn('   - Model never produced final answer');
-                    console.warn('   - Try increasing max_tokens significantly (10000+) for thinking models');
-                    throw new Error('Thinking model returned empty response. The model likely hit max_tokens during its reasoning phase before generating an answer. Try increasing Max Length to 10000+ tokens in AI Settings.');
-                }
+            if (provider === 'openrouter' || provider === 'openai' || provider === 'nanogpt' || provider === 'lmstudio' || provider === 'custom' || provider === 'deepseek') {
+                const message = data.choices?.[0]?.message;
+                content = message?.content;
+                reasoningContent = message?.reasoning_content;
+                finishReason = data.choices?.[0]?.finish_reason;
             } else if (provider === 'anthropic') {
                 content = data.content?.[0]?.text;
                 finishReason = data.stop_reason;
@@ -447,19 +450,16 @@
                 finishReason = data.candidates?.[0]?.finishReason;
             }
 
-            console.log('✅ Extracted content length:', content?.length || 0);
-            console.log('🏁 Finish reason:', finishReason);
+            appendReasoning(app, reasoningContent);
 
             if (content) {
-                // Emit content in chunks to simulate streaming
                 const words = content.split(/(\s+)/);
                 for (const word of words) {
                     onToken(word);
-                    await new Promise(resolve => setTimeout(resolve, 10)); // Small delay for UI
+                    await new Promise(resolve => setTimeout(resolve, 10));
                 }
-            } else {
-                console.error('❌ No content found in non-streaming response');
-                throw new Error('No content received from API');
+            } else if (reasoningContent) {
+                throw createNoContentError(app, provider);
             }
             return { finishReason };
         }
@@ -482,92 +482,51 @@
                 if (!line.trim()) continue;
 
                 try {
-                    // Handle different streaming formats
                     let jsonStr = line;
                     if (line.startsWith('data: ')) jsonStr = line.slice(6);
                     if (jsonStr === '[DONE]') {
-                        console.log('🏁 Stream finished with [DONE]');
                         if (!hasReceivedContent) {
-                            console.warn('⚠️ Stream ended without content - possible thinking model without streaming support');
+                            throw createNoContentError(app, provider);
                         }
                         return { finishReason };
                     }
 
                     const data = JSON.parse(jsonStr);
 
-                    // Debug: Log every chunk to see what we're receiving
-                    if (!hasReceivedContent) {
-                        console.log('🔍 First chunk received:', JSON.stringify(data, null, 2));
-                    }
-
-                    // Extract token based on provider format
                     let token = null;
-                    if (provider === 'openrouter' || provider === 'openai' || provider === 'nanogpt' || provider === 'lmstudio' || provider === 'custom') {
-                        // Capture finish_reason if present
+                    if (provider === 'openrouter' || provider === 'openai' || provider === 'nanogpt' || provider === 'lmstudio' || provider === 'custom' || provider === 'deepseek') {
                         if (data.choices?.[0]?.finish_reason) {
                             finishReason = data.choices[0].finish_reason;
                         }
-
-                        // For thinking models (o1, o3, etc), reasoning is in a separate field
-                        // We want to capture both reasoning and regular content
                         const delta = data.choices?.[0]?.delta;
                         if (delta) {
-                            // Try reasoning_content first (for thinking models)
-                            token = delta.reasoning_content || delta.content;
-
-                            if (!hasReceivedContent && delta) {
-                                console.log('🔍 Delta object:', JSON.stringify(delta, null, 2));
-                            }
+                            appendReasoning(app, delta.reasoning_content);
+                            if (delta.content) token = delta.content;
                         }
-
-                        // Some models put the complete message in the first chunk
                         if (!token && data.choices?.[0]?.message?.content) {
                             token = data.choices[0].message.content;
-                            console.log('📝 Found complete message in chunk');
                         }
                     } else if (provider === 'anthropic') {
-                        if (data.type === 'content_block_delta') {
-                            token = data.delta?.text;
-                        } else if (data.type === 'message_delta') {
-                            finishReason = data.delta?.stop_reason;
-                        }
+                        if (data.type === 'content_block_delta') token = data.delta?.text;
                     } else if (provider === 'google') {
                         token = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (data.candidates?.[0]?.finishReason) {
-                            finishReason = data.candidates[0].finishReason;
-                        }
                     }
 
                     if (token) {
                         hasReceivedContent = true;
                         onToken(token);
-                    } else if (!hasReceivedContent) {
-                        console.log('⚠️ No token extracted from chunk');
                     }
-                } catch (e) {
-                    // Ignore parse errors for incomplete chunks
-                    console.debug('Parse error (likely incomplete chunk):', e.message);
-                }
+                } catch (e) { /* ignore */ }
             }
         }
 
         if (!hasReceivedContent) {
-            console.error('⚠️ No content received from stream');
-            console.error('This usually happens with thinking models that either:');
-            console.error('1. Do not support streaming at all');
-            console.error('2. Return content in a different field structure');
-            console.error('3. Require stream=false in the API request');
-            throw new Error('No content received from API. This model may not support streaming or may require different parameters.');
+            throw createNoContentError(app, provider);
         }
 
-        console.log('🏁 Final finish reason:', finishReason);
         return { finishReason };
     }
 
-    /**
-     * Load prompt history for current project
-     * @param {Object} app - Alpine app instance
-     */
     async function loadPromptHistory(app) {
         if (!app.currentProject) {
             app.promptHistoryList = [];
@@ -586,40 +545,46 @@
         }
     }
 
-    /**
-     * Generate prose from beat input
-     * @param {Object} app - Alpine app instance
-     */
     async function generateFromBeat(app) {
         if (!app.beatInput || app.aiStatus !== 'ready') return;
         app.isGenerating = true;
+        app.generationAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
         try {
             app.lastBeat = app.beatInput;
-            // Resolve prose prompt text and system prompt (in-memory first, then DB fallback)
+
             const proseInfo = await app.resolveProsePromptInfo();
             const prosePromptText = proseInfo && proseInfo.text ? proseInfo.text : null;
             const systemPromptText = proseInfo && proseInfo.systemText ? proseInfo.systemText : null;
-            // Get context from context panel
+
             const panelContext = await app.buildContextFromPanel();
-            // Resolve compendium entries and scene summaries from beat mentions (@/#)
+
             let beatCompEntries = [];
             let beatSceneSummaries = [];
             try { beatCompEntries = await app.resolveCompendiumEntriesFromBeat(app.beatInput || ''); } catch (e) { beatCompEntries = []; }
             try { beatSceneSummaries = await app.resolveSceneSummariesFromBeat(app.beatInput || ''); } catch (e) { beatSceneSummaries = []; }
-            // Merge context: panel context + beat mentions
-            // Use Map to deduplicate by ID
+
             const compMap = new Map();
             panelContext.compendiumEntries.forEach(e => compMap.set(e.id, e));
             beatCompEntries.forEach(e => compMap.set(e.id, e));
             const compEntries = Array.from(compMap.values());
-            // Merge scene summaries (deduplicate by title)
+
             const sceneMap = new Map();
             panelContext.sceneSummaries.forEach(s => sceneMap.set(s.title, s));
             beatSceneSummaries.forEach(s => sceneMap.set(s.title, s));
             const sceneSummaries = Array.from(sceneMap.values());
-            const genOpts = { povCharacter: app.povCharacter, pov: app.pov, tense: app.tense, prosePrompt: prosePromptText, systemPrompt: systemPromptText, compendiumEntries: compEntries, sceneSummaries: sceneSummaries };
+
+            const genOpts = {
+                povCharacter: app.povCharacter,
+                pov: app.pov,
+                tense: app.tense,
+                prosePrompt: prosePromptText,
+                systemPrompt: systemPromptText,
+                compendiumEntries: compEntries,
+                sceneSummaries: sceneSummaries
+            };
+
             let prompt = buildPrompt(app.beatInput, app.currentScene?.content || '', genOpts);
-            // Save prompt to history
+
             try {
                 await db.promptHistory.add({
                     id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 9),
@@ -632,49 +597,58 @@
             } catch (e) {
                 console.warn('Failed to save prompt history:', e);
             }
-            // remember where generated text will start
+
             const prevLen = app.currentScene ? (app.currentScene.content ? app.currentScene.content.length : 0) : 0;
             app.lastGenStart = prevLen;
             app.lastGenText = '';
+            app.lastReasoningText = '';
+            app.reasoningInProgress = false;
+            app.showReasoningModal = false;
             app.showGenActions = false;
-            // Stream tokens and append into the current scene
+
             await streamGeneration(prompt, (token) => {
                 app.currentScene.content += token;
                 app.lastGenText += token;
             }, app);
-            // Generation complete — expose accept/retry/discard actions
+
             app.showGenActions = true;
             app.showGeneratedHighlight = true;
-            // Select the newly generated text in the textarea
+
             app.$nextTick(() => {
                 try {
                     const ta = document.querySelector('.editor-textarea');
                     if (ta) {
                         ta.focus();
-                        // set selection to the generated region
                         const start = app.lastGenStart || 0;
                         const end = (app.currentScene && app.currentScene.content) ? app.currentScene.content.length : start;
                         ta.selectionStart = start;
                         ta.selectionEnd = end;
-                        // scroll selection into view
                         const lineHeight = parseInt(window.getComputedStyle(ta).lineHeight) || 20;
                         ta.scrollTop = Math.max(0, Math.floor(start / 80) * lineHeight);
                     }
                 } catch (e) { }
-                // Auto-hide highlight after 5 seconds
                 setTimeout(() => {
                     app.showGeneratedHighlight = false;
                 }, 5000);
             });
-            // Clear beat input (we keep lastBeat so retry can reuse it)
+
             app.beatInput = '';
-            // Auto-save after generation
             await app.saveScene();
         } catch (error) {
+            if (isAbortError(error)) {
+                if (app.lastGenText) {
+                    app.showGenActions = true;
+                    app.showGeneratedHighlight = true;
+                    await app.saveScene();
+                }
+                return;
+            }
             console.error('Generation error:', error);
             alert('Failed to generate text. Make sure llama-server is running.\n\nError: ' + (error && error.message ? error.message : error));
         } finally {
             app.isGenerating = false;
+            app.reasoningInProgress = false;
+            app.generationAbortController = null;
         }
     }
 

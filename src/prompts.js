@@ -1,5 +1,16 @@
 // Prompts module — exposes window.Prompts with functions that operate on the shared `db` instance
 (function () {
+    function defaultPromptContent(category) {
+        if (category !== 'prose') {
+            return { content: '', systemContent: '' };
+        }
+
+        return {
+            systemContent: `You are a fiction co-writing assistant. Write from {povName}'s point of view, in {tense}, using {pov}. Use the same language as the author's beat and surrounding scene text unless the author explicitly requests another language. If the author writes in Chinese, write in Chinese. If the author writes in English, write in English. Match the author's tone and style.`,
+            content: 'Expand the beat into vivid, natural prose. Continue directly from the current scene. Write 2-3 paragraphs unless the beat asks for a different length. Use sensory details, concrete actions, and character emotion. Do not explain the beat; turn it into story text.'
+        };
+    }
+
     async function loadPrompts(app) {
         if (!app.currentProject) {
             app.prompts = [];
@@ -22,7 +33,8 @@
         const title = app.newPromptTitle && app.newPromptTitle.trim() ? app.newPromptTitle.trim() : 'New Prompt';
         const id = Date.now().toString();
         const now = new Date();
-        const prompt = { id, projectId: app.currentProject.id, category, title, content: '', systemContent: '', created: now, modified: now };
+        const defaults = defaultPromptContent(category);
+        const prompt = { id, projectId: app.currentProject.id, category, title, content: defaults.content, systemContent: defaults.systemContent, created: now, modified: now };
         await db.prompts.add(prompt);
         app.newPromptTitle = '';
         await loadPrompts(app);
