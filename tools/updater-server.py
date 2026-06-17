@@ -22,7 +22,7 @@ HOST = '127.0.0.1'
 PORT = 8001
 REPO_OWNER = 'liumoumou0101'
 REPO_NAME = 'Writingway2_cn_UI'
-BRANCH = 'codex/deepseek-v4-cn-ui'
+BRANCH = 'main'
 
 # Paths (relative to the project root)
 SCRIPT_DIR = Path(__file__).parent

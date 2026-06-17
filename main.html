@@ -137,6 +137,12 @@
                     <h1 style="margin:0 0 8px 0;color:#4a9eff;font-size:42px;font-weight:700;">Writingway 2</h1>
                     <p style="color:rgba(255,255,255,0.6);font-size:16px;margin:0;" x-text="t('projects.select')">Select a project to begin writing
                     </p>
+                    <p style="color:rgba(255,255,255,0.52);font-size:13px;line-height:1.6;margin:14px auto 0;max-width:620px;">
+                        本版本是基于
+                        <a href="https://github.com/aomukai/Writingway2" target="_blank" rel="noopener"
+                            style="color:#8fc2ff;text-decoration:none;border-bottom:1px solid rgba(143,194,255,0.45);">aomukai/Writingway2</a>
+                        开源项目 fork 后的个人修改版，主要加入中文界面和 DeepSeek V4 适配。
+                    </p>
                 </div>
 
                 <div style="position:relative;width:100%;max-width:800px;">
@@ -514,6 +520,12 @@
                             <span x-text="'✨ ' + t('editor.rewrite')">Rewrite</span>
                         </button>
 
+                        <button x-show="showRewriteBtn && !showMarkdownPreview"
+                            @click="handleRegenerateSelectionButtonClick()"
+                            class="btn btn-secondary" title="Regenerate selected passage with surrounding context">
+                            <span>重新生成选区</span>
+                        </button>
+
                         <button x-show="showMarkdownPreview" @click="toggleTTS()" class="btn btn-secondary"
                             :class="{ 'btn-primary': isReading }"
                             :title="isReading ? t('editor.stopReadingTitle') : t('editor.readAloudTitle')">
@@ -818,6 +830,13 @@
                                     :title="t('beat.generate')">
                                     ✨
                                 </button>
+                                <button class="btn btn-secondary"
+                                    x-show="showRewriteBtn && !showMarkdownPreview"
+                                    x-cloak
+                                    @click="handleRegenerateSelectionButtonClick()"
+                                    title="Regenerate selected passage with surrounding context">
+                                    重新生成选区
+                                </button>
                                 <button class="btn btn-secondary" x-show="isGenerating" x-cloak
                                     @click="stopGeneration" :title="t('common.stop')" x-text="t('common.stop')">
                                     Stop
@@ -906,6 +925,70 @@
             </div>
         </div>
 
+        <div x-show="showRegenerateSelectionModal" x-cloak class="modal-overlay" @click.self="discardRegenerateSelection()">
+            <div class="rewrite-modal" @click.stop>
+                <div class="modal-header">
+                    <h3 style="margin:0;">重新生成选区</h3>
+                    <button class="btn btn-secondary" @click="discardRegenerateSelection()">关闭</button>
+                </div>
+
+                <div class="modal-body">
+                    <div style="margin-bottom:16px;">
+                        <label
+                            style="display:block;margin-bottom:6px;font-size:13px;font-weight:600;color:var(--text-primary);">原选区</label>
+                        <textarea x-model="regenerateSelectionOriginalText"
+                            style="width:100%;height:110px;padding:10px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);border-radius:6px;resize:vertical;"></textarea>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <label
+                            style="display:block;margin-bottom:6px;font-size:13px;font-weight:600;color:var(--text-primary);">额外要求</label>
+                        <textarea x-model="regenerateSelectionInstruction"
+                            style="width:100%;height:72px;padding:10px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);border-radius:6px;resize:vertical;"
+                            placeholder="例如：让这一段更紧张、更简洁，或更贴近中文网文节奏。留空则按前后文自然重写。"></textarea>
+                    </div>
+
+                    <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);margin-right:8px;">
+                            <input type="checkbox" x-model="regenerateSelectionUseContext">
+                            发送前后文
+                        </label>
+                        <button class="btn btn-primary" @click="performRegenerateSelection()"
+                            :disabled="regenerateSelectionInProgress">
+                            <span x-show="!regenerateSelectionInProgress">生成替换内容</span>
+                            <span x-show="regenerateSelectionInProgress">生成中...</span>
+                        </button>
+                        <button class="btn btn-secondary" x-show="regenerateSelectionInProgress" x-cloak
+                            @click="stopGeneration">停止</button>
+                        <button class="btn btn-secondary" x-show="lastReasoningText" x-cloak
+                            @click="showReasoningModal = true">
+                            <span x-show="reasoningInProgress">思考中...</span>
+                            <span x-show="!reasoningInProgress">查看思考</span>
+                        </button>
+                        <span style="font-size:12px;color:var(--text-secondary);">
+                            默认发送选区前后各约 8000 字符作为上下文。
+                        </span>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <label
+                            style="display:block;margin-bottom:6px;font-size:13px;font-weight:600;color:var(--text-primary);">替换结果</label>
+                        <textarea x-model="regenerateSelectionOutput"
+                            style="width:100%;height:190px;padding:10px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);border-radius:6px;resize:vertical;"
+                            placeholder="AI 生成的替换片段会显示在这里。"></textarea>
+                    </div>
+
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button class="btn btn-primary" @click="acceptRegenerateSelection()"
+                            x-show="regenerateSelectionOutput && !regenerateSelectionInProgress">接受替换</button>
+                        <button class="btn btn-secondary" @click="retryRegenerateSelection()"
+                            x-show="regenerateSelectionOutput && !regenerateSelectionInProgress">重试</button>
+                        <button class="btn btn-secondary" @click="discardRegenerateSelection()">放弃</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div x-show="showReasoningModal" x-cloak class="modal-overlay" @click.self="showReasoningModal = false">
             <div class="modal" @click.stop style="max-width:760px;max-height:80vh;display:flex;flex-direction:column;">
                 <div class="modal-header">
@@ -941,6 +1024,11 @@
                     <h2>Welcome to Writingway 2.0</h2>
                     <p>A free, open-source creative writing tool with AI assistance. Everything runs locally on your
                         computer.</p>
+                    <p style="font-size:13px;line-height:1.6;color:var(--text-secondary);">
+                        本版本基于
+                        <a href="https://github.com/aomukai/Writingway2" target="_blank" rel="noopener">aomukai/Writingway2</a>
+                        开源项目 fork 修改，加入中文界面和 DeepSeek V4 适配。
+                    </p>
                     <button class="btn btn-primary" @click="showNewProjectModal = true">
                         Create Your First Project
                     </button>
@@ -1295,7 +1383,7 @@
                                 <span x-show="fetchingModels" x-text="'⏳ ' + t('common.loading')">Loading...</span>
                             </button>
                         </div>
-                     <select x-model="aiModel"
+                     <select x-model="aiModel" @change="saveGenerationParams()"
     x-show="aiProvider !== 'nanogpt' && aiProvider !== 'custom'"
     style="width:100%;padding:8px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);border-radius:6px;">
     <option value="" disabled x-text="t('ai.selectModel')">Select a model...</option>
@@ -1307,7 +1395,7 @@
         :value="aiModel" x-text="aiModel"></option>
 </select>
 
-<input type="text" x-model="aiModel"
+<input type="text" x-model="aiModel" @input="saveGenerationParams()"
     x-show="aiProvider === 'nanogpt' || aiProvider === 'custom' "
     :placeholder="t('ai.modelNamePlaceholder')"
     style="width:100%;padding:8px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);border-radius:6px;">

@@ -5,6 +5,8 @@
 
 (function () {
     const Editor = {
+        regenerateContextChars: 8000,
+
         /**
          * Count words in text (strips HTML tags)
          * @param {string} text - Text to count words in
@@ -280,6 +282,203 @@
             app.rewritePromptPreview = '';
             app.rewriteTextareaStart = null;
             app.rewriteTextareaEnd = null;
+        },
+
+        /**
+         * Open the selection regeneration modal with a wide scene-local context window.
+         * @param {Object} app - Alpine app instance
+         */
+        handleRegenerateSelectionButtonClick(app) {
+            try {
+                if (!app.currentScene) return;
+                const content = app.currentScene.content || '';
+                const start = app.rewriteTextareaStart;
+                const end = app.rewriteTextareaEnd;
+
+                if (start === null || end === null || start >= end) {
+                    alert('Select text in the editor before regenerating a passage.');
+                    return;
+                }
+
+                const originalText = content.substring(start, end);
+                if (!originalText.trim()) {
+                    alert('Select non-empty text in the editor before regenerating a passage.');
+                    return;
+                }
+
+                const contextSize = this.regenerateContextChars;
+                app.regenerateSelectionTextareaStart = start;
+                app.regenerateSelectionTextareaEnd = end;
+                app.regenerateSelectionOriginalText = originalText;
+                app.regenerateSelectionContextBefore = content.substring(Math.max(0, start - contextSize), start);
+                app.regenerateSelectionContextAfter = content.substring(end, Math.min(content.length, end + contextSize));
+                app.regenerateSelectionOutput = '';
+                app.regenerateSelectionInstruction = '';
+                app.regenerateSelectionUseContext = true;
+                app.regenerateSelectionInProgress = false;
+                app.lastReasoningText = '';
+                app.reasoningInProgress = false;
+                app.showReasoningModal = false;
+                app.showRegenerateSelectionModal = true;
+                app.showRewriteBtn = false;
+            } catch (e) {
+                console.error('handleRegenerateSelectionButtonClick error', e);
+            }
+        },
+
+        /**
+         * Build a prompt that asks the model to replace only the selected passage.
+         * @param {Object} app - Alpine app instance
+         * @returns {Object} Prompt object compatible with Generation.streamGeneration
+         */
+        buildRegenerateSelectionPrompt(app, proseInfo) {
+            const povName = (app.povCharacter && app.povCharacter.trim()) ? app.povCharacter.trim() : 'the protagonist';
+            const tenseText = app.tense === 'present' ? 'present tense' : 'past tense';
+            const povText = app.pov || '3rd person limited';
+            const userInstruction = (app.regenerateSelectionInstruction || '').trim();
+            const prosePrompt = (proseInfo && proseInfo.text) ? proseInfo.text.trim() : '';
+            const systemPrompt = (proseInfo && proseInfo.systemText)
+                ? proseInfo.systemText.trim()
+                : `You are a fiction co-writing assistant. Write from ${povName}'s point of view, in ${tenseText}, using ${povText}. Match the language, tone, continuity, pacing, and style of the surrounding scene.`;
+
+            const userParts = [
+                'Regenerate only the selected passage from a fiction scene.',
+                'Use the BEFORE and AFTER context to preserve continuity.',
+                'Return only the replacement prose for SELECTED PASSAGE.',
+                'Do not include analysis, labels, markdown fences, the BEFORE context, or the AFTER context.',
+                'The replacement should fit naturally between BEFORE and AFTER.'
+            ];
+
+            if (prosePrompt) {
+                userParts.push('\nPROJECT PROSE INSTRUCTIONS:\n' + prosePrompt);
+            }
+
+            if (userInstruction) {
+                userParts.push('\nUSER REGENERATION INSTRUCTIONS:\n' + userInstruction);
+            }
+
+            userParts.push(
+                app.regenerateSelectionUseContext
+                    ? '\nBEFORE CONTEXT:\n' + (app.regenerateSelectionContextBefore || '[start of scene]')
+                    : '\nBEFORE CONTEXT:\n[not provided by user choice]',
+                '\nSELECTED PASSAGE TO REPLACE:\n' + app.regenerateSelectionOriginalText,
+                app.regenerateSelectionUseContext
+                    ? '\nAFTER CONTEXT:\n' + (app.regenerateSelectionContextAfter || '[end of scene]')
+                    : '\nAFTER CONTEXT:\n[not provided by user choice]',
+                '\nREPLACEMENT PASSAGE:'
+            );
+
+            const userContent = userParts.join('\n');
+            return {
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userContent }
+                ],
+                asString: function () {
+                    return `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${userContent}<|im_end|>\n<|im_start|>assistant\n`;
+                }
+            };
+        },
+
+        /**
+         * Generate a replacement for the selected passage.
+         * @param {Object} app - Alpine app instance
+         */
+        async performRegenerateSelection(app) {
+            try {
+                if (!app.regenerateSelectionOriginalText) return;
+                if (!window.Generation || typeof window.Generation.streamGeneration !== 'function') {
+                    throw new Error('Generation not available');
+                }
+
+                app.regenerateSelectionOutput = '';
+                app.lastReasoningText = '';
+                app.reasoningInProgress = false;
+                app.showReasoningModal = false;
+                app.regenerateSelectionInProgress = true;
+                app.generationAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+
+                const proseInfo = typeof app.resolveProsePromptInfo === 'function'
+                    ? await app.resolveProsePromptInfo()
+                    : null;
+                const prompt = this.buildRegenerateSelectionPrompt(app, proseInfo);
+                const result = await window.Generation.streamGeneration(prompt, (token) => {
+                    app.regenerateSelectionOutput += token;
+                }, app);
+
+                if (result?.finishReason === 'length' || result?.finishReason === 'MAX_TOKENS') {
+                    alert('The replacement reached the token limit and may be incomplete. Increase Max Length in AI Settings for longer passages.');
+                }
+            } catch (e) {
+                if (!(e && (e.name === 'AbortError' || String(e.message || '').toLowerCase().includes('aborted')))) {
+                    console.error('performRegenerateSelection error', e);
+                    alert('Selection regeneration failed: ' + (e && e.message ? e.message : e));
+                }
+            } finally {
+                app.regenerateSelectionInProgress = false;
+                app.reasoningInProgress = false;
+                app.generationAbortController = null;
+            }
+        },
+
+        /**
+         * Accept generated replacement after verifying the original selection did not move.
+         * @param {Object} app - Alpine app instance
+         */
+        async acceptRegenerateSelection(app) {
+            try {
+                if (!app.currentScene || !app.regenerateSelectionOutput) return;
+                const start = app.regenerateSelectionTextareaStart;
+                const end = app.regenerateSelectionTextareaEnd;
+                const content = app.currentScene.content || '';
+
+                if (start === null || end === null || start >= end) return;
+
+                const currentSelectedText = content.substring(start, end);
+                if (currentSelectedText !== app.regenerateSelectionOriginalText) {
+                    alert('The scene changed while the replacement was being generated, so Writingway cannot safely replace the original selection. Re-select the passage and try again.');
+                    return;
+                }
+
+                const replacement = app.regenerateSelectionOutput.trim();
+                app.currentScene.content = content.substring(0, start) + replacement + content.substring(end);
+                await app.saveScene();
+                app.showRegenerateSelectionModal = false;
+
+                app.$nextTick(() => {
+                    const textarea = document.querySelector('.editor-textarea');
+                    if (textarea) {
+                        textarea.focus();
+                        textarea.setSelectionRange(start, start + replacement.length);
+                    }
+                });
+
+                this.clearRegenerateSelectionState(app);
+            } catch (e) {
+                console.error('acceptRegenerateSelection error', e);
+            }
+        },
+
+        retryRegenerateSelection(app) {
+            app.regenerateSelectionOutput = '';
+            this.performRegenerateSelection(app);
+        },
+
+        discardRegenerateSelection(app) {
+            app.showRegenerateSelectionModal = false;
+            this.clearRegenerateSelectionState(app);
+        },
+
+        clearRegenerateSelectionState(app) {
+            app.regenerateSelectionOriginalText = '';
+            app.regenerateSelectionOutput = '';
+            app.regenerateSelectionInstruction = '';
+            app.regenerateSelectionUseContext = true;
+            app.regenerateSelectionInProgress = false;
+            app.regenerateSelectionTextareaStart = null;
+            app.regenerateSelectionTextareaEnd = null;
+            app.regenerateSelectionContextBefore = '';
+            app.regenerateSelectionContextAfter = '';
         }
     };
 

@@ -433,6 +433,30 @@ document.addEventListener('alpine:init', () => {
                 if (window.Editor) window.Editor.discardRewrite(this);
             },
 
+            handleRegenerateSelectionButtonClick() {
+                if (window.Editor) window.Editor.handleRegenerateSelectionButtonClick(this);
+            },
+
+            buildRegenerateSelectionPrompt() {
+                return window.Editor ? window.Editor.buildRegenerateSelectionPrompt(this) : '';
+            },
+
+            async performRegenerateSelection() {
+                if (window.Editor) await window.Editor.performRegenerateSelection(this);
+            },
+
+            async acceptRegenerateSelection() {
+                if (window.Editor) await window.Editor.acceptRegenerateSelection(this);
+            },
+
+            retryRegenerateSelection() {
+                if (window.Editor) window.Editor.retryRegenerateSelection(this);
+            },
+
+            discardRegenerateSelection() {
+                if (window.Editor) window.Editor.discardRegenerateSelection(this);
+            },
+
             // AI Configuration Functions - delegated to AISettings
             async fetchRuntimeInfo() {
                 try {

@@ -6,11 +6,12 @@
         // Build timestamp - update this when you push a new version
         // This represents when this version was created
         buildDate: new Date('2026-06-12T09:50:56Z').getTime(), // Update before each push
+        buildCommit: '972fbbcca947a6456801f2a0ceb3bccf0397e098',
 
         // GitHub repository info
         repoOwner: 'liumoumou0101',
         repoName: 'Writingway2_cn_UI',
-        branch: 'codex/deepseek-v4-cn-ui',
+        branch: 'main',
 
         // Updater service endpoint
         updaterUrl: 'http://127.0.0.1:8001',
@@ -29,6 +30,10 @@
                 }
 
                 const commit = await response.json();
+                if (this.buildCommit && commit.sha === this.buildCommit) {
+                    return null;
+                }
+
                 const commitDate = new Date(commit.commit.committer.date).getTime();
 
                 // If buildDate is invalid (still has placeholder), use a very old date

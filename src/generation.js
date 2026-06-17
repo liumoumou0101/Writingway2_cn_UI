@@ -350,9 +350,6 @@
 
             if (deepSeekModel.enableThinking) {
                 body.reasoning_effort = 'high';
-                if (!useProviderDefaults) {
-                    body.max_tokens = maxTok;
-                }
             } else if (!useProviderDefaults) {
                 body.temperature = temp;
                 body.max_tokens = maxTok;
