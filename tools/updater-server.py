@@ -12,6 +12,7 @@ Endpoints:
 import os
 import sys
 import json
+import subprocess
 import urllib.request
 import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -30,6 +31,39 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 UPDATE_DIR = PROJECT_ROOT / '.update'
 LATEST_ZIP = UPDATE_DIR / 'latest.zip'
 READY_JSON = UPDATE_DIR / 'ready.json'
+
+
+def run_git(args):
+    """Run a git command in the project root and return stripped stdout."""
+    try:
+        result = subprocess.run(
+            ['git', *args],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True
+        )
+        return result.stdout.strip()
+    except Exception:
+        return ''
+
+
+def get_local_version():
+    """Return local git version metadata when the app is running from a clone."""
+    commit = run_git(['rev-parse', 'HEAD'])
+    commit_date = run_git(['show', '-s', '--format=%cI', 'HEAD'])
+    branch = run_git(['rev-parse', '--abbrev-ref', 'HEAD'])
+    upstream = run_git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'])
+    dirty = bool(run_git(['status', '--porcelain']))
+
+    return {
+        'commit': commit or None,
+        'commitDate': commit_date or None,
+        'branch': branch or None,
+        'upstream': upstream or None,
+        'dirty': dirty
+    }
 
 
 def ensure_update_dir():
@@ -192,6 +226,8 @@ class UpdateHandler(BaseHTTPRequestHandler):
         if self.path == '/update/status':
             ready = check_status()
             self._send_json({'ready': ready})
+        elif self.path == '/version':
+            self._send_json(get_local_version())
         elif self.path == '/health':
             self._send_json({'ok': True, 'service': 'writingway-updater'})
         else:

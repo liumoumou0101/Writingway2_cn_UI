@@ -52,14 +52,14 @@
         style="position:fixed;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg, #1a1f2e 0%, #2d1b3d 100%);display:flex;align-items:center;justify-content:center;z-index:99999;transition:opacity 0.5s ease-out;">
         <div style="text-align:center;max-width:500px;padding:40px;">
             <div style="font-size:48px;margin-bottom:24px;">✍️</div>
-            <h1 style="margin:0 0 16px 0;color:#4a9eff;font-size:32px;font-weight:700;">Writingway</h1>
+            <h1 style="margin:0 0 16px 0;color:var(--accent);font-size:32px;font-weight:700;">Writingway</h1>
             <p id="loadingStatus" style="color:rgba(255,255,255,0.8);font-size:16px;margin:16px 0;min-height:24px;">
                 Starting up...</p>
 
             <div
                 style="width:100%;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;margin:24px 0;">
                 <div id="loadingBar"
-                    style="height:100%;background:linear-gradient(90deg, #4a9eff, #60a5fa);width:0%;transition:width 0.3s ease-out;">
+                    style="height:100%;background:linear-gradient(90deg, var(--accent), var(--accent-hover));width:0%;transition:width 0.3s ease-out;">
                 </div>
             </div>
 
@@ -73,7 +73,7 @@
         <div x-show="showLlamaSetupWizard" x-cloak
             style="position:fixed;inset:0;background:rgba(0,0,0,0.78);display:flex;align-items:center;justify-content:center;z-index:10050;padding:24px;">
             <div
-                style="width:min(760px, 100%);background:linear-gradient(180deg, #232323, #1a1a1a);border:1px solid rgba(74,158,255,0.25);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,0.55);padding:28px;">
+                style="width:min(760px, 100%);background:var(--bg-secondary);border:1px solid var(--accent-line);border-radius:var(--radius-lg);box-shadow:0 30px 80px rgba(0,0,0,0.55);padding:28px;">
                 <div x-show="!llamaInstallComplete">
                     <div style="font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:#66bb6a;margin-bottom:10px;">Local AI Setup</div>
                     <h2 style="margin:0 0 12px 0;font-size:28px;color:var(--text-primary);">A GGUF model was found in <code>models/</code></h2>
@@ -81,8 +81,7 @@
                         Writingway detected <strong x-text="runtimeInfo.ggufModels && runtimeInfo.ggufModels.length ? runtimeInfo.ggufModels[0] : 'a local model'"></strong>,
                         but llama.cpp is not installed yet. Install it now if you want to run that model through Writingway's built-in local backend.
                     </p>
-                    <div
-                        style="background:rgba(74,158,255,0.08);border:1px solid rgba(74,158,255,0.18);border-radius:12px;padding:16px;margin-bottom:18px;">
+                    <div class="state-card info" style="margin-bottom:18px;">
                         <div style="font-weight:600;color:var(--text-primary);margin-bottom:8px;">Install target</div>
                         <template x-for="choice in runtimeInfo.llamaInstallChoices" :key="choice.id">
                             <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;cursor:pointer;border-top:1px solid rgba(255,255,255,0.04);">
@@ -96,7 +95,7 @@
                     </div>
                     <p x-show="llamaInstallStatus" style="margin:0 0 12px 0;color:var(--text-secondary);" x-text="llamaInstallStatus"></p>
                     <p x-show="llamaInstallError"
-                        style="margin:0 0 14px 0;color:#ff8a80;background:rgba(255,138,128,0.08);border:1px solid rgba(255,138,128,0.2);padding:12px;border-radius:10px;"
+                        class="state-card danger" style="margin:0 0 14px 0;"
                         x-text="llamaInstallError"></p>
                     <div style="display:flex;justify-content:flex-end;gap:12px;">
                         <button class="btn btn-secondary" @click="dismissLlamaSetupWizard()" :disabled="isInstallingLlama">Not now</button>
@@ -113,7 +112,7 @@
                         Restart Writingway now to launch the local llama.cpp server and make Local GGUF mode available.
                     </p>
                     <p x-show="llamaInstallStatus"
-                        style="margin:0 0 18px 0;color:#66bb6a;background:rgba(102,187,106,0.08);border:1px solid rgba(102,187,106,0.2);padding:12px;border-radius:10px;"
+                        class="state-card success" style="margin:0 0 18px 0;"
                         x-text="llamaInstallStatus"></p>
                     <div style="display:flex;justify-content:flex-end;">
                         <button class="btn btn-primary" @click="shutdownForRestart()">Restart Writingway</button>
@@ -134,7 +133,7 @@
 
                 <div style="text-align:center;margin-bottom:40px;">
                     <div style="font-size:64px;margin-bottom:16px;">✍️</div>
-                    <h1 style="margin:0 0 8px 0;color:#4a9eff;font-size:42px;font-weight:700;">Writingway 2</h1>
+                    <h1 style="margin:0 0 8px 0;color:var(--accent);font-size:42px;font-weight:700;">Writingway 2</h1>
                     <p style="color:rgba(255,255,255,0.6);font-size:16px;margin:0;" x-text="t('projects.select')">Select a project to begin writing
                     </p>
                     <p style="color:rgba(255,255,255,0.52);font-size:13px;line-height:1.6;margin:14px auto 0;max-width:620px;">
@@ -179,7 +178,7 @@
                                     x-transition:enter-start="opacity-0 transform scale-95"
                                     x-transition:enter-end="opacity-100 transform scale-100"
                                     x-data="{ menuOpen: false }"
-                                    style="background:rgba(0,0,0,0.4);border:2px solid rgba(74,158,255,0.3);border-radius:16px;padding:40px;position:relative;backdrop-filter:blur(10px);">
+                                    style="background:rgba(0,0,0,0.4);border:1px solid var(--accent-line);border-radius:var(--radius-lg);padding:40px;position:relative;backdrop-filter:blur(10px);">
 
                                     <div style="position:absolute;top:8px;right:8px;padding:8px;">
                                         <button @click.stop="menuOpen = !menuOpen" class="btn btn-secondary"
@@ -304,11 +303,9 @@
                         @change="importProject($event); $event.target.value = null" style="display:none;">
 
                     <div class="ai-status">
-                        <div class="ai-status-item"
-                            style="cursor:pointer;padding:10px 16px;border-radius:8px;transition:background 0.2s;"
+                        <div class="ai-status-item ai-status-button"
                             @click="showAISettings = !showAISettings"
-                            @mouseenter="$el.style.background='rgba(74,158,255,0.1)'"
-                            @mouseleave="$el.style.background='transparent'" :title="t('ai.settings')"
+                            :title="t('ai.settings')"
                             :aria-label="t('ai.settings')" role="button">
                             <div class="status-dot" :class="aiStatus"></div>
                             <span x-text="aiStatusText"></span>
@@ -317,7 +314,7 @@
 
                         <div x-show="backupEnabled" class="ai-status-item"
                             style="cursor:pointer;padding:8px 16px;border-radius:8px;transition:background 0.2s;font-size:12px;"
-                            @click="openBackupSettings()" @mouseenter="$el.style.background='rgba(76,175,80,0.1)'"
+                            @click="openBackupSettings()" @mouseenter="$el.style.background='var(--accent-muted)'"
                             @mouseleave="$el.style.background='transparent'" title="Click for backup settings">
                             <span>☁️</span>
                             <span x-text="backupStatus || ('Auto-backup: ' + backupProviderName())"></span>
@@ -326,15 +323,13 @@
                     </div>
 
                     <div class="project-info" x-data="{ openMenu:false }"
-                        style="position:relative;padding:16px 12px;border-bottom:2px solid rgba(74,158,255,0.3);">
+                        style="position:relative;">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                             <h2 style="margin:0;padding-right:8px;">
                                 <button class="project-name-button" @click.stop="openCompendium()"
                                     title="Click to toggle Compendium" aria-controls="compendium-panel"
                                     :aria-expanded="showCodexPanel ? 'true' : 'false'"
-                                    style="background:none;border:none;padding:8px 12px 8px 0;font-size:18px;font-weight:700;color:#4a9eff;cursor:pointer;border-radius:6px;transition:all 0.2s;"
-                                    @mouseenter="$el.style.background='rgba(74,158,255,0.15)'"
-                                    @mouseleave="$el.style.background='transparent'">
+                                    style="background:none;border:none;font-size:18px;font-weight:700;cursor:pointer;">
                                     <span x-text="currentProject.name"></span>
                                     <span style="margin-left:8px;opacity:0.7;font-size:16px;">📚</span>
                                 </button>
@@ -479,7 +474,7 @@
                             <div style="display:flex;align-items:center;gap:12px;">
                                 <button class="btn btn-secondary"
                                     @click="showEmbeddedWorkshop = !showEmbeddedWorkshop; if (showEmbeddedWorkshop && (!workshopSessions || workshopSessions.length === 0)) { workshopSessions = [window.workshopChat.createNewSession($data)]; saveWorkshopSessions(); }"
-                                    :style="showEmbeddedWorkshop ? 'background: rgba(76,175,80,0.2); border-color: rgba(76,175,80,0.5);' : ''"
+                                    :class="{ 'tool-toggle-active': showEmbeddedWorkshop }"
                                     :title="t('workshop.togglePanel')">
                                     💬
                                 </button>
@@ -493,7 +488,7 @@
                     </div>
 
                     <div x-show="currentScene" x-cloak x-data="{ formatMenuOpen: false }"
-                        style="padding:8px 30px;background:var(--bg-secondary);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
+                        class="editor-format-toolbar">
                         <span style="font-size:12px;color:var(--text-secondary);" x-text="t('editor.format')">Format:</span>
                         <button @click="formatMenuOpen = !formatMenuOpen" class="btn btn-secondary"
                             style="position:relative;">
@@ -603,7 +598,7 @@
                                 </template>
 
                                 <template x-if="currentScene">
-                                    <div style="position:relative;height:100%;display:flex;flex-direction:column;">
+                                    <div class="editor-surface" style="position:relative;height:100%;display:flex;flex-direction:column;">
                                         <textarea x-show="!showMarkdownPreview" class="editor-textarea"
                                             :class="{ 'has-generated-text': showGeneratedHighlight }"
                                             @input="onEditorChange($event); handleAutoReplace($event)"
@@ -613,7 +608,7 @@
 
                                         <div x-show="showMarkdownPreview" class="editor-preview"
                                             x-html="markdownToHtml(currentScene.content)"
-                                            style="flex:1;padding:50px 60px;background:var(--bg-primary);overflow-y:auto;direction:ltr;font-family:'Georgia',serif;font-size:17px;line-height:2.0;color:#e8e8e8;">
+                                            style="flex:1;overflow-y:auto;direction:ltr;">
                                         </div>
                                     </div>
                                 </template> <template x-if="!currentScene">
@@ -677,7 +672,7 @@
                                 <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
                                     <button class="btn btn-secondary btn-sm"
                                         @click="useWorkshopContextPanel = true; showContextPanel = true"
-                                        :style="useWorkshopContextPanel ? 'background: rgba(76,175,80,0.2); border-color: rgba(76,175,80,0.5);' : ''"
+                                        :class="{ 'tool-toggle-active': useWorkshopContextPanel }"
                                         :title="t('workshop.openContextPanel')">
                                         📚
                                     </button>
@@ -1018,7 +1013,7 @@
             </div>
         </template>
 
-        <template x-if="!currentProject && !showModelLoading">
+        <template x-if="!currentProject && !showModelLoading && !showProjectsView">
             <div class="welcome-screen">
                 <div class="welcome-content">
                     <h2>Welcome to Writingway 2.0</h2>
@@ -1075,10 +1070,9 @@
                     <p style="margin:0 0 20px 0;color:var(--text-secondary);font-size:14px;" x-text="t('export.chooseFormat')">Choose your export format:
                     </p>
 
-                    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px;">
-                        <label
-                            style="display:flex;align-items:start;gap:12px;padding:16px;background:var(--bg-secondary);border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                            :style="exportFormat === 'zip' ? 'border-color:var(--accent);background:rgba(74,158,255,0.1);' : ''"
+                    <div class="export-options">
+                        <label class="export-option"
+                            :class="{ 'is-selected': exportFormat === 'zip' }"
                             @click="exportFormat = 'zip'">
                             <input type="radio" name="exportFormat" value="zip" x-model="exportFormat"
                                 style="margin-top:2px;">
@@ -1088,9 +1082,8 @@
                             </div>
                         </label>
 
-                        <label
-                            style="display:flex;align-items:start;gap:12px;padding:16px;background:var(--bg-secondary);border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                            :style="exportFormat === 'epub' ? 'border-color:var(--accent);background:rgba(74,158,255,0.1);' : ''"
+                        <label class="export-option"
+                            :class="{ 'is-selected': exportFormat === 'epub' }"
                             @click="exportFormat = 'epub'">
                             <input type="radio" name="exportFormat" value="epub" x-model="exportFormat"
                                 style="margin-top:2px;">
@@ -1100,9 +1093,8 @@
                             </div>
                         </label>
 
-                        <label
-                            style="display:flex;align-items:start;gap:12px;padding:16px;background:var(--bg-secondary);border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                            :style="exportFormat === 'html' ? 'border-color:var(--accent);background:rgba(74,158,255,0.1);' : ''"
+                        <label class="export-option"
+                            :class="{ 'is-selected': exportFormat === 'html' }"
                             @click="exportFormat = 'html'">
                             <input type="radio" name="exportFormat" value="html" x-model="exportFormat"
                                 style="margin-top:2px;">
@@ -1112,9 +1104,8 @@
                             </div>
                         </label>
 
-                        <label
-                            style="display:flex;align-items:start;gap:12px;padding:16px;background:var(--bg-secondary);border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                            :style="exportFormat === 'txt' ? 'border-color:var(--accent);background:rgba(74,158,255,0.1);' : ''"
+                        <label class="export-option"
+                            :class="{ 'is-selected': exportFormat === 'txt' }"
                             @click="exportFormat = 'txt'">
                             <input type="radio" name="exportFormat" value="txt" x-model="exportFormat"
                                 style="margin-top:2px;">
@@ -1223,9 +1214,8 @@
                                     Select Summary Prompt:
                                 </div>
                                 <div @click="selectedSummaryPromptId = null; showSummaryPromptList = false"
-                                    :style="!selectedSummaryPromptId ? 'background:var(--accent);color:white;' : ''"
-                                    style="padding:8px 12px;cursor:pointer;border-radius:4px;margin-bottom:4px;transition:background 0.15s;"
-                                    :class="!selectedSummaryPromptId ? '' : 'hover:bg-tertiary'">
+                                    class="summary-prompt-option"
+                                    :class="{ 'is-selected': !selectedSummaryPromptId }">
                                     <div style="font-weight:600;font-size:13px;">
                                         Default
                                         <span x-show="prompts.filter(p => p.category === 'summary').length === 0"
@@ -1239,10 +1229,8 @@
                                 <template x-for="prompt in prompts.filter(p => p.category === 'summary')"
                                     :key="prompt.id">
                                     <div @click="selectedSummaryPromptId = prompt.id; showSummaryPromptList = false"
-                                        :style="selectedSummaryPromptId === prompt.id ? 'background:var(--accent);color:white;' : ''"
-                                        style="padding:8px 12px;cursor:pointer;border-radius:4px;margin-bottom:4px;transition:background 0.15s;"
-                                        @mouseenter="$el.style.background = selectedSummaryPromptId === prompt.id ? 'var(--accent)' : 'var(--bg-secondary)'"
-                                        @mouseleave="$el.style.background = selectedSummaryPromptId === prompt.id ? 'var(--accent)' : 'transparent'">
+                                        class="summary-prompt-option"
+                                        :class="{ 'is-selected': selectedSummaryPromptId === prompt.id }">
                                         <div style="font-weight:600;font-size:13px;" x-text="prompt.title"></div>
                                         <div style="font-size:11px;opacity:0.8;"
                                             x-text="(prompt.content || '').slice(0, 60) + '...'"></div>
@@ -1264,8 +1252,7 @@
             </div>
         </div>
 
-        <div class="slide-panel-right" :class="{ 'open': showAISettings }" x-cloak
-            style="width:600px;border-left:1px solid rgba(74,158,255,0.08);box-shadow:-18px 0 40px rgba(0,0,0,0.55);">
+        <div class="slide-panel-right ai-settings-panel" :class="{ 'open': showAISettings }" x-cloak>
             <div class="slide-panel-header">
                 <h3 style="margin:0;" x-text="t('ai.config')">AI Configuration</h3>
                 <button class="btn btn-secondary" @click="showAISettings = false" x-text="t('common.close')">Close</button>
@@ -1290,7 +1277,7 @@
                         </button>
                     </div>
 
-                    <div x-show="needsLlamaInstall()" style="margin-top:12px;padding:12px;background:rgba(255,193,7,0.08);border:1px solid rgba(255,193,7,0.22);border-radius:8px;">
+                    <div x-show="needsLlamaInstall()" class="state-card warning" style="margin-top:12px;">
                         <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.6;">
                             <span x-text="t('ai.llamaMissing')">A GGUF model was found in models/, but llama.cpp is not installed yet. Install it from the setup wizard to enable Local GGUF mode.</span>
                         </p>
@@ -1299,13 +1286,13 @@
                         </button>
                     </div>
 
-                    <div x-show="aiMode === 'api'" style="margin-top:12px;padding:10px;background:rgba(74,158,255,0.1);border:1px solid rgba(74,158,255,0.2);border-radius:6px;">
+                    <div x-show="aiMode === 'api'" class="state-card info" style="margin-top:12px;">
                         <p style="font-size:11px;color:var(--text-secondary);margin:0;line-height:1.5;">
                             <span x-text="t('ai.apiModeHint')">Connect to remote or local OpenAI-compatible APIs.</span>
                         </p>
                     </div>
 
-                    <div x-show="aiMode === 'local' && hasLocalAIAvailable()" style="margin-top:12px;padding:10px;background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.2);border-radius:6px;">
+                    <div x-show="aiMode === 'local' && hasLocalAIAvailable()" class="state-card success" style="margin-top:12px;">
                         <p style="font-size:11px;color:var(--text-secondary);margin:0;line-height:1.5;">
                             <span x-text="t('ai.localModeHint')">Use GGUF models through the built-in llama.cpp backend.</span>
                         </p>
@@ -1359,7 +1346,7 @@
                         </p>
                     </div>
 
-                    <div x-show="aiProvider === 'lmstudio'" style="margin-bottom:16px;background:rgba(74,158,255,0.1);border:1px solid rgba(74,158,255,0.3);border-radius:8px;padding:12px;">
+                    <div x-show="aiProvider === 'lmstudio'" class="state-card info" style="margin-bottom:16px;">
                         <p style="margin:0;font-size:13px;color:var(--text-primary);">
                             <strong>🖥️ LM Studio Setup</strong>
                         </p>
@@ -1451,7 +1438,7 @@
                             style="width:100%;padding:8px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);border-radius:6px;">
                     </div>
 
-                    <div x-show="aiProvider === 'nanogpt'" style="margin-bottom:16px;background:rgba(74,158,255,0.1);border:1px solid rgba(74,158,255,0.3);border-radius:8px;padding:12px;">
+                    <div x-show="aiProvider === 'nanogpt'" class="state-card info" style="margin-bottom:16px;">
                         <p style="margin:0;font-size:13px;color:var(--text-primary);">
                             <strong>🌐 NanoGPT Setup</strong>
                         </p>
@@ -1478,8 +1465,7 @@
                 <div x-show="aiMode === 'local'" style="margin-bottom:20px;">
                     <h4 style="margin:0 0 12px 0;" x-text="t('ai.localSettings')">Local GGUF Model Settings</h4>
 
-                    <div
-                        style="background:rgba(74,158,255,0.05);border:1px solid rgba(74,158,255,0.2);border-radius:6px;padding:12px;margin-bottom:16px;">
+                    <div class="state-card info" style="margin-bottom:16px;">
                         <p style="font-size:12px;color:var(--text-secondary);margin:0;">📁 Place your GGUF model
                             files in the <code
                                 style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:4px;">/models</code>
@@ -1493,8 +1479,7 @@
                         <label
                             style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text-primary);">Local
                             Model Status</label>
-                        <div
-                            style="padding:12px;background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.3);border-radius:6px;">
+                        <div class="state-card success">
                             <p style="font-size:12px;color:var(--text-secondary);margin:0;">
                                 ✓ Model loaded by llama-server (started via start.bat)<br>
                                 <span style="font-size:11px;opacity:0.8;">The actual model file is whichever .gguf file
@@ -1503,8 +1488,7 @@
                         </div>
                     </div>
 
-                    <div
-                        style="margin-top:12px;padding:10px;background:rgba(33,150,243,0.1);border:1px solid rgba(33,150,243,0.3);border-radius:6px;">
+                    <div class="state-card info" style="margin-top:12px;">
                         <p style="font-size:11px;color:var(--text-secondary);margin:0;line-height:1.5;">
                             💡 <strong>Note:</strong> To change models, close Writingway, replace the .gguf file in
                             /models folder, and run start.bat again
@@ -1565,8 +1549,7 @@
                         </p>
                     </div>
 
-                    <div
-                        style="background:rgba(74,158,255,0.05);border:1px solid rgba(74,158,255,0.2);border-radius:6px;padding:12px;">
+                    <div class="state-card info">
                         <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5;">
                             💡 <strong x-text="t('tts.editingTipTitle')">Editing Tip:</strong>
                             <span x-text="t('tts.editingTipBody')">Your eyes go blind to typos after reading text 2-3 times. Listening with TTS helps catch errors you'd otherwise miss. Try 1.2x-1.5x speed for efficient editing!</span>
@@ -1631,11 +1614,11 @@
                 </div>
 
                 <div x-show="backupProvider === 'github'"
-                    style="background:rgba(74,158,255,0.1);border:1px solid rgba(74,158,255,0.3);border-radius:8px;padding:16px;margin-bottom:24px;">
+                    class="state-card info" style="margin-bottom:24px;">
                     <h4 style="margin:0 0 12px 0;color:var(--text-primary);" x-text="t('backup.githubSetup')">GitHub Gist Setup</h4>
                     <ol style="margin:0;padding-left:20px;line-height:1.8;font-size:14px;">
                         <li><span x-text="t('backup.githubStep1')">Go to</span> <a href="https://github.com/settings/tokens" target="_blank"
-                                style="color:#4a9eff;">GitHub Settings → Developer settings → Personal access tokens</a></li>
+                                style="color:var(--accent);">GitHub Settings → Developer settings → Personal access tokens</a></li>
                         <li x-text="t('backup.githubStep2')">Click "Generate new token (classic)"</li>
                         <li x-text="t('backup.githubStep3')">Give it a name such as "Writingway Backup"</li>
                         <li><span x-text="t('backup.githubStep4Prefix')">Select the</span> <strong>gist</strong> <span x-text="t('backup.githubStep4Suffix')">permission only</span></li>
@@ -1644,7 +1627,7 @@
                 </div>
 
                 <div x-show="backupProvider === 'local'"
-                    style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.3);border-radius:8px;padding:16px;margin-bottom:24px;">
+                    class="state-card success" style="margin-bottom:24px;">
                     <h4 style="margin:0 0 12px 0;color:var(--text-primary);">Local Versioning</h4>
                     <p style="margin:0;font-size:14px;line-height:1.7;color:var(--text-secondary);">
                         Each backup is written to the <code>project-backups/</code> folder inside Writingway.
@@ -1653,7 +1636,7 @@
                 </div>
 
                 <div x-show="backupProvider === 'onedrive' || backupProvider === 'gdrive'"
-                    style="background:rgba(255,193,7,0.1);border:1px solid rgba(255,193,7,0.3);border-radius:8px;padding:16px;margin-bottom:24px;">
+                    class="state-card warning" style="margin-bottom:24px;">
                     <h4 style="margin:0 0 12px 0;color:var(--text-primary);" x-text="backupProviderName() + ' Integration'"></h4>
                     <p style="margin:0;font-size:14px;line-height:1.7;color:var(--text-secondary);">
                         This provider is listed for planning, but its sign-in and sync flow is not implemented yet.
@@ -1688,7 +1671,7 @@
                 </div>
 
                 <div x-show="backupStatus"
-                    style="padding:12px;background:rgba(74,158,255,0.1);border:1px solid rgba(74,158,255,0.3);border-radius:6px;margin-bottom:20px;">
+                    class="state-card info" style="margin-bottom:20px;">
                     <p style="margin:0;font-size:14px;" x-text="backupStatus"></p>
                     <p x-show="lastBackupTime" style="margin:8px 0 0 0;font-size:12px;color:var(--text-secondary);">
                         <span x-text="t('backup.lastBackup')">Last backup:</span> <span
@@ -1705,14 +1688,14 @@
                 </div>
 
                 <div x-show="backupProvider === 'github'"
-                    style="margin-top:20px;padding:16px;background:rgba(255,193,7,0.1);border:1px solid rgba(255,193,7,0.3);border-radius:8px;">
+                    class="state-card warning" style="margin-top:20px;">
                     <p style="margin:0;font-size:13px;line-height:1.6;">
                         <strong x-text="t('backup.note')">Note:</strong> <span x-text="t('backup.githubNote')">Each project is backed up to its own private GitHub Gist. Backups include chapters, scenes, content, compendium entries, prompts, and other project data.</span>
                     </p>
                 </div>
 
                 <div x-show="backupProvider === 'local'"
-                    style="margin-top:20px;padding:16px;background:rgba(74,158,255,0.1);border:1px solid rgba(74,158,255,0.3);border-radius:8px;">
+                    class="state-card info" style="margin-top:20px;">
                     <p style="margin:0;font-size:13px;line-height:1.6;">
                         <strong>Note:</strong> Local backups are stored as timestamped JSON snapshots under
                         <code>project-backups/</code>. They stay on this machine unless you sync that folder yourself.
@@ -1871,7 +1854,7 @@
                         
                         <div x-show="currentPrompt && currentPrompt.category === 'prose'" style="flex:0 0 auto;margin-bottom:12px;">
                             <label style="font-size:12px;font-weight:600;color:var(--accent);display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                <span style="background:var(--accent);color:white;padding:2px 6px;border-radius:4px;font-size:10px;text-transform:uppercase;" x-text="t('prompts.systemBadge')">System</span>
+                                <span style="background:var(--accent);color:var(--accent-contrast);padding:2px 6px;border-radius:4px;font-size:10px;text-transform:uppercase;" x-text="t('prompts.systemBadge')">System</span>
                                 <span x-text="t('prompts.systemMessage')">System Message</span>
                             </label>
                             <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;">
@@ -2049,8 +2032,7 @@
                                             </div>
                                     </div>
 
-                                    <div
-                                        style="margin-top:12px;padding:12px;background:rgba(74,158,255,0.05);border:1px solid rgba(74,158,255,0.2);border-radius:6px;">
+                                    <div class="state-card info" style="margin-top:12px;">
                                         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                                             <input type="checkbox" x-model="currentCompEntry.alwaysInContext"
                                                 @change="updateCompendiumDirtyFlag()"
@@ -2318,8 +2300,7 @@
                         <button class="btn-icon" @click="showUpdateDialog = false">×</button>
                     </div>
                     <div class="modal-body">
-                        <div
-                            style="background:linear-gradient(135deg,rgba(74,158,255,0.1),rgba(74,158,255,0.05));border:1px solid rgba(74,158,255,0.3);border-radius:8px;padding:16px;margin-bottom:16px;">
+                        <div class="state-card info" style="margin-bottom:16px;">
                             <div style="font-size:18px;font-weight:600;margin-bottom:8px;color:var(--accent);">
                                 New update available!
                             </div>
@@ -2620,15 +2601,15 @@
                                                     <div style="display:flex;gap:8px;">
                                                         <button
                                                             @click="setContextChapter(chapter.id, contextPanel.chapters[chapter.id] === 'full' ? null : 'full')"
-                                                            :style="contextPanel.chapters[chapter.id] === 'full' ? 'background:var(--accent);color:white;font-weight:600;' : 'background:var(--bg-primary);color:var(--text-primary);'"
                                                             class="context-chapter-btn"
+                                                            :class="{ 'is-selected': contextPanel.chapters[chapter.id] === 'full' }"
                                                             :title="t('context.includeChapterFull')">
                                                             <span x-text="'📄 ' + t('context.fullText')">Full Text</span>
                                                         </button>
                                                         <button
                                                             @click="setContextChapter(chapter.id, contextPanel.chapters[chapter.id] === 'summary' ? null : 'summary')"
-                                                            :style="contextPanel.chapters[chapter.id] === 'summary' ? 'background:var(--accent);color:white;font-weight:600;' : 'background:var(--bg-primary);color:var(--text-primary);'"
                                                             class="context-chapter-btn"
+                                                            :class="{ 'is-selected': contextPanel.chapters[chapter.id] === 'summary' }"
                                                             :title="t('context.includeChapterSummary')">
                                                             <span x-text="'📝 ' + t('context.summary')">Summary</span>
                                                         </button>
@@ -2649,14 +2630,16 @@
                                                             <div style="display:flex;gap:6px;">
                                                                 <button
                                                                     @click="setContextScene(scene.id, contextPanel.scenes[scene.id] === 'full' ? null : 'full')"
-                                                                    :style="contextPanel.scenes[scene.id] === 'full' ? 'background:var(--accent);color:white;font-weight:600;' : 'background:var(--bg-primary);color:var(--text-primary);'"
-                                                                    class="context-scene-btn" :title="t('context.includeSceneFull')">
+                                                                    class="context-scene-btn"
+                                                                    :class="{ 'is-selected': contextPanel.scenes[scene.id] === 'full' }"
+                                                                    :title="t('context.includeSceneFull')">
                                                                     <span x-text="'📄 ' + t('context.full')">Full</span>
                                                                 </button>
                                                                 <button
                                                                     @click="setContextScene(scene.id, contextPanel.scenes[scene.id] === 'summary' ? null : 'summary')"
-                                                                    :style="contextPanel.scenes[scene.id] === 'summary' ? 'background:var(--accent);color:white;font-weight:600;' : 'background:var(--bg-primary);color:var(--text-primary);'"
-                                                                    class="context-scene-btn" :title="t('context.includeSceneSummary')"
+                                                                    class="context-scene-btn"
+                                                                    :class="{ 'is-selected': contextPanel.scenes[scene.id] === 'summary' }"
+                                                                    :title="t('context.includeSceneSummary')"
                                                                     :disabled="!scene.summary">
                                                                     <span x-text="'📝 ' + t('context.summary')">Summary</span>
                                                                 </button>
@@ -2685,11 +2668,9 @@
                                     <div x-show="getAllTags().length > 0" style="display:flex;flex-wrap:wrap;gap:10px;">
                                         <template x-for="tag in getAllTags()" :key="tag">
                                             <button @click="toggleContextTag(tag)"
-                                                :style="contextPanel.tags.includes(tag) ? 'background:var(--accent);color:white;border-color:var(--accent);font-weight:600;' : 'background:var(--bg-primary);color:var(--text-primary);border-color:var(--border);'"
                                                 class="context-tag-btn"
+                                                :class="{ 'is-selected': contextPanel.tags.includes(tag) }"
                                                 :title="contextPanel.tags.includes(tag) ? t('context.excludeScenesWithTag') + ' ' + tag : t('context.includeScenesWithTag') + ' ' + tag"
-                                                @mouseenter="if (!contextPanel.tags.includes(tag)) $el.style.borderColor = 'var(--accent)'"
-                                                @mouseleave="if (!contextPanel.tags.includes(tag)) $el.style.borderColor = 'var(--border)'"
                                                 x-text="tag">
                                             </button>
                                         </template>
@@ -2712,11 +2693,9 @@
                                     <div x-show="compTagsModal.length > 0" style="display:flex;flex-wrap:wrap;gap:10px;">
                                         <template x-for="tag in compTagsModal" :key="'comp-modal-'+tag">
                                             <button @click="toggleContextCompendiumTag(tag)"
-                                                :style="(contextPanel.compendiumTags || []).includes(tag) ? 'background:var(--accent);color:white;border-color:var(--accent);font-weight:600;' : 'background:var(--bg-primary);color:var(--text-primary);border-color:var(--border);'"
                                                 class="context-tag-btn"
+                                                :class="{ 'is-selected': (contextPanel.compendiumTags || []).includes(tag) }"
                                                 :title="(contextPanel.compendiumTags || []).includes(tag) ? t('context.excludeCompendiumWithTag') + ' ' + tag : t('context.includeCompendiumWithTag') + ' ' + tag"
-                                                @mouseenter="if (!(contextPanel.compendiumTags || []).includes(tag)) $el.style.borderColor = 'var(--accent)'"
-                                                @mouseleave="if (!(contextPanel.compendiumTags || []).includes(tag)) $el.style.borderColor = 'var(--border)'"
                                                 x-text="tag">
                                             </button>
                                         </template>
@@ -2762,10 +2741,7 @@
                 <template x-for="(session, idx) in workshopSessions.filter((s) => !workshopSessionSearchQuery || s.name.toLowerCase().includes(workshopSessionSearchQuery.toLowerCase()))" :key="session.id">
                     <div @click="currentWorkshopSessionIndex = workshopSessions.indexOf(session); workshopSessionSearchQuery = ''; workshopSessionDropdownOpen = false"
                         :class="{ 'active': workshopSessions.indexOf(session) === currentWorkshopSessionIndex }"
-                        style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;"
-                        :style="workshopSessions.indexOf(session) === currentWorkshopSessionIndex ? 'background:rgba(74,158,255,0.15);' : ''"
-                        @mouseenter="$el.style.background = workshopSessions.indexOf(session) === currentWorkshopSessionIndex ? 'rgba(74,158,255,0.2)' : 'rgba(255,255,255,0.05)'"
-                        @mouseleave="$el.style.background = workshopSessions.indexOf(session) === currentWorkshopSessionIndex ? 'rgba(74,158,255,0.15)' : 'transparent'">
+                        class="workshop-session-option">
                         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" x-text="session.name"></span>
                         <span style="font-size:10px;color:var(--text-secondary);" x-text="session.messages ? session.messages.length + ' ' + t('workshop.messagesCount') : '0 ' + t('workshop.messagesCount')"></span>
                     </div>
@@ -2818,7 +2794,7 @@
                         :value="aiModel" x-text="aiModel"></option>
                 </select>
                 <span x-show="aiMode === 'local' && availableLocalModels.length === 0"
-                    style="padding:4px 12px;background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.3);border-radius:6px;font-size:12px;">
+                    class="status-pill">
                     <span x-text="'✓ ' + t('workshop.localModelActive')">Local GGUF Model Active</span>
                 </span>
                 <select x-model="selectedWorkshopPromptId" @change="saveSelectedWorkshopPrompt" class="workshop-select">
@@ -2833,7 +2809,7 @@
                     <option value="compressed" x-text="t('workshop.compressed')">Compressed</option>
                 </select>
                 <button class="btn btn-secondary" @click="useWorkshopContextPanel = true; showContextPanel = true"
-                    :style="useWorkshopContextPanel ? 'background: rgba(76,175,80,0.2); border-color: rgba(76,175,80,0.5);' : ''"
+                    :class="{ 'tool-toggle-active': useWorkshopContextPanel }"
                     :title="t('workshop.openContextPanel')">
                     📚
                 </button>

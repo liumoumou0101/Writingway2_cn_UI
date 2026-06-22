@@ -17,6 +17,26 @@
         updaterUrl: 'http://127.0.0.1:8001',
 
         /**
+         * Read local version metadata from the updater service when available.
+         * This avoids false update prompts for git clones whose checked-out HEAD
+         * is already the same as the configured GitHub branch.
+         * @returns {Promise<Object|null>}
+         */
+        async getLocalVersion() {
+            try {
+                const response = await fetch(`${this.updaterUrl}/version`, {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(2000)
+                });
+                if (!response.ok) return null;
+                const data = await response.json();
+                return data && data.commit ? data : null;
+            } catch (error) {
+                return null;
+            }
+        },
+
+        /**
          * Check for updates by comparing commit dates
          * @returns {Promise<Object|null>} Update info or null if no update
          */
@@ -30,14 +50,18 @@
                 }
 
                 const commit = await response.json();
-                if (this.buildCommit && commit.sha === this.buildCommit) {
+                const localVersion = await this.getLocalVersion();
+                const localCommit = localVersion?.commit || this.buildCommit;
+
+                if (localCommit && commit.sha === localCommit) {
                     return null;
                 }
 
                 const commitDate = new Date(commit.commit.committer.date).getTime();
 
                 // If buildDate is invalid (still has placeholder), use a very old date
-                const localBuildDate = isNaN(this.buildDate) ? 0 : this.buildDate;
+                const localVersionDate = localVersion?.commitDate ? new Date(localVersion.commitDate).getTime() : NaN;
+                const localBuildDate = !isNaN(localVersionDate) ? localVersionDate : (isNaN(this.buildDate) ? 0 : this.buildDate);
 
                 if (commitDate > localBuildDate) {
                     const commitShort = commit.sha.substring(0, 7);
