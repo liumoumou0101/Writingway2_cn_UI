@@ -2622,6 +2622,111 @@ document.addEventListener('alpine:init', () => {
                 ];
             },
 
+            splitTextIntoParagraphs(text) {
+                const normalized = String(text || '').replace(/\r\n/g, '\n').trim();
+                if (!normalized) return [];
+                return normalized
+                    .split(/\n\s*\n+/)
+                    .map(paragraph => paragraph.trim())
+                    .filter(Boolean);
+            },
+
+            sceneParagraphDiff(sceneDiff = this.selectedBackupScene) {
+                if (!sceneDiff) return [];
+                const currentParagraphs = this.splitTextIntoParagraphs(sceneDiff.currentText);
+                const backupParagraphs = this.splitTextIntoParagraphs(sceneDiff.backupText);
+
+                if (!currentParagraphs.length && !backupParagraphs.length) return [];
+                if (!currentParagraphs.length) {
+                    return backupParagraphs.map(text => ({ type: 'added', currentText: '', backupText: text }));
+                }
+                if (!backupParagraphs.length) {
+                    return currentParagraphs.map(text => ({ type: 'removed', currentText: text, backupText: '' }));
+                }
+
+                const rows = currentParagraphs.length + 1;
+                const columns = backupParagraphs.length + 1;
+                const matrix = Array.from({ length: rows }, () => Array(columns).fill(0));
+
+                for (let i = currentParagraphs.length - 1; i >= 0; i -= 1) {
+                    for (let j = backupParagraphs.length - 1; j >= 0; j -= 1) {
+                        matrix[i][j] = currentParagraphs[i] === backupParagraphs[j]
+                            ? matrix[i + 1][j + 1] + 1
+                            : Math.max(matrix[i + 1][j], matrix[i][j + 1]);
+                    }
+                }
+
+                const operations = [];
+                let i = 0;
+                let j = 0;
+                while (i < currentParagraphs.length && j < backupParagraphs.length) {
+                    if (currentParagraphs[i] === backupParagraphs[j]) {
+                        operations.push({ type: 'equal', currentText: currentParagraphs[i], backupText: backupParagraphs[j] });
+                        i += 1;
+                        j += 1;
+                    } else if (matrix[i + 1][j] >= matrix[i][j + 1]) {
+                        operations.push({ type: 'removed', currentText: currentParagraphs[i], backupText: '' });
+                        i += 1;
+                    } else {
+                        operations.push({ type: 'added', currentText: '', backupText: backupParagraphs[j] });
+                        j += 1;
+                    }
+                }
+                while (i < currentParagraphs.length) {
+                    operations.push({ type: 'removed', currentText: currentParagraphs[i], backupText: '' });
+                    i += 1;
+                }
+                while (j < backupParagraphs.length) {
+                    operations.push({ type: 'added', currentText: '', backupText: backupParagraphs[j] });
+                    j += 1;
+                }
+
+                const merged = [];
+                for (let index = 0; index < operations.length; index += 1) {
+                    const current = operations[index];
+                    const next = operations[index + 1];
+                    if (current?.type === 'removed' && next?.type === 'added') {
+                        merged.push({ type: 'changed', currentText: current.currentText, backupText: next.backupText });
+                        index += 1;
+                    } else if (current?.type === 'added' && next?.type === 'removed') {
+                        merged.push({ type: 'changed', currentText: next.currentText, backupText: current.backupText });
+                        index += 1;
+                    } else {
+                        merged.push(current);
+                    }
+                }
+
+                return merged;
+            },
+
+            paragraphDiffSummary(sceneDiff = this.selectedBackupScene) {
+                return this.sceneParagraphDiff(sceneDiff).reduce((summary, item) => {
+                    summary[item.type] = (summary[item.type] || 0) + 1;
+                    return summary;
+                }, { equal: 0, changed: 0, added: 0, removed: 0 });
+            },
+
+            paragraphDiffTypeLabel(type) {
+                const labels = {
+                    equal: 'backup.diffUnchanged',
+                    changed: 'backup.diffChanged',
+                    added: 'backup.diffAdded',
+                    removed: 'backup.diffRemoved'
+                };
+                return this.t(labels[type] || labels.equal);
+            },
+
+            paragraphDiffRowStyle(segment) {
+                const base = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 90px;gap:12px;padding:10px;border:1px solid var(--border);border-radius:8px;';
+                const styles = {
+                    equal: 'border-color:var(--border);background:var(--bg-primary);',
+                    changed: 'border-color:var(--accent-line);background:var(--accent-muted);',
+                    added: 'border-color:rgba(34,197,94,0.35);background:rgba(34,197,94,0.10);',
+                    removed: 'border-color:rgba(239,68,68,0.35);background:rgba(239,68,68,0.08);'
+                };
+                return base + (styles[segment?.type] || styles.equal);
+            },
+
             backupNeedsAttention() {
                 if (!this.backupEnabled) return true;
                 if (!this.backupProviderIsAvailable()) return true;

@@ -129,6 +129,7 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
             const alpineApp = document.querySelector('[x-data="app"]')?._x_dataStack?.[0] || window.__test?.getApp?.();
             let confirmText = '';
             let sceneConfirmText = '';
+            let paragraphDiffTypes = [];
             if (alpineApp) {
                 alpineApp.currentProject = project;
                 alpineApp.chapters = [chapter];
@@ -144,6 +145,12 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
                     currentText: 'changed text',
                     backupText: 'original text'
                 });
+                paragraphDiffTypes = alpineApp.sceneParagraphDiff({
+                    status: 'modified',
+                    title: 'Paragraph Diff',
+                    currentText: 'One\n\nTwo old\n\nThree',
+                    backupText: 'One\n\nTwo new\n\nThree\n\nFour'
+                }).map(item => item.type);
             }
             const storageSummary = alpineApp ? alpineApp.backupStorageSummary() : {};
             const timelineGroups = alpineApp ? alpineApp.backupTimelineGroups().map(group => ({ key: group.key, count: group.backups.length })) : [];
@@ -158,6 +165,7 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
                 storageCount: storageSummary.count || 0,
                 storageSize: storageSummary.totalSize || 0,
                 timelineGroupKeys: timelineGroups.map(group => group.key),
+                paragraphDiffTypes,
                 confirmText,
                 sceneConfirmText,
                 backupCount: backups.success ? backups.backups.length : 0,
@@ -174,6 +182,7 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
         assert.ok(result.storageCount >= 3, 'backup storage summary should count local backups');
         assert.ok(result.storageSize > 0, 'backup storage summary should include total file size');
         assert.ok(result.timelineGroupKeys.length > 0, 'backup timeline should return visible groups');
+        assert.deepStrictEqual(result.paragraphDiffTypes, ['equal', 'changed', 'equal', 'added'], 'paragraph diff should classify scene text changes');
         assert.match(result.confirmText, /pre-restore snapshot|恢复前快照/, 'project restore confirmation should mention pre-restore snapshot');
         assert.match(result.confirmText, /replace|替换/, 'project restore confirmation should mention replacement');
         assert.match(result.sceneConfirmText, /Only this scene|只会修改这个场景/, 'scene restore confirmation should describe scene-level impact');

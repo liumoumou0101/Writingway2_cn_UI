@@ -171,7 +171,16 @@ Writingway can create timestamped JSON backups in:
 project-backups/
 ```
 
-This gives you local restore points without needing a cloud account.
+This gives you local restore points without needing a cloud account. The current fork adds:
+
+- Local backups enabled by default when the local server or desktop shell is available
+- Custom backup folder selection that is remembered between launches
+- Retention by count, by age, or keep-all, plus a cleanup action
+- Automatic safety snapshots before project or scene restore
+- A local recovery center for backups found on disk
+- Pinned backup versions, editable backup notes, and storage summaries
+- JSON backup export/import for moving a backup between installs
+- Scene-level compare and restore, including paragraph-level diff highlighting
 
 ### GitHub Gist backup
 
