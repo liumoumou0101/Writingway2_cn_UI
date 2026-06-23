@@ -5,6 +5,8 @@ const { startDesktopServers } = require('./local-server');
 
 const rootDir = path.resolve(__dirname, '..');
 const appUrl = 'http://127.0.0.1:8000/main.html';
+const appId = 'com.writingway.app';
+const iconPath = path.join(__dirname, 'icon.ico');
 
 let managedServers = null;
 
@@ -62,13 +64,14 @@ async function startServices() {
 
 function createWindow() {
   const window = new BrowserWindow({
-    title: 'Writingway',
+    title: 'Writingway 2',
     width: 1280,
     height: 860,
     minWidth: 960,
     minHeight: 680,
+    autoHideMenuBar: true,
     backgroundColor: '#14161b',
-    icon: path.join(rootDir, 'logo.png'),
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -98,6 +101,8 @@ function stopManagedServers() {
 
 app.whenReady().then(async () => {
   try {
+    app.setName('Writingway 2');
+    app.setAppUserModelId(appId);
     await startServices();
     createWindow();
   } catch (error) {

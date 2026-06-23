@@ -2393,6 +2393,9 @@ document.addEventListener('alpine:init', () => {
                 if (this.backupListFilter === 'pinned') {
                     return (this.backupList || []).filter(backup => !!backup.pinned);
                 }
+                if (this.backupListFilter === 'issues') {
+                    return (this.backupList || []).filter(backup => backup.health && backup.health !== 'ok');
+                }
                 return (this.backupList || []).filter(backup => backup.reason === this.backupListFilter);
             },
 
@@ -2433,6 +2436,43 @@ document.addEventListener('alpine:init', () => {
                     invalidCount: backups.filter(backup => backup.health && backup.health !== 'ok').length,
                     totalSize
                 };
+            },
+
+            backupHealthSummary(backups = this.backupList || []) {
+                const list = backups || [];
+                const issues = list.filter(backup => backup.health && backup.health !== 'ok');
+                if (list.length === 0) {
+                    return {
+                        status: 'empty',
+                        title: this.t('backup.healthEmptyTitle'),
+                        message: this.t('backup.healthEmptyMessage'),
+                        issueCount: 0,
+                        issues: []
+                    };
+                }
+                if (issues.length > 0) {
+                    return {
+                        status: 'warning',
+                        title: this.t('backup.healthWarningTitle'),
+                        message: `${issues.length} ${this.t('backup.healthWarningMessage')}`,
+                        issueCount: issues.length,
+                        issues
+                    };
+                }
+                return {
+                    status: 'ok',
+                    title: this.t('backup.healthOkTitle'),
+                    message: this.t('backup.healthOkMessage'),
+                    issueCount: 0,
+                    issues: []
+                };
+            },
+
+            backupHealthCardStyle(summary = this.backupHealthSummary()) {
+                if (summary.status === 'warning') {
+                    return 'margin-bottom:14px;font-size:12px;line-height:1.6;border-color:rgba(239,68,68,0.35);background:rgba(239,68,68,0.08);';
+                }
+                return 'margin-bottom:14px;font-size:12px;line-height:1.6;';
             },
 
             backupPreview(backup) {
@@ -2885,6 +2925,10 @@ document.addEventListener('alpine:init', () => {
             },
 
             async selectBackupForPreview(backup) {
+                if (backup?.health && backup.health !== 'ok') {
+                    alert(`${this.t('backup.healthInvalidBackup')}: ${backup.healthMessage || this.t('backup.healthNoMessage')}`);
+                    return;
+                }
                 const preview = {
                     backup,
                     stats: this.backupPreview(backup),
@@ -2951,6 +2995,10 @@ document.addEventListener('alpine:init', () => {
                     ? backupOrRef
                     : (this.backupList || []).find(item => item.ref === backupOrRef || item.id === backupOrRef || item.version === backupOrRef);
                 const backupRef = typeof backupOrRef === 'object' ? backupOrRef.ref : backupOrRef;
+                if (backup?.health && backup.health !== 'ok') {
+                    alert(`${this.t('backup.healthInvalidBackup')}: ${backup.healthMessage || this.t('backup.healthNoMessage')}`);
+                    return;
+                }
                 const matchingPreview = backup && this.selectedBackupPreview?.backup?.id === backup.id
                     ? this.selectedBackupPreview
                     : null;

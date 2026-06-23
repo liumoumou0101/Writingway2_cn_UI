@@ -95,6 +95,16 @@ async function createBackup(payload, requestOptions) {
         assert.strictEqual(list.backups[0].health, 'ok', 'valid backups should report healthy status');
         assert.ok(list.backups[0].size > 0, 'backup summary should include file size');
 
+        const corruptPath = path.join(dataRoot, 'project-backups', projectId, 'broken-backup.json');
+        await fs.mkdir(path.dirname(corruptPath), { recursive: true });
+        await fs.writeFile(corruptPath, '{broken json', 'utf8');
+        list = await api(`/api/list-backups?projectId=${encodeURIComponent(projectId)}`);
+        const corruptSummary = list.backups.find(backup => backup.id === 'broken-backup.json');
+        assert.ok(corruptSummary, 'corrupt backup files should still appear in the list');
+        assert.strictEqual(corruptSummary.health, 'invalid', 'corrupt backup files should be marked invalid');
+        assert.ok(corruptSummary.healthMessage, 'invalid backups should include a health message');
+        await fs.rm(corruptPath, { force: true });
+
         const pinned = await api('/api/update-backup', {
             method: 'POST',
             body: JSON.stringify({ projectId, backupId: first.backupId, pinned: true })

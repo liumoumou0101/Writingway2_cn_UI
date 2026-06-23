@@ -130,6 +130,8 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
             let confirmText = '';
             let sceneConfirmText = '';
             let paragraphDiffTypes = [];
+            let healthSummary = {};
+            let issueFilterCount = 0;
             if (alpineApp) {
                 alpineApp.currentProject = project;
                 alpineApp.chapters = [chapter];
@@ -151,6 +153,22 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
                     currentText: 'One\n\nTwo old\n\nThree',
                     backupText: 'One\n\nTwo new\n\nThree\n\nFour'
                 }).map(item => item.type);
+                const originalBackupList = alpineApp.backupList;
+                alpineApp.backupList = [
+                    ...(backups.success ? backups.backups : []),
+                    {
+                        id: 'broken-backup.json',
+                        version: 'broken-backup.json',
+                        provider: 'local',
+                        health: 'invalid',
+                        healthMessage: 'Invalid JSON'
+                    }
+                ];
+                healthSummary = alpineApp.backupHealthSummary();
+                alpineApp.backupListFilter = 'issues';
+                issueFilterCount = alpineApp.filteredBackupList().length;
+                alpineApp.backupList = originalBackupList;
+                alpineApp.backupListFilter = 'all';
             }
             const storageSummary = alpineApp ? alpineApp.backupStorageSummary() : {};
             const timelineGroups = alpineApp ? alpineApp.backupTimelineGroups().map(group => ({ key: group.key, count: group.backups.length })) : [];
@@ -166,6 +184,9 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
                 storageSize: storageSummary.totalSize || 0,
                 timelineGroupKeys: timelineGroups.map(group => group.key),
                 paragraphDiffTypes,
+                healthStatus: healthSummary.status,
+                healthIssueCount: healthSummary.issueCount || 0,
+                issueFilterCount,
                 confirmText,
                 sceneConfirmText,
                 backupCount: backups.success ? backups.backups.length : 0,
@@ -183,6 +204,9 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
         assert.ok(result.storageSize > 0, 'backup storage summary should include total file size');
         assert.ok(result.timelineGroupKeys.length > 0, 'backup timeline should return visible groups');
         assert.deepStrictEqual(result.paragraphDiffTypes, ['equal', 'changed', 'equal', 'added'], 'paragraph diff should classify scene text changes');
+        assert.strictEqual(result.healthStatus, 'warning', 'backup health summary should warn about invalid backups');
+        assert.strictEqual(result.healthIssueCount, 1, 'backup health summary should count invalid backups');
+        assert.strictEqual(result.issueFilterCount, 1, 'backup issue filter should show invalid backups');
         assert.match(result.confirmText, /pre-restore snapshot|恢复前快照/, 'project restore confirmation should mention pre-restore snapshot');
         assert.match(result.confirmText, /replace|替换/, 'project restore confirmation should mention replacement');
         assert.match(result.sceneConfirmText, /Only this scene|只会修改这个场景/, 'scene restore confirmation should describe scene-level impact');

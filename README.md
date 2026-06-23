@@ -179,6 +179,7 @@ This gives you local restore points without needing a cloud account. The current
 - Automatic safety snapshots before project or scene restore
 - A local recovery center for backups found on disk
 - Pinned backup versions, editable backup notes, and storage summaries
+- Backup health checks with an issues filter for unreadable or incomplete files
 - JSON backup export/import for moving a backup between installs
 - Scene-level compare and restore, including paragraph-level diff highlighting
 
