@@ -723,6 +723,105 @@
             }
         },
 
+        countTextWords(text) {
+            if (window.Editor && typeof window.Editor.countWords === 'function') {
+                return window.Editor.countWords(text || '');
+            }
+            return text ? String(text).trim().split(/\s+/).filter(word => word.length > 0).length : 0;
+        },
+
+        async restoreSceneFromBackupDiff(app, sceneDiff) {
+            if (!app.currentProject) {
+                return { success: false, error: 'No project selected' };
+            }
+            if (!sceneDiff || !sceneDiff.backupScene) {
+                return { success: false, error: 'No backup scene selected' };
+            }
+            if (sceneDiff.status !== 'modified' && sceneDiff.status !== 'added') {
+                return { success: false, error: 'This scene difference cannot be restored from the backup' };
+            }
+
+            try {
+                let existing = null;
+                let targetChapterId = '';
+                if (sceneDiff.status === 'modified') {
+                    existing = await db.scenes.get(sceneDiff.sceneId);
+                    if (!existing) {
+                        return { success: false, error: 'Current scene no longer exists' };
+                    }
+                } else if (sceneDiff.status === 'added') {
+                    const existingChapterIds = new Set((app.chapters || []).map(chapter => chapter.id));
+                    targetChapterId = existingChapterIds.has(sceneDiff.backupScene.chapterId)
+                        ? sceneDiff.backupScene.chapterId
+                        : (app.currentChapter?.id || app.chapters?.[0]?.id);
+                    if (!targetChapterId) {
+                        return { success: false, error: 'No chapter is available for the restored scene' };
+                    }
+                }
+
+                const preRestore = await this.backupToLocalVersioning(app, {
+                    reason: 'before-restore',
+                    note: `Before scene restore: ${sceneDiff.title || sceneDiff.sceneId}`
+                });
+                if (!preRestore.success) {
+                    return { success: false, error: `Could not create pre-restore snapshot: ${preRestore.error}` };
+                }
+
+                const now = Date.now();
+                const text = String(sceneDiff.backupText || '');
+                const wordCount = this.countTextWords(text);
+
+                if (sceneDiff.status === 'modified') {
+                    await db.scenes.update(sceneDiff.sceneId, {
+                        title: sceneDiff.backupScene.title || existing.title,
+                        povCharacter: sceneDiff.backupScene.povCharacter ?? existing.povCharacter,
+                        pov: sceneDiff.backupScene.pov || existing.pov,
+                        tense: sceneDiff.backupScene.tense || existing.tense,
+                        wordCount,
+                        modified: new Date(),
+                        updatedAt: now
+                    });
+                    await db.content.put({
+                        sceneId: sceneDiff.sceneId,
+                        text,
+                        wordCount,
+                        modified: new Date(),
+                        updatedAt: now
+                    });
+                    return { success: true, sceneId: sceneDiff.sceneId, created: false, preRestoreBackupId: preRestore.backupId };
+                }
+
+                if (sceneDiff.status === 'added') {
+                    const targetScenes = (app.scenes || []).filter(scene => scene.chapterId === targetChapterId);
+                    const newSceneId = newId('scene');
+                    await db.scenes.put({
+                        ...sceneDiff.backupScene,
+                        id: newSceneId,
+                        projectId: app.currentProject.id,
+                        chapterId: targetChapterId,
+                        title: `${sceneDiff.backupScene.title || 'Recovered Scene'} (Recovered)`,
+                        order: targetScenes.length,
+                        wordCount,
+                        created: new Date(),
+                        modified: new Date(),
+                        updatedAt: now
+                    });
+                    await db.content.put({
+                        sceneId: newSceneId,
+                        text,
+                        wordCount,
+                        modified: new Date(),
+                        updatedAt: now
+                    });
+                    return { success: true, sceneId: newSceneId, created: true, preRestoreBackupId: preRestore.backupId };
+                }
+
+                return { success: false, error: 'This scene difference cannot be restored from the backup' };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
         async restoreProjectData(app, backupData) {
             const projectId = backupData?.project?.id;
             if (!projectId) {

@@ -2407,13 +2407,13 @@ document.addEventListener('alpine:init', () => {
                 };
             },
 
-            sceneDiffSummary(backupData) {
+            async sceneDiffSummary(backupData) {
                 const currentScenes = new Map((this.scenes || []).map(scene => [scene.id, scene]));
                 const backupScenes = new Map((backupData?.scenes || []).map(scene => [scene.id, scene]));
                 const backupContents = backupData?.sceneContents || {};
                 const currentContents = {};
                 for (const scene of this.scenes || []) {
-                    currentContents[scene.id] = scene.content || '';
+                    currentContents[scene.id] = await this.getSceneTextForDiff(scene.id);
                 }
 
                 const added = [];
@@ -2422,15 +2422,34 @@ document.addEventListener('alpine:init', () => {
                 let unchanged = 0;
 
                 for (const [sceneId, scene] of backupScenes.entries()) {
+                    const title = scene.title || scene.name || sceneId;
+                    const backupText = String(backupContents[sceneId] || '');
                     if (!currentScenes.has(sceneId)) {
-                        added.push(scene.title || scene.name || sceneId);
+                        added.push({
+                            status: 'added',
+                            sceneId,
+                            title,
+                            backupScene: scene,
+                            currentScene: null,
+                            currentText: '',
+                            backupText
+                        });
                         continue;
                     }
                     const currentScene = currentScenes.get(sceneId);
+                    const currentText = String(currentContents[sceneId] || '');
                     const titleChanged = (currentScene.title || '') !== (scene.title || '');
-                    const contentChanged = String(currentContents[sceneId] || '') !== String(backupContents[sceneId] || '');
+                    const contentChanged = currentText !== backupText;
                     if (titleChanged || contentChanged) {
-                        modified.push(scene.title || scene.name || sceneId);
+                        modified.push({
+                            status: 'modified',
+                            sceneId,
+                            title,
+                            backupScene: scene,
+                            currentScene,
+                            currentText,
+                            backupText
+                        });
                     } else {
                         unchanged += 1;
                     }
@@ -2438,11 +2457,46 @@ document.addEventListener('alpine:init', () => {
 
                 for (const [sceneId, scene] of currentScenes.entries()) {
                     if (!backupScenes.has(sceneId)) {
-                        removed.push(scene.title || scene.name || sceneId);
+                        removed.push({
+                            status: 'removed',
+                            sceneId,
+                            title: scene.title || scene.name || sceneId,
+                            backupScene: null,
+                            currentScene: scene,
+                            currentText: String(currentContents[sceneId] || ''),
+                            backupText: ''
+                        });
                     }
                 }
 
                 return { added, removed, modified, unchanged };
+            },
+
+            async getSceneTextForDiff(sceneId) {
+                if (!sceneId) return '';
+                let content = null;
+                try {
+                    content = await db.content.get(sceneId);
+                } catch (e) {
+                    content = null;
+                }
+                if (!content) {
+                    try {
+                        content = await db.content.where('sceneId').equals(sceneId).first();
+                    } catch (e) {
+                        content = null;
+                    }
+                }
+                return content ? String(content.text || '') : '';
+            },
+
+            backupSceneList(sceneDiff) {
+                if (!sceneDiff) return [];
+                return [
+                    ...(sceneDiff.modified || []),
+                    ...(sceneDiff.added || []),
+                    ...(sceneDiff.removed || [])
+                ];
             },
 
             backupNeedsAttention() {
@@ -2598,6 +2652,7 @@ document.addEventListener('alpine:init', () => {
                 this.showRestoreModal = false;
                 this.backupList = [];
                 this.selectedBackupPreview = null;
+                this.closeBackupSceneCompare();
             },
 
             async selectBackupForPreview(backup) {
@@ -2609,10 +2664,59 @@ document.addEventListener('alpine:init', () => {
                 if (backup.provider === 'local' && backup.projectId && window.BackupManager?.getLocalBackupData) {
                     const result = await window.BackupManager.getLocalBackupData(backup.projectId, backup.id);
                     if (result.success) {
-                        preview.sceneDiff = this.sceneDiffSummary(result.backup);
+                        preview.backupData = result.backup;
+                        preview.sceneDiff = await this.sceneDiffSummary(result.backup);
                     }
                 }
                 this.selectedBackupPreview = preview;
+            },
+
+            openBackupSceneCompare(sceneDiff) {
+                this.selectedBackupScene = sceneDiff;
+                this.backupSceneCompareOpen = true;
+            },
+
+            closeBackupSceneCompare() {
+                this.backupSceneCompareOpen = false;
+                this.selectedBackupScene = null;
+            },
+
+            async copyBackupSceneText() {
+                const text = this.selectedBackupScene?.backupText || '';
+                if (!text) return;
+                try {
+                    await navigator.clipboard.writeText(text);
+                    this.backupStatus = 'Backup scene text copied';
+                } catch (e) {
+                    alert('Failed to copy backup text: ' + e.message);
+                }
+            },
+
+            async restoreSelectedBackupScene() {
+                if (!this.selectedBackupScene || !window.BackupManager?.restoreSceneFromBackupDiff) return;
+                const actionText = this.selectedBackupScene.status === 'added'
+                    ? 'restore this backup scene as a new scene'
+                    : 'replace the current scene content with the backup text';
+                if (!confirm(`This will ${actionText}. Continue?`)) return;
+
+                const result = await window.BackupManager.restoreSceneFromBackupDiff(this, this.selectedBackupScene);
+                if (result.success) {
+                    await this.loadChapters();
+                    if (result.sceneId) {
+                        await this.loadScene(result.sceneId);
+                    } else if (this.currentScene?.id) {
+                        await this.loadScene(this.currentScene.id);
+                    }
+                    if (this.selectedBackupPreview?.backupData) {
+                        this.selectedBackupPreview.sceneDiff = await this.sceneDiffSummary(this.selectedBackupPreview.backupData);
+                    }
+                    this.closeBackupSceneCompare();
+                    this.backupStatus = result.created ? 'Scene restored as new' : 'Scene content restored';
+                    const extra = result.preRestoreBackupId ? `\n\nA pre-restore snapshot was created: ${result.preRestoreBackupId}` : '';
+                    alert(`${this.backupStatus}${extra}`);
+                } else {
+                    alert('Scene restore failed: ' + result.error);
+                }
             },
 
             async restoreBackup(backupRef) {

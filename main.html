@@ -1831,6 +1831,21 @@
                             <span x-text="t('backup.unchangedScenes')">Unchanged scenes</span>:
                             <strong x-text="selectedBackupPreview?.sceneDiff.unchanged"></strong>
                         </div>
+                        <div x-show="selectedBackupPreview && selectedBackupPreview.sceneDiff && backupSceneList(selectedBackupPreview.sceneDiff).length > 0"
+                            style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
+                            <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:8px;"
+                                x-text="t('backup.sceneDetails')">Scene differences</div>
+                            <div style="display:flex;flex-direction:column;gap:6px;max-height:190px;overflow:auto;">
+                                <template x-for="scene in backupSceneList(selectedBackupPreview && selectedBackupPreview.sceneDiff)" :key="scene.status + '-' + scene.sceneId">
+                                    <button class="btn btn-secondary" @click="openBackupSceneCompare(scene)"
+                                        style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;text-align:left;font-size:12px;">
+                                        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" x-text="scene.title"></span>
+                                        <span style="white-space:nowrap;color:var(--text-secondary);"
+                                            x-text="scene.status === 'modified' ? t('backup.modifiedScene') : (scene.status === 'added' ? t('backup.backupOnlyScene') : t('backup.currentOnlyScene'))"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
                     </div>
                     <div style="display:flex;flex-direction:column;gap:12px;">
                         <template x-for="backup in filteredBackupList()" :key="backup.id || backup.version">
@@ -1876,6 +1891,45 @@
 
                 <div style="margin-top:24px;display:flex;justify-content:flex-end;">
                     <button class="btn btn-secondary" @click="closeRestoreModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="backupSceneCompareOpen" class="modal-backdrop" @click.self="closeBackupSceneCompare()" x-cloak
+            style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;z-index:10020;">
+            <div class="modal-content"
+                style="background:var(--bg-secondary);padding:24px;border-radius:12px;max-width:1100px;width:94%;max-height:86vh;overflow:hidden;display:flex;flex-direction:column;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;">
+                    <div>
+                        <h3 style="margin:0;color:var(--text-primary);" x-text="selectedBackupScene?.title || t('backup.compareScene')">Compare Scene</h3>
+                        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;"
+                            x-text="selectedBackupScene?.status === 'modified' ? t('backup.modifiedScene') : (selectedBackupScene?.status === 'added' ? t('backup.backupOnlyScene') : t('backup.currentOnlyScene'))"></div>
+                    </div>
+                    <button class="btn btn-secondary" @click="closeBackupSceneCompare()" x-text="t('common.close')">Close</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:0;flex:1;">
+                    <div style="display:flex;flex-direction:column;min-height:0;">
+                        <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:8px;"
+                            x-text="t('backup.currentSceneText')">Current Text</div>
+                        <pre style="margin:0;white-space:pre-wrap;overflow:auto;min-height:260px;max-height:52vh;padding:12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-family:inherit;font-size:13px;line-height:1.55;"
+                            x-text="selectedBackupScene?.currentText || t('backup.noSceneText')"></pre>
+                    </div>
+                    <div style="display:flex;flex-direction:column;min-height:0;">
+                        <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:8px;"
+                            x-text="t('backup.backupSceneText')">Backup Text</div>
+                        <pre style="margin:0;white-space:pre-wrap;overflow:auto;min-height:260px;max-height:52vh;padding:12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-family:inherit;font-size:13px;line-height:1.55;"
+                            x-text="selectedBackupScene?.backupText || t('backup.noSceneText')"></pre>
+                    </div>
+                </div>
+                <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+                    <button class="btn btn-secondary" @click="copyBackupSceneText()" x-show="selectedBackupScene?.backupText"
+                        x-text="t('backup.copyBackupText')">Copy Backup Text</button>
+                    <button class="btn btn-primary" @click="restoreSelectedBackupScene()"
+                        x-show="selectedBackupScene?.status === 'modified'"
+                        x-text="t('backup.restoreSceneContent')">Restore Scene Content</button>
+                    <button class="btn btn-primary" @click="restoreSelectedBackupScene()"
+                        x-show="selectedBackupScene?.status === 'added'"
+                        x-text="t('backup.restoreAsNewScene')">Restore as New Scene</button>
                 </div>
             </div>
         </div>

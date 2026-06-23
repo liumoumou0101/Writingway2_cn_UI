@@ -262,6 +262,8 @@ function createAppState() {
         backupSnapshotNote: '',
         backupListFilter: 'all',
         selectedBackupPreview: null,
+        selectedBackupScene: null,
+        backupSceneCompareOpen: false,
         showLocalBackupRecoveryModal: false,
         localRecoveryBackups: [],
         localRecoveryFilter: '',
