@@ -214,6 +214,7 @@ async function readBackupSummary(dataRoot, file) {
     size: file.stats.size,
     reason: meta.reason || 'manual',
     note: meta.note || '',
+    pinned: !!meta.pinned,
     hash: meta.hash || '',
     chapterCount: meta.chapterCount || stats.chapterCount,
     sceneCount: meta.sceneCount || stats.sceneCount,
@@ -221,19 +222,35 @@ async function readBackupSummary(dataRoot, file) {
   };
 }
 
+async function backupIsPinned(dataRoot, file) {
+  try {
+    const summary = await readBackupSummary(dataRoot, file);
+    return !!summary.pinned;
+  } catch {
+    return false;
+  }
+}
+
 async function pruneBackups(dataRoot, projectId, retention) {
   const mode = retention && retention.mode ? retention.mode : 'count';
   if (mode === 'all') return 0;
 
   const files = await listBackupFiles(dataRoot, projectId);
+  const unpinnedFiles = [];
+  for (const file of files) {
+    if (!(await backupIsPinned(dataRoot, file))) {
+      unpinnedFiles.push(file);
+    }
+  }
+
   let toDelete = [];
   if (mode === 'days') {
     const days = Math.max(1, Number(retention.days || 30));
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    toDelete = files.filter((file) => file.stats.mtimeMs < cutoff);
+    toDelete = unpinnedFiles.filter((file) => file.stats.mtimeMs < cutoff);
   } else {
     const count = Math.max(1, Number(retention && retention.count || 100));
-    toDelete = files.slice(count);
+    toDelete = unpinnedFiles.slice(count);
   }
 
   for (const file of toDelete) {
@@ -740,6 +757,35 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       const target = path.join(await backupDir(dataRoot, projectId), backupId);
       await fsp.rm(target, { force: true });
       jsonResponse(response, 200, { ok: true, backupCount: (await listBackupFiles(dataRoot, projectId)).length });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/update-backup') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const backupId = String(payload.backupId || '').trim();
+      if (!projectId || !backupId) throw new Error('Missing projectId or backupId');
+      if (path.basename(backupId) !== backupId) throw new Error('Invalid backupId');
+      const target = path.join(await backupDir(dataRoot, projectId), backupId);
+      if (!(await pathExists(target))) throw new Error('Backup not found');
+      const backup = JSON.parse(await fsp.readFile(target, 'utf8'));
+      backup.backupMeta = {
+        ...(backup.backupMeta || {}),
+        pinned: !!payload.pinned
+      };
+      await writeJsonAtomic(target, backup);
+      jsonResponse(response, 200, {
+        ok: true,
+        backup: await readBackupSummary(dataRoot, {
+          filePath: target,
+          name: path.basename(target),
+          stats: await fsp.stat(target)
+        })
+      });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message });
     }

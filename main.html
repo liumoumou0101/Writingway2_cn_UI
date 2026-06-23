@@ -1804,6 +1804,7 @@
                             <option value="auto" x-text="t('backup.filterAuto')">Auto</option>
                             <option value="manual" x-text="t('backup.filterManual')">Manual</option>
                             <option value="before-restore" x-text="t('backup.filterBeforeRestore')">Before restore</option>
+                            <option value="pinned" x-text="t('backup.filterPinned')">Pinned</option>
                         </select>
                     </div>
                     <div x-show="selectedBackupPreview" class="state-card info" style="margin-bottom:14px;">
@@ -1864,6 +1865,8 @@
                                                     x-text="backup.version.substring(0, 7)"></span></span>
                                             <span x-show="backup.provider === 'local'"><span x-text="t('backup.file')">File:</span> <span
                                                     x-text="backup.id"></span></span>
+                                            <span x-show="backup.pinned" style="margin-left:6px;padding:2px 7px;border-radius:999px;background:var(--accent-muted);color:var(--accent);font-size:11px;font-weight:700;"
+                                                x-text="t('backup.pinned')">Pinned</span>
                                             <div x-show="backup.provider === 'local'" style="margin-top:4px;">
                                                 <span x-text="backup.chapterCount || 0"></span> <span x-text="t('structure.chapters')">chapters</span> /
                                                 <span x-text="backup.sceneCount || 0"></span> <span x-text="t('structure.scenes')">scenes</span> /
@@ -1878,6 +1881,10 @@
                                     <button x-show="backup.provider === 'local'" class="btn btn-secondary" @click="selectBackupForPreview(backup)"
                                         style="padding:8px 16px;font-size:13px;margin-left:8px;">
                                         <span x-text="t('backup.previewAction')">Preview</span>
+                                    </button>
+                                    <button x-show="backup.provider === 'local'" class="btn btn-secondary" @click="toggleLocalBackupPinned(backup)"
+                                        style="padding:8px 16px;font-size:13px;margin-left:8px;">
+                                        <span x-text="backup.pinned ? t('backup.unpinAction') : t('backup.pinAction')">Pin</span>
                                     </button>
                                     <button x-show="backup.provider === 'local'" class="btn btn-secondary" @click="deleteLocalBackup(backup)"
                                         style="padding:8px 16px;font-size:13px;margin-left:8px;">
@@ -1958,6 +1965,8 @@
                                         <span x-text="new Date(backup.timestamp).toLocaleString()"></span>
                                         · <span x-text="backup.reason"></span>
                                         <span x-show="backup.note"> · <span x-text="backup.note"></span></span>
+                                        <span x-show="backup.pinned" style="margin-left:6px;padding:2px 7px;border-radius:999px;background:var(--accent-muted);color:var(--accent);font-size:11px;font-weight:700;"
+                                            x-text="t('backup.pinned')">Pinned</span>
                                     </div>
                                     <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">
                                         <span x-text="backup.chapterCount || 0"></span> <span x-text="t('structure.chapters')">chapters</span> /

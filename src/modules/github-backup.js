@@ -12,6 +12,7 @@
     const LOCAL_BACKUP_CHOOSE_ENDPOINT = '/api/choose-backup-folder';
     const LOCAL_BACKUP_OPEN_ENDPOINT = '/api/open-backup-folder';
     const LOCAL_BACKUP_DELETE_ENDPOINT = '/api/delete-backup';
+    const LOCAL_BACKUP_UPDATE_ENDPOINT = '/api/update-backup';
     const PROJECT_SAVE_LOCATION_ENDPOINT = '/api/project-save-location';
     const PROJECT_SAVE_CHOOSE_ENDPOINT = '/api/choose-project-save-folder';
     const PROJECT_SAVE_OPEN_ENDPOINT = '/api/open-project-save-folder';
@@ -418,6 +419,7 @@
                         size: backup.size,
                         reason: backup.reason || 'manual',
                         note: backup.note || '',
+                        pinned: !!backup.pinned,
                         hash: backup.hash || '',
                         wordCount: backup.wordCount || 0,
                         chapterCount: backup.chapterCount || 0,
@@ -444,6 +446,7 @@
                 size: backup.size,
                 reason: backup.reason || 'manual',
                 note: backup.note || '',
+                pinned: !!backup.pinned,
                 hash: backup.hash || '',
                 wordCount: backup.wordCount || 0,
                 chapterCount: backup.chapterCount || 0,
@@ -652,6 +655,28 @@
                 }
                 app.backupCount = result.backupCount || 0;
                 return { success: true };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async updateLocalBackup(app, backupId, updates = {}) {
+            try {
+                if (!app.currentProject) return { success: false, error: 'No project selected' };
+                const response = await fetch(LOCAL_BACKUP_UPDATE_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        projectId: String(app.currentProject.id),
+                        backupId: String(backupId),
+                        ...updates
+                    })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                return { success: true, backup: result.backup };
             } catch (e) {
                 return { success: false, error: e.message };
             }

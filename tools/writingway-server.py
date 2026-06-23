@@ -234,6 +234,7 @@ def backup_summary(path: Path) -> dict:
         "size": stat.st_size,
         "reason": meta.get("reason") or "manual",
         "note": meta.get("note") or "",
+        "pinned": bool(meta.get("pinned")),
         "hash": meta.get("hash") or "",
         "chapterCount": meta.get("chapterCount") or stats["chapterCount"],
         "sceneCount": meta.get("sceneCount") or stats["sceneCount"],
@@ -246,13 +247,14 @@ def prune_backups(project_id: str, retention: dict) -> int:
     if mode == "all":
         return 0
     files = list_backup_files(project_id)
+    unpinned_files = [path for path in files if not backup_summary(path).get("pinned")]
     if mode == "days":
         days = max(1, int(retention.get("days") or 30))
         cutoff = datetime.now(timezone.utc).timestamp() - days * 24 * 60 * 60
-        delete_files = [path for path in files if path.stat().st_mtime < cutoff]
+        delete_files = [path for path in unpinned_files if path.stat().st_mtime < cutoff]
     else:
         count = max(1, int(retention.get("count") or 100))
-        delete_files = files[count:]
+        delete_files = unpinned_files[count:]
     for path in delete_files:
         path.unlink(missing_ok=True)
     return len(delete_files)
@@ -482,6 +484,9 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
             return
         if self.path == "/api/delete-backup":
             self.handle_delete_backup()
+            return
+        if self.path == "/api/update-backup":
+            self.handle_update_backup()
             return
         if self.path == "/api/project-save-location":
             self.handle_project_save_location()
@@ -797,6 +802,42 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
             target = project_backup_dir(project_id) / backup_id
             target.unlink(missing_ok=True)
             self.respond_json(HTTPStatus.OK, {"ok": True, "backupCount": len(list_backup_files(project_id))})
+        except Exception as exc:
+            self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+
+    def handle_update_backup(self):
+        payload = self.read_json_payload()
+        if payload is None:
+            return
+        try:
+            project_id = str(payload.get("projectId") or "").strip()
+            backup_id = str(payload.get("backupId") or "").strip()
+            if not project_id or not backup_id:
+                raise ValueError("Missing projectId or backupId")
+            if Path(backup_id).name != backup_id:
+                raise ValueError("Invalid backupId")
+
+            target = project_backup_dir(project_id) / backup_id
+            if not target.exists() or not target.is_file():
+                raise FileNotFoundError("Backup not found")
+
+            backup = json.loads(target.read_text(encoding="utf-8"))
+            backup["backupMeta"] = {
+                **(backup.get("backupMeta") or {}),
+                "pinned": bool(payload.get("pinned")),
+            }
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=str(target.parent),
+                delete=False,
+                suffix=".tmp",
+            ) as tmp_file:
+                json.dump(backup, tmp_file, ensure_ascii=False, indent=2)
+                tmp_file.write("\n")
+                temp_name = tmp_file.name
+            os.replace(temp_name, target)
+            self.respond_json(HTTPStatus.OK, {"ok": True, "backup": backup_summary(target)})
         except Exception as exc:
             self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
 

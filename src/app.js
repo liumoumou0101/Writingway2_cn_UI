@@ -2390,6 +2390,9 @@ document.addEventListener('alpine:init', () => {
 
             filteredBackupList() {
                 if (!this.backupList || this.backupListFilter === 'all') return this.backupList || [];
+                if (this.backupListFilter === 'pinned') {
+                    return (this.backupList || []).filter(backup => !!backup.pinned);
+                }
                 return (this.backupList || []).filter(backup => backup.reason === this.backupListFilter);
             },
 
@@ -2773,6 +2776,21 @@ document.addEventListener('alpine:init', () => {
                     this.backupStatus = 'Backup deleted';
                 } else {
                     alert('Failed to delete backup: ' + result.error);
+                }
+            },
+
+            async toggleLocalBackupPinned(backup) {
+                if (!backup || !window.BackupManager || typeof window.BackupManager.updateLocalBackup !== 'function') return;
+                const result = await window.BackupManager.updateLocalBackup(this, backup.id, { pinned: !backup.pinned });
+                if (result.success) {
+                    const updated = result.backup || { ...backup, pinned: !backup.pinned };
+                    this.backupList = (this.backupList || []).map(item => item.id === backup.id ? { ...item, ...updated } : item);
+                    if (this.selectedBackupPreview?.backup?.id === backup.id) {
+                        this.selectedBackupPreview.backup = { ...this.selectedBackupPreview.backup, ...updated };
+                    }
+                    this.backupStatus = updated.pinned ? 'Backup pinned' : 'Backup unpinned';
+                } else {
+                    alert('Failed to update backup: ' + result.error);
                 }
             },
 
