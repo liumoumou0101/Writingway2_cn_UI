@@ -87,6 +87,12 @@ def backup_root_dir() -> Path:
     return Path(custom_path).expanduser().resolve() if custom_path else BACKUPS_DIR
 
 
+def project_save_root_dir() -> Path:
+    settings = read_settings()
+    custom_path = str(settings.get("projectSaveLocation") or "").strip()
+    return Path(custom_path).expanduser().resolve() if custom_path else PROJECTS_DIR
+
+
 def runtime_platform() -> tuple[str, str]:
     system = platform.system().lower()
     machine = platform.machine().lower()
@@ -225,6 +231,7 @@ def backup_summary(path: Path) -> dict:
         "path": str(path.relative_to(backup_root_dir())),
         "size": stat.st_size,
         "reason": meta.get("reason") or "manual",
+        "note": meta.get("note") or "",
         "hash": meta.get("hash") or "",
         "chapterCount": meta.get("chapterCount") or stats["chapterCount"],
         "sceneCount": meta.get("sceneCount") or stats["sceneCount"],
@@ -447,6 +454,9 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/backup-location":
             self.respond_json(HTTPStatus.OK, {"ok": True, "path": str(backup_root_dir())})
             return
+        if parsed.path == "/api/project-save-location":
+            self.respond_json(HTTPStatus.OK, {"ok": True, "path": str(project_save_root_dir())})
+            return
         super().do_GET()
 
     def do_POST(self):
@@ -464,6 +474,18 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
             return
         if self.path == "/api/cleanup-backups":
             self.handle_cleanup_backups()
+            return
+        if self.path == "/api/delete-backup":
+            self.handle_delete_backup()
+            return
+        if self.path == "/api/project-save-location":
+            self.handle_project_save_location()
+            return
+        if self.path == "/api/open-project-save-folder":
+            self.handle_open_project_save_folder()
+            return
+        if self.path == "/api/choose-project-save-folder":
+            self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Folder picker is available in the desktop app. Paste a path instead."})
             return
         if self.path == "/api/open-backup-folder":
             self.handle_open_backup_folder()
@@ -500,12 +522,13 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
             return
 
         try:
-            PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+            projects_dir = project_save_root_dir()
+            projects_dir.mkdir(parents=True, exist_ok=True)
             filename = project_filename(project)
-            target = PROJECTS_DIR / filename
+            target = projects_dir / filename
             project_id = str(project.get("id"))
 
-            for existing in PROJECTS_DIR.glob(f"*--{project_id}.json"):
+            for existing in projects_dir.glob(f"*--{project_id}.json"):
                 if existing != target and existing.exists():
                     existing.unlink()
 
@@ -515,7 +538,7 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
             with tempfile.NamedTemporaryFile(
                 "w",
                 encoding="utf-8",
-                dir=str(PROJECTS_DIR),
+                dir=str(projects_dir),
                 delete=False,
                 suffix=".tmp",
             ) as tmp_file:
@@ -529,8 +552,9 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
                 HTTPStatus.OK,
                 {
                     "ok": True,
-                    "path": str(target.relative_to(ROOT)),
+                    "path": str(target.relative_to(projects_dir)),
                     "filename": filename,
+                    "projectSaveLocation": str(projects_dir),
                 },
             )
         except Exception as exc:
@@ -577,6 +601,7 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
             backup_dir.mkdir(parents=True, exist_ok=True)
             request_options = payload.get("backupRequest") or {}
             reason = sanitize_filename(str(request_options.get("reason") or "manual"))
+            note = str(request_options.get("note") or "")
             retention = request_options.get("retention") or {"mode": "count", "count": 100}
             hash_value = snapshot_hash(payload)
             existing = list_backup_files(project_id)
@@ -602,6 +627,7 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
             payload["localBackupVersion"] = 1
             payload["backupMeta"] = {
                 "reason": reason,
+                "note": note,
                 "hash": hash_value,
                 "createdAt": payload["localBackupSavedAt"],
                 **snapshot_stats(payload),
@@ -742,6 +768,37 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
 
+    def handle_delete_backup(self):
+        payload = self.read_json_payload()
+        if payload is None:
+            return
+        try:
+            project_id = str(payload.get("projectId") or "").strip()
+            backup_id = str(payload.get("backupId") or "").strip()
+            if not project_id or not backup_id:
+                raise ValueError("Missing projectId or backupId")
+            if Path(backup_id).name != backup_id:
+                raise ValueError("Invalid backupId")
+            target = project_backup_dir(project_id) / backup_id
+            target.unlink(missing_ok=True)
+            self.respond_json(HTTPStatus.OK, {"ok": True, "backupCount": len(list_backup_files(project_id))})
+        except Exception as exc:
+            self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+
+    def handle_project_save_location(self):
+        payload = self.read_json_payload()
+        if payload is None:
+            return
+        try:
+            settings = read_settings()
+            path_value = str(payload.get("path") or "").strip()
+            settings["projectSaveLocation"] = str(Path(path_value).expanduser().resolve()) if path_value else ""
+            write_settings(settings)
+            project_save_root_dir().mkdir(parents=True, exist_ok=True)
+            self.respond_json(HTTPStatus.OK, {"ok": True, "path": str(project_save_root_dir())})
+        except Exception as exc:
+            self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+
     def handle_open_backup_folder(self):
         try:
             target = backup_root_dir()
@@ -758,9 +815,25 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
 
+    def handle_open_project_save_folder(self):
+        try:
+            target = project_save_root_dir()
+            target.mkdir(parents=True, exist_ok=True)
+            if platform.system().lower() == "windows":
+                os.startfile(str(target))  # type: ignore[attr-defined]
+            elif platform.system().lower() == "darwin":
+                import subprocess
+                subprocess.Popen(["open", str(target)])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", str(target)])
+            self.respond_json(HTTPStatus.OK, {"ok": True})
+        except Exception as exc:
+            self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+
 
 def main():
-    PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    project_save_root_dir().mkdir(parents=True, exist_ok=True)
     backup_root_dir().mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), WritingwayHandler)
     print(f"Writingway server running at http://{HOST}:{PORT}")

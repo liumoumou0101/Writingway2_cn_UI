@@ -10,6 +10,10 @@
     const LOCAL_BACKUP_LOCATION_ENDPOINT = '/api/backup-location';
     const LOCAL_BACKUP_CHOOSE_ENDPOINT = '/api/choose-backup-folder';
     const LOCAL_BACKUP_OPEN_ENDPOINT = '/api/open-backup-folder';
+    const LOCAL_BACKUP_DELETE_ENDPOINT = '/api/delete-backup';
+    const PROJECT_SAVE_LOCATION_ENDPOINT = '/api/project-save-location';
+    const PROJECT_SAVE_CHOOSE_ENDPOINT = '/api/choose-project-save-folder';
+    const PROJECT_SAVE_OPEN_ENDPOINT = '/api/open-project-save-folder';
     const SETTINGS_KEY = 'writingway:backupSettings';
     let backupIntervalId = null;
 
@@ -358,6 +362,7 @@
                         ...projectData,
                         backupRequest: {
                             reason: options.reason || 'manual',
+                            note: options.note || '',
                             retention: this.retentionSettings(app)
                         }
                     })
@@ -407,6 +412,7 @@
                         path: backup.path,
                         size: backup.size,
                         reason: backup.reason || 'manual',
+                        note: backup.note || '',
                         hash: backup.hash || '',
                         wordCount: backup.wordCount || 0,
                         chapterCount: backup.chapterCount || 0,
@@ -547,6 +553,94 @@
             }
         },
 
+        async deleteLocalBackup(app, backupId) {
+            try {
+                if (!app.currentProject) return { success: false, error: 'No project selected' };
+                const response = await fetch(LOCAL_BACKUP_DELETE_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        projectId: String(app.currentProject.id),
+                        backupId: String(backupId)
+                    })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                app.backupCount = result.backupCount || 0;
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async loadProjectSaveLocation(app) {
+            try {
+                const response = await fetch(PROJECT_SAVE_LOCATION_ENDPOINT);
+                const result = await response.json().catch(() => ({}));
+                if (response.ok && result.ok) {
+                    app.projectSaveLocation = result.path || '';
+                }
+            } catch (e) {
+                console.warn('Failed to load project save location:', e);
+            }
+        },
+
+        async setProjectSaveLocation(app, path) {
+            try {
+                const response = await fetch(PROJECT_SAVE_LOCATION_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                app.projectSaveLocation = result.path || '';
+                return { success: true, path: app.projectSaveLocation };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async chooseProjectSaveLocation(app) {
+            try {
+                const response = await fetch(PROJECT_SAVE_CHOOSE_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ currentPath: app.projectSaveLocation || '' })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                if (result.canceled) return { success: true, canceled: true };
+                app.projectSaveLocation = result.path || '';
+                return { success: true, path: app.projectSaveLocation };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async openProjectSaveLocation(app) {
+            try {
+                const response = await fetch(PROJECT_SAVE_OPEN_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: app.projectSaveLocation || '' })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
         async restoreProjectData(app, backupData) {
             const projectId = backupData?.project?.id;
             if (!projectId) {
@@ -681,6 +775,7 @@
                     app.backupRetentionCount = app.backupRetentionCount || 100;
                     app.backupRetentionDays = app.backupRetentionDays || 30;
                     this.saveBackupSettings(app);
+                    this.loadProjectSaveLocation(app);
                     this.loadBackupLocation(app);
                     setTimeout(() => this.startAutoBackup(app), 5000);
                     return;
@@ -698,6 +793,7 @@
                 app.backupRetentionDays = settings.retentionDays || 30;
                 app.backupLocation = settings.location || '';
                 this.loadBackupLocation(app);
+                this.loadProjectSaveLocation(app);
 
                 if (app.backupEnabled && this.isProviderConfigured(app) && providerAvailable(app.backupProvider)) {
                     setTimeout(() => {

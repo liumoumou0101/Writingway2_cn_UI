@@ -80,6 +80,11 @@ async function backupRoot(dataRoot) {
   return settings.backupLocation || path.join(dataRoot, 'project-backups');
 }
 
+async function projectSaveRoot(dataRoot) {
+  const settings = await readSettings(dataRoot);
+  return settings.projectSaveLocation || path.join(dataRoot, 'projects');
+}
+
 async function backupDir(dataRoot, projectId) {
   return path.join(await backupRoot(dataRoot), sanitizeFilename(projectId));
 }
@@ -206,6 +211,7 @@ async function readBackupSummary(dataRoot, file) {
     path: path.relative(await backupRoot(dataRoot), file.filePath).replace(/\\/g, '/'),
     size: file.stats.size,
     reason: meta.reason || 'manual',
+    note: meta.note || '',
     hash: meta.hash || '',
     chapterCount: meta.chapterCount || stats.chapterCount,
     sceneCount: meta.sceneCount || stats.sceneCount,
@@ -576,7 +582,7 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
         jsonResponse(response, 400, { ok: false, error: 'Missing project payload' });
         return true;
       }
-      const projectsDir = path.join(dataRoot, 'projects');
+      const projectsDir = await projectSaveRoot(dataRoot);
       await fsp.mkdir(projectsDir, { recursive: true });
       const filename = projectFilename(project);
       const target = path.join(projectsDir, filename);
@@ -590,7 +596,7 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       payload.filesystemSavedAt = new Date().toISOString();
       payload.filesystemSaveVersion = 1;
       await writeJsonAtomic(target, payload);
-      jsonResponse(response, 200, { ok: true, path: path.relative(dataRoot, target).replace(/\\/g, '/'), filename });
+      jsonResponse(response, 200, { ok: true, path: path.relative(projectsDir, target).replace(/\\/g, '/'), filename, projectSaveLocation: projectsDir });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message });
     }
@@ -611,6 +617,7 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       }
       const requestOptions = payload.backupRequest || {};
       const reason = requestOptions.reason || 'manual';
+      const note = requestOptions.note || '';
       const retention = requestOptions.retention || { mode: 'count', count: 100 };
       const hash = snapshotHash(payload);
       const existing = await listBackupFiles(dataRoot, projectId);
@@ -634,6 +641,7 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       payload.localBackupVersion = 1;
       payload.backupMeta = {
         reason,
+        note,
         hash,
         createdAt: payload.localBackupSavedAt,
         ...stats
@@ -705,6 +713,42 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
         await fsp.rm(file.filePath, { force: true });
       }
       jsonResponse(response, 200, { ok: true, deleted: files.length, backupCount: 0 });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/delete-backup') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const backupId = String(payload.backupId || '').trim();
+      if (!projectId || !backupId) throw new Error('Missing projectId or backupId');
+      if (path.basename(backupId) !== backupId) throw new Error('Invalid backupId');
+      const target = path.join(await backupDir(dataRoot, projectId), backupId);
+      await fsp.rm(target, { force: true });
+      jsonResponse(response, 200, { ok: true, backupCount: (await listBackupFiles(dataRoot, projectId)).length });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/project-save-location') {
+    jsonResponse(response, 200, { ok: true, path: await projectSaveRoot(dataRoot) });
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/project-save-location') {
+    try {
+      const payload = await readJsonPayload(request);
+      const settings = await readSettings(dataRoot);
+      const nextPath = String(payload.path || '').trim();
+      settings.projectSaveLocation = nextPath ? path.resolve(nextPath) : '';
+      await writeSettings(dataRoot, settings);
+      await fsp.mkdir(await projectSaveRoot(dataRoot), { recursive: true });
+      jsonResponse(response, 200, { ok: true, path: await projectSaveRoot(dataRoot) });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message });
     }
@@ -874,8 +918,8 @@ function createServer(port, requestHandler) {
   });
 }
 
-async function startDesktopServers({ appRoot, dataRoot, chooseBackupFolder, openPath }) {
-  await fsp.mkdir(path.join(dataRoot, 'projects'), { recursive: true });
+async function startDesktopServers({ appRoot, dataRoot, chooseBackupFolder, chooseProjectSaveFolder, openPath }) {
+  await fsp.mkdir(await projectSaveRoot(dataRoot), { recursive: true });
   await fsp.mkdir(path.join(dataRoot, 'project-backups'), { recursive: true });
 
   const appServer = await createServer(APP_PORT, async (request, response, parsedUrl) => {
@@ -902,6 +946,40 @@ async function startDesktopServers({ appRoot, dataRoot, chooseBackupFolder, open
     if (request.method === 'POST' && parsedUrl.pathname === '/api/open-backup-folder') {
       try {
         const target = await backupRoot(dataRoot);
+        await fsp.mkdir(target, { recursive: true });
+        if (typeof openPath !== 'function') throw new Error('Open folder is not available in this environment.');
+        const result = await openPath(target);
+        if (result) throw new Error(result);
+        jsonResponse(response, 200, { ok: true });
+      } catch (error) {
+        jsonResponse(response, 500, { ok: false, error: error.message });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && parsedUrl.pathname === '/api/choose-project-save-folder') {
+      try {
+        if (typeof chooseProjectSaveFolder !== 'function') throw new Error('Folder picker is not available in this environment.');
+        const payload = await readJsonPayload(request).catch(() => ({}));
+        const selected = await chooseProjectSaveFolder(payload.currentPath || await projectSaveRoot(dataRoot));
+        if (!selected) {
+          jsonResponse(response, 200, { ok: true, canceled: true });
+          return;
+        }
+        const settings = await readSettings(dataRoot);
+        settings.projectSaveLocation = path.resolve(selected);
+        await writeSettings(dataRoot, settings);
+        await fsp.mkdir(await projectSaveRoot(dataRoot), { recursive: true });
+        jsonResponse(response, 200, { ok: true, path: await projectSaveRoot(dataRoot) });
+      } catch (error) {
+        jsonResponse(response, 500, { ok: false, error: error.message });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && parsedUrl.pathname === '/api/open-project-save-folder') {
+      try {
+        const target = await projectSaveRoot(dataRoot);
         await fsp.mkdir(target, { recursive: true });
         if (typeof openPath !== 'function') throw new Error('Open folder is not available in this environment.');
         const result = await openPath(target);

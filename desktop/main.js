@@ -47,6 +47,14 @@ async function startServices() {
       });
       return result.canceled ? null : result.filePaths[0];
     },
+    chooseProjectSaveFolder: async (currentPath) => {
+      const result = await dialog.showOpenDialog({
+        title: 'Choose project save folder',
+        defaultPath: currentPath || app.getPath('documents'),
+        properties: ['openDirectory', 'createDirectory']
+      });
+      return result.canceled ? null : result.filePaths[0];
+    },
     openPath: async (targetPath) => shell.openPath(targetPath)
   });
   console.log('Writingway desktop services are ready.');

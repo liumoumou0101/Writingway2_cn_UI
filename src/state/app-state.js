@@ -258,6 +258,10 @@ function createAppState() {
         filesystemSaveStatus: '',
         filesystemSaveTone: 'success',
         lastFilesystemSavePath: '',
+        projectSaveLocation: '',
+        backupSnapshotNote: '',
+        backupListFilter: 'all',
+        selectedBackupPreview: null,
 
         // ========== Generation Parameters ==========
         temperature: 0.8,

@@ -2388,6 +2388,25 @@ document.addEventListener('alpine:init', () => {
                 return this.backupProvider === 'github';
             },
 
+            filteredBackupList() {
+                if (!this.backupList || this.backupListFilter === 'all') return this.backupList || [];
+                return (this.backupList || []).filter(backup => backup.reason === this.backupListFilter);
+            },
+
+            backupPreview(backup) {
+                const currentWords = this.totalWords || 0;
+                const targetWords = Number(backup?.wordCount || 0);
+                return {
+                    currentChapters: (this.chapters || []).length,
+                    targetChapters: Number(backup?.chapterCount || 0),
+                    currentScenes: (this.scenes || []).length,
+                    targetScenes: Number(backup?.sceneCount || 0),
+                    currentWords,
+                    targetWords,
+                    wordDelta: targetWords - currentWords
+                };
+            },
+
             backupNeedsAttention() {
                 if (!this.backupEnabled) return true;
                 if (!this.backupProviderIsAvailable()) return true;
@@ -2482,7 +2501,10 @@ document.addEventListener('alpine:init', () => {
                 }
 
                 this.backupStatus = `Backing up to ${this.backupProviderName()}...`;
-                const result = await window.BackupManager.backupNow(this, { reason: 'manual' });
+                const result = await window.BackupManager.backupNow(this, {
+                    reason: 'manual',
+                    note: this.backupSnapshotNote || ''
+                });
 
                 if (result.success) {
                     if (result.skipped) {
@@ -2501,6 +2523,7 @@ document.addEventListener('alpine:init', () => {
                         this.currentProjectGistId = result.gistId;
                     }
                     window.BackupManager.saveBackupSettings(this);
+                    this.backupSnapshotNote = '';
                     alert(`Backup successful: ${this.backupProviderName()}`);
                 } else {
                     this.backupStatus = 'Backup failed';
@@ -2536,6 +2559,14 @@ document.addEventListener('alpine:init', () => {
             async closeRestoreModal() {
                 this.showRestoreModal = false;
                 this.backupList = [];
+                this.selectedBackupPreview = null;
+            },
+
+            selectBackupForPreview(backup) {
+                this.selectedBackupPreview = {
+                    backup,
+                    stats: this.backupPreview(backup)
+                };
             },
 
             async restoreBackup(backupRef) {
@@ -2580,6 +2611,37 @@ document.addEventListener('alpine:init', () => {
                 if (!result.success) {
                     alert('Failed to reset backup folder: ' + result.error);
                 }
+            },
+
+            async deleteLocalBackup(backup) {
+                if (!backup || !window.BackupManager || typeof window.BackupManager.deleteLocalBackup !== 'function') return;
+                if (!confirm(`Delete backup ${backup.id}?`)) return;
+                const result = await window.BackupManager.deleteLocalBackup(this, backup.id);
+                if (result.success) {
+                    this.backupList = this.backupList.filter(item => item.id !== backup.id);
+                    this.selectedBackupPreview = null;
+                    this.backupStatus = 'Backup deleted';
+                } else {
+                    alert('Failed to delete backup: ' + result.error);
+                }
+            },
+
+            async chooseProjectSaveLocation() {
+                if (!window.BackupManager || typeof window.BackupManager.chooseProjectSaveLocation !== 'function') return;
+                const result = await window.BackupManager.chooseProjectSaveLocation(this);
+                if (!result.success) alert('Failed to choose project save folder: ' + result.error);
+            },
+
+            async openProjectSaveLocation() {
+                if (!window.BackupManager || typeof window.BackupManager.openProjectSaveLocation !== 'function') return;
+                const result = await window.BackupManager.openProjectSaveLocation(this);
+                if (!result.success) alert('Failed to open project save folder: ' + result.error);
+            },
+
+            async resetProjectSaveLocation() {
+                if (!window.BackupManager || typeof window.BackupManager.setProjectSaveLocation !== 'function') return;
+                const result = await window.BackupManager.setProjectSaveLocation(this, '');
+                if (!result.success) alert('Failed to reset project save folder: ' + result.error);
             },
 
             async cleanupLocalBackups(scope = 'project') {
