@@ -60,7 +60,13 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
                 backupRetentionCount: 10,
                 backupRetentionDays: 30,
                 backupLocation: '',
-                backupCount: 0
+                backupCount: 0,
+                async loadProjects() {
+                    this.projects = await db.projects.toArray();
+                },
+                async selectProject(nextProjectId) {
+                    this.currentProject = await db.projects.get(nextProjectId);
+                }
             };
 
             const backup = await window.BackupManager.backupNow(app, { reason: 'manual', note: 'before edit' });
@@ -71,6 +77,18 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
             await db.content.put({ sceneId, text: 'changed text', wordCount: 2, updatedAt: Date.now() });
             const backupData = await window.BackupManager.getLocalBackupData(projectId, backup.backupId);
             if (!backupData.success) throw new Error(backupData.error || 'get backup failed');
+            const importFile = new File(
+                [JSON.stringify(backupData.backup, null, 2)],
+                'import-test.writingway-backup.json',
+                { type: 'application/json' }
+            );
+            const imported = await window.BackupManager.restoreBackupFileAsNewProject(app, importFile);
+            if (!imported.success) throw new Error(imported.error || 'backup import failed');
+            const importedProject = await db.projects.get(imported.projectId);
+            app.currentProject = project;
+            app.currentChapter = chapter;
+            app.chapters = [{ ...chapter, scenes: [scene] }];
+            app.scenes = [scene];
 
             const restore = await window.BackupManager.restoreSceneFromBackupDiff(app, {
                 status: 'modified',
@@ -132,6 +150,8 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
                 addedSceneTitle: newScene && newScene.title,
                 addedSceneText: newContent && newContent.text,
                 editedNote: noteUpdate.backup && noteUpdate.backup.note,
+                importedProjectName: importedProject && importedProject.name,
+                hasExportMethod: !!window.BackupManager.exportLocalBackup,
                 confirmText,
                 sceneConfirmText,
                 backupCount: backups.success ? backups.backups.length : 0,
@@ -143,6 +163,8 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
         assert.strictEqual(result.addedSceneTitle, 'Recovered Scene (Recovered)', 'missing backup scene should be restored as a new scene');
         assert.strictEqual(result.addedSceneText, 'text from deleted scene', 'new restored scene should keep backup text');
         assert.strictEqual(result.editedNote, 'edited in browser test', 'backup note should be editable through BackupManager');
+        assert.strictEqual(result.importedProjectName, 'Browser Backup Test (Recovered)', 'backup JSON should import as a recovered project');
+        assert.strictEqual(result.hasExportMethod, true, 'BackupManager should expose JSON export');
         assert.match(result.confirmText, /pre-restore snapshot|恢复前快照/, 'project restore confirmation should mention pre-restore snapshot');
         assert.match(result.confirmText, /replace|替换/, 'project restore confirmation should mention replacement');
         assert.match(result.sceneConfirmText, /Only this scene|只会修改这个场景/, 'scene restore confirmation should describe scene-level impact');

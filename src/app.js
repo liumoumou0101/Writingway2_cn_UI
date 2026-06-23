@@ -2897,6 +2897,39 @@ document.addEventListener('alpine:init', () => {
                 }
             },
 
+            async exportSelectedBackup() {
+                const backup = this.selectedBackupPreview?.backup;
+                if (!backup || backup.provider !== 'local' || !window.BackupManager?.exportLocalBackup) return;
+                const result = await window.BackupManager.exportLocalBackup(backup);
+                if (result.success) {
+                    this.backupStatus = 'Backup exported';
+                } else {
+                    alert('Failed to export backup: ' + result.error);
+                }
+            },
+
+            async importBackupJson(fileInput) {
+                const file = fileInput?.files?.[0];
+                if (!file) return;
+                try {
+                    if (!confirm(this.t('backup.confirmImportAsNew'))) {
+                        return;
+                    }
+                    const result = await window.BackupManager.restoreBackupFileAsNewProject(this, file);
+                    if (result.success) {
+                        this.showRestoreModal = false;
+                        this.backupList = [];
+                        this.selectedBackupPreview = null;
+                        this.selectedBackupNoteDraft = '';
+                        alert(this.t('backup.importedAsNew'));
+                    } else {
+                        alert('Failed to import backup: ' + result.error);
+                    }
+                } finally {
+                    if (fileInput) fileInput.value = '';
+                }
+            },
+
             async chooseProjectSaveLocation() {
                 if (!window.BackupManager || typeof window.BackupManager.chooseProjectSaveLocation !== 'function') return;
                 const result = await window.BackupManager.chooseProjectSaveLocation(this);

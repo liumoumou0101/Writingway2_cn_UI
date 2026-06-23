@@ -37,6 +37,38 @@
         return `${Date.now()}-${prefix}-${Math.random().toString(36).slice(2, 9)}`;
     }
 
+    function downloadJsonFile(filename, payload) {
+        const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    function backupExportFilename(backupData) {
+        const projectName = backupData?.project?.name || 'Writingway_Backup';
+        const exportedAt = backupData?.exportedAt || backupData?.backupMeta?.createdAt || new Date().toISOString();
+        const safeName = projectName.replace(/[^a-z0-9\u4e00-\u9fa5_-]+/gi, '_').slice(0, 60) || 'Writingway_Backup';
+        const safeDate = String(exportedAt).replace(/[:.]/g, '-').replace(/[^\w\u4e00-\u9fa5-]+/g, '_');
+        return `${safeName}_${safeDate}.writingway-backup.json`;
+    }
+
+    function validateBackupPayload(backupData) {
+        if (!backupData || typeof backupData !== 'object') {
+            throw new Error('Backup file is empty or invalid');
+        }
+        if (!backupData.project || !backupData.project.id) {
+            throw new Error('Backup file is missing project data');
+        }
+        if (!Array.isArray(backupData.chapters) || !Array.isArray(backupData.scenes) || !backupData.sceneContents) {
+            throw new Error('Backup file is missing chapters, scenes, or content');
+        }
+    }
+
     async function listByProject(tableName, projectId, sortField) {
         try {
             if (!db[tableName]) return [];
@@ -534,6 +566,40 @@
 
                 const restoredId = await this.restoreProjectDataAsNew(app, backupData.backup);
                 return { success: true, projectId: restoredId };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async exportLocalBackup(backup) {
+            if (!backup || !backup.projectId || !backup.id) {
+                return { success: false, error: 'Missing backup reference' };
+            }
+
+            try {
+                const result = await this.getLocalBackupData(backup.projectId, backup.id);
+                if (!result.success) {
+                    return result;
+                }
+                validateBackupPayload(result.backup);
+                downloadJsonFile(backupExportFilename(result.backup), result.backup);
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async restoreBackupFileAsNewProject(app, file) {
+            if (!file) {
+                return { success: false, error: 'No backup file selected' };
+            }
+
+            try {
+                const text = await file.text();
+                const backupData = JSON.parse(text);
+                validateBackupPayload(backupData);
+                const projectId = await this.restoreProjectDataAsNew(app, backupData);
+                return { success: true, projectId };
             } catch (e) {
                 return { success: false, error: e.message };
             }

@@ -1796,7 +1796,7 @@
                     <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">
                         <span x-text="t('backup.selectRestore')">Select a backup version to restore. This will replace your current project data.</span>
                     </p>
-                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
                         <span style="font-size:13px;color:var(--text-secondary);" x-text="t('backup.filter')">Filter</span>
                         <select x-model="backupListFilter"
                             style="padding:8px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);">
@@ -1806,13 +1806,21 @@
                             <option value="before-restore" x-text="t('backup.filterBeforeRestore')">Before restore</option>
                             <option value="pinned" x-text="t('backup.filterPinned')">Pinned</option>
                         </select>
+                        <label class="btn btn-secondary" style="padding:8px 12px;font-size:13px;cursor:pointer;margin-left:auto;">
+                            <span x-text="t('backup.importJson')">Import JSON</span>
+                            <input type="file" accept=".json,.writingway-backup.json,application/json" @change="importBackupJson($event.target)" style="display:none;">
+                        </label>
                     </div>
                     <div x-show="selectedBackupPreview" class="state-card info" style="margin-bottom:14px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;">
                             <div style="font-weight:700;color:var(--text-primary);" x-text="t('backup.versionDetails')">Version Details</div>
-                            <span x-show="selectedBackupDetails().pinned"
-                                style="padding:2px 7px;border-radius:999px;background:var(--accent-muted);color:var(--accent);font-size:11px;font-weight:700;"
-                                x-text="t('backup.pinned')">Pinned</span>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span x-show="selectedBackupDetails().pinned"
+                                    style="padding:2px 7px;border-radius:999px;background:var(--accent-muted);color:var(--accent);font-size:11px;font-weight:700;"
+                                    x-text="t('backup.pinned')">Pinned</span>
+                                <button x-show="selectedBackupDetails().provider === 'local'" class="btn btn-secondary" @click="exportSelectedBackup()"
+                                    style="padding:6px 10px;font-size:12px;" x-text="t('backup.exportJson')">Export JSON</button>
+                            </div>
                         </div>
                         <div x-show="selectedBackupPreview"
                             style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:12px;">
