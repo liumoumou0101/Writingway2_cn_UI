@@ -1830,6 +1830,10 @@
                                 x-text="t('backup.saveNote')">Save Note</button>
                         </div>
                         <div style="font-weight:600;margin-bottom:8px;" x-text="t('backup.preview')">Restore Preview</div>
+                        <div class="state-card warning" style="margin-bottom:10px;font-size:12px;line-height:1.6;">
+                            <div x-text="t('backup.confirmPreRestoreSnapshot')">A pre-restore snapshot will be created first.</div>
+                            <div x-text="t('backup.confirmReplaceWarning')">Then the selected backup will replace the current project data.</div>
+                        </div>
                         <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;">
                             <span x-text="t('backup.current')">Current</span>:
                             <span x-text="selectedBackupPreview?.stats.currentChapters"></span>/<span x-text="selectedBackupPreview?.stats.currentScenes"></span>/<span x-text="selectedBackupPreview?.stats.currentWords"></span>
@@ -1895,7 +1899,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <button class="btn btn-primary" @click="restoreBackup(backup.ref)"
+                                    <button class="btn btn-primary" @click="restoreBackup(backup)"
                                         style="padding:8px 16px;font-size:13px;">
                                         <span x-text="t('backup.restoreAction')">Restore</span>
                                     </button>

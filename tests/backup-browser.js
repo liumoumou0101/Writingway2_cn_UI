@@ -108,12 +108,32 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
             const newScene = await db.scenes.get(added.sceneId);
             const newContent = await db.content.get(added.sceneId);
             const backups = await window.BackupManager.listLocalBackups(app);
+            const alpineApp = document.querySelector('[x-data="app"]')?._x_dataStack?.[0] || window.__test?.getApp?.();
+            let confirmText = '';
+            let sceneConfirmText = '';
+            if (alpineApp) {
+                alpineApp.currentProject = project;
+                alpineApp.chapters = [chapter];
+                alpineApp.scenes = [scene];
+                confirmText = alpineApp.restoreBackupConfirmMessage(noteUpdate.backup, {
+                    stats: alpineApp.backupPreview(noteUpdate.backup),
+                    sceneDiff: { added: [], removed: [], modified: [], unchanged: 1 }
+                });
+                sceneConfirmText = alpineApp.restoreSceneConfirmMessage({
+                    status: 'modified',
+                    title: 'Scene 1',
+                    currentText: 'changed text',
+                    backupText: 'original text'
+                });
+            }
 
             return {
                 restoredText: restoredContent && restoredContent.text,
                 addedSceneTitle: newScene && newScene.title,
                 addedSceneText: newContent && newContent.text,
                 editedNote: noteUpdate.backup && noteUpdate.backup.note,
+                confirmText,
+                sceneConfirmText,
                 backupCount: backups.success ? backups.backups.length : 0,
                 beforeRestoreCount: backups.success ? backups.backups.filter(item => item.reason === 'before-restore').length : 0
             };
@@ -123,6 +143,9 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
         assert.strictEqual(result.addedSceneTitle, 'Recovered Scene (Recovered)', 'missing backup scene should be restored as a new scene');
         assert.strictEqual(result.addedSceneText, 'text from deleted scene', 'new restored scene should keep backup text');
         assert.strictEqual(result.editedNote, 'edited in browser test', 'backup note should be editable through BackupManager');
+        assert.match(result.confirmText, /pre-restore snapshot|恢复前快照/, 'project restore confirmation should mention pre-restore snapshot');
+        assert.match(result.confirmText, /replace|替换/, 'project restore confirmation should mention replacement');
+        assert.match(result.sceneConfirmText, /Only this scene|只会修改这个场景/, 'scene restore confirmation should describe scene-level impact');
         assert.ok(result.backupCount >= 3, 'manual backup plus pre-restore snapshots should be listed');
         assert.ok(result.beforeRestoreCount >= 2, 'scene restores should create pre-restore snapshots');
 

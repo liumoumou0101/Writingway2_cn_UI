@@ -2431,6 +2431,66 @@ document.addEventListener('alpine:init', () => {
                 return this.selectedBackupPreview?.backup || {};
             },
 
+            backupVersionLabel(backup) {
+                if (!backup) return '-';
+                const timestamp = backup.timestamp ? new Date(backup.timestamp).toLocaleString() : '';
+                return timestamp || backup.id || backup.version || '-';
+            },
+
+            restoreBackupConfirmMessage(backup, preview) {
+                const stats = preview?.stats || this.backupPreview(backup);
+                const sceneDiff = preview?.sceneDiff;
+                const lines = [
+                    this.t('backup.confirmRestoreTitle'),
+                    '',
+                    `${this.t('backup.currentProject')}: ${this.currentProject?.name || '-'}`,
+                    `${this.t('backup.restoreTarget')}: ${this.backupVersionLabel(backup)}`,
+                    `${this.t('backup.reason')} ${backup?.reason || '-'}`,
+                    `${this.t('backup.note')} ${backup?.note || '-'}`,
+                    '',
+                    `${this.t('backup.current')}: ${stats.currentChapters}/${stats.currentScenes}/${stats.currentWords}`,
+                    `${this.t('backup.target')}: ${stats.targetChapters}/${stats.targetScenes}/${stats.targetWords}`,
+                    `${this.t('backup.wordDelta')}: ${stats.wordDelta}`,
+                ];
+
+                if (sceneDiff) {
+                    lines.push(
+                        '',
+                        `${this.t('backup.sceneImpact')}: ${this.t('backup.addedScenes')} ${sceneDiff.added.length}, ${this.t('backup.removedScenes')} ${sceneDiff.removed.length}, ${this.t('backup.modifiedScenes')} ${sceneDiff.modified.length}, ${this.t('backup.unchangedScenes')} ${sceneDiff.unchanged}`
+                    );
+                }
+
+                lines.push(
+                    '',
+                    this.t('backup.confirmPreRestoreSnapshot'),
+                    this.t('backup.confirmReplaceWarning'),
+                    '',
+                    this.t('backup.confirmContinue')
+                );
+                return lines.join('\n');
+            },
+
+            restoreSceneConfirmMessage(sceneDiff) {
+                const currentWords = this.countWords(sceneDiff?.currentText || '');
+                const backupWords = this.countWords(sceneDiff?.backupText || '');
+                const action = sceneDiff?.status === 'added'
+                    ? this.t('backup.restoreAsNewScene')
+                    : this.t('backup.restoreSceneContent');
+                return [
+                    this.t('backup.confirmSceneRestoreTitle'),
+                    '',
+                    `${this.t('backup.scene')}: ${sceneDiff?.title || '-'}`,
+                    `${this.t('backup.action')}: ${action}`,
+                    `${this.t('backup.currentSceneText')}: ${currentWords} ${this.t('structure.words')}`,
+                    `${this.t('backup.backupSceneText')}: ${backupWords} ${this.t('structure.words')}`,
+                    '',
+                    this.t('backup.confirmPreRestoreSnapshot'),
+                    this.t('backup.confirmSceneWarning'),
+                    '',
+                    this.t('backup.confirmContinue')
+                ].join('\n');
+            },
+
             async sceneDiffSummary(backupData) {
                 const currentScenes = new Map((this.scenes || []).map(scene => [scene.id, scene]));
                 const backupScenes = new Map((backupData?.scenes || []).map(scene => [scene.id, scene]));
@@ -2720,10 +2780,7 @@ document.addEventListener('alpine:init', () => {
 
             async restoreSelectedBackupScene() {
                 if (!this.selectedBackupScene || !window.BackupManager?.restoreSceneFromBackupDiff) return;
-                const actionText = this.selectedBackupScene.status === 'added'
-                    ? 'restore this backup scene as a new scene'
-                    : 'replace the current scene content with the backup text';
-                if (!confirm(`This will ${actionText}. Continue?`)) return;
+                if (!confirm(this.restoreSceneConfirmMessage(this.selectedBackupScene))) return;
 
                 const result = await window.BackupManager.restoreSceneFromBackupDiff(this, this.selectedBackupScene);
                 if (result.success) {
@@ -2745,8 +2802,16 @@ document.addEventListener('alpine:init', () => {
                 }
             },
 
-            async restoreBackup(backupRef) {
-                if (!confirm('This will create a pre-restore snapshot, then replace your current project with the selected backup. Continue?')) {
+            async restoreBackup(backupOrRef) {
+                const backup = typeof backupOrRef === 'object'
+                    ? backupOrRef
+                    : (this.backupList || []).find(item => item.ref === backupOrRef || item.id === backupOrRef || item.version === backupOrRef);
+                const backupRef = typeof backupOrRef === 'object' ? backupOrRef.ref : backupOrRef;
+                const matchingPreview = backup && this.selectedBackupPreview?.backup?.id === backup.id
+                    ? this.selectedBackupPreview
+                    : null;
+
+                if (!confirm(this.restoreBackupConfirmMessage(backup || { ref: backupRef }, matchingPreview))) {
                     return;
                 }
 
