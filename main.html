@@ -1628,10 +1628,29 @@
 
                 <div x-show="backupProvider === 'local'"
                     class="state-card success" style="margin-bottom:24px;">
-                    <h4 style="margin:0 0 12px 0;color:var(--text-primary);">Local Versioning</h4>
+                    <h4 style="margin:0 0 12px 0;color:var(--text-primary);" x-text="t('backup.localTitle')">Local Auto Backup</h4>
                     <p style="margin:0;font-size:14px;line-height:1.7;color:var(--text-secondary);">
-                        Each backup is written to the <code>project-backups/</code> folder inside Writingway.
-                        This keeps timestamped restore points on this machine without requiring any cloud login.
+                        <span x-text="t('backup.localDescription')">Timestamped restore points are stored on this machine without requiring any cloud login.</span>
+                    </p>
+                </div>
+
+                <div x-show="backupProvider === 'local'" style="margin-bottom:20px;">
+                    <label style="display:block;font-weight:600;margin-bottom:8px;" x-text="t('backup.location')">Backup Location</label>
+                    <input type="text" x-model="backupLocation" :placeholder="t('backup.defaultLocation')"
+                        style="width:100%;padding:10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                        <button class="btn btn-secondary" @click="chooseBackupLocation()" type="button">
+                            <span x-text="t('backup.chooseFolder')">Choose Folder</span>
+                        </button>
+                        <button class="btn btn-secondary" @click="openBackupLocation()" type="button">
+                            <span x-text="t('backup.openFolder')">Open Folder</span>
+                        </button>
+                        <button class="btn btn-secondary" @click="resetBackupLocation()" type="button">
+                            <span x-text="t('backup.resetLocation')">Use Default</span>
+                        </button>
+                    </div>
+                    <p style="font-size:12px;color:var(--text-secondary);margin-top:8px;">
+                        <span x-text="backupLocation || t('backup.defaultLocation')"></span>
                     </p>
                 </div>
 
@@ -1661,6 +1680,28 @@
                     </label>
                 </div>
 
+                <div x-show="backupProvider === 'local'" style="margin-bottom:20px;">
+                    <label style="display:block;font-weight:600;margin-bottom:8px;" x-text="t('backup.retention')">Retention</label>
+                    <select x-model="backupRetentionMode"
+                        style="width:100%;padding:10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);">
+                        <option value="count" x-text="t('backup.retentionCount')">Keep latest count</option>
+                        <option value="days" x-text="t('backup.retentionDays')">Keep by age</option>
+                        <option value="all" x-text="t('backup.retentionAll')">Keep all</option>
+                    </select>
+                    <div x-show="backupRetentionMode === 'count'" style="margin-top:10px;">
+                        <input type="number" min="1" x-model.number="backupRetentionCount"
+                            style="width:100%;padding:10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);">
+                    </div>
+                    <div x-show="backupRetentionMode === 'days'" style="margin-top:10px;">
+                        <input type="number" min="1" x-model.number="backupRetentionDays"
+                            style="width:100%;padding:10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);">
+                    </div>
+                    <p style="font-size:12px;color:var(--text-secondary);margin-top:8px;">
+                        <span x-text="t('backup.currentCount')">Current backups:</span>
+                        <strong x-text="backupCount || 0"></strong>
+                    </p>
+                </div>
+
                 <div style="display:flex;gap:12px;margin-bottom:20px;">
                     <button class="btn btn-primary" @click="saveBackupSettings()" style="flex:1;">
                         <span x-text="t('backup.saveSettings')">Save Settings</span>
@@ -1685,6 +1726,14 @@
                         style="width:100%;">
                         <span x-text="'📥 ' + t('backup.restore')">Restore from Backup</span>
                     </button>
+                    <div x-show="backupProvider === 'local'" style="display:flex;gap:8px;margin-top:10px;">
+                        <button class="btn btn-secondary" @click="cleanupLocalBackups('project')" :disabled="!currentProject" style="flex:1;">
+                            <span x-text="t('backup.cleanProject')">Clean Project Backups</span>
+                        </button>
+                        <button class="btn btn-secondary" @click="cleanupLocalBackups('all')" style="flex:1;">
+                            <span x-text="t('backup.cleanAll')">Clean All Backups</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div x-show="backupProvider === 'github'"
@@ -1697,8 +1746,8 @@
                 <div x-show="backupProvider === 'local'"
                     class="state-card info" style="margin-top:20px;">
                     <p style="margin:0;font-size:13px;line-height:1.6;">
-                        <strong>Note:</strong> Local backups are stored as timestamped JSON snapshots under
-                        <code>project-backups/</code>. They stay on this machine unless you sync that folder yourself.
+                        <strong x-text="t('backup.note')">Note:</strong>
+                        <span x-text="t('backup.localNote')">Local backups are timestamped JSON snapshots. A pre-restore snapshot is created before every restore.</span>
                     </p>
                 </div>
             </div>
@@ -1729,10 +1778,17 @@
                                         <div style="font-weight:600;color:var(--text-primary);"
                                             x-text="new Date(backup.timestamp).toLocaleString()"></div>
                                         <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
+                                            <span x-show="backup.provider === 'local'"><span x-text="t('backup.reason')">Reason:</span> <span
+                                                    x-text="backup.reason"></span> · </span>
                                             <span x-show="backup.provider === 'github'"><span x-text="t('backup.version')">Version:</span> <span
                                                     x-text="backup.version.substring(0, 7)"></span></span>
                                             <span x-show="backup.provider === 'local'"><span x-text="t('backup.file')">File:</span> <span
                                                     x-text="backup.id"></span></span>
+                                            <div x-show="backup.provider === 'local'" style="margin-top:4px;">
+                                                <span x-text="backup.chapterCount || 0"></span> <span x-text="t('structure.chapters')">chapters</span> /
+                                                <span x-text="backup.sceneCount || 0"></span> <span x-text="t('structure.scenes')">scenes</span> /
+                                                <span x-text="backup.wordCount || 0"></span> <span x-text="t('structure.words')">words</span>
+                                            </div>
                                         </div>
                                     </div>
                                     <button class="btn btn-primary" @click="restoreBackup(backup.ref)"

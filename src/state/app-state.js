@@ -232,17 +232,22 @@ function createAppState() {
         fetchingModels: false, // Loading state for model fetching
         modelsFetched: false, // Whether we've already fetched models for current provider
 
-        // ========== GitHub Backup State ==========
-        backupProvider: 'github',
+        // ========== Backup State ==========
+        backupProvider: 'local',
         backupProviderOptions: [
             { id: 'github', name: 'GitHub Gist', available: true },
-            { id: 'local', name: 'Local Versioning', available: true },
+            { id: 'local', name: 'Local Auto Backup', available: true },
             { id: 'onedrive', name: 'OneDrive', available: false },
             { id: 'gdrive', name: 'Google Drive', available: false }
         ],
         githubToken: '',
         githubUsername: '',
-        backupEnabled: false,
+        backupEnabled: true,
+        backupRetentionMode: 'count',
+        backupRetentionCount: 100,
+        backupRetentionDays: 30,
+        backupLocation: '',
+        backupCount: 0,
         lastBackupTime: null,
         backupStatus: '',
         showBackupSettings: false,

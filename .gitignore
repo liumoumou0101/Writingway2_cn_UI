@@ -24,6 +24,7 @@ todo.md
 .claude/
 # Update staging folder
 .update/
+.writingway-settings.json
 # Node modules
 node_modules/
 .claude/

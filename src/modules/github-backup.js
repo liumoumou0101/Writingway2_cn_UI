@@ -6,12 +6,17 @@
     const LOCAL_BACKUP_CREATE_ENDPOINT = '/api/create-backup';
     const LOCAL_BACKUP_LIST_ENDPOINT = '/api/list-backups';
     const LOCAL_BACKUP_GET_ENDPOINT = '/api/get-backup';
+    const LOCAL_BACKUP_CLEANUP_ENDPOINT = '/api/cleanup-backups';
+    const LOCAL_BACKUP_LOCATION_ENDPOINT = '/api/backup-location';
+    const LOCAL_BACKUP_CHOOSE_ENDPOINT = '/api/choose-backup-folder';
+    const LOCAL_BACKUP_OPEN_ENDPOINT = '/api/open-backup-folder';
+    const SETTINGS_KEY = 'writingway:backupSettings';
     let backupIntervalId = null;
 
     function providerLabel(provider) {
         switch (provider) {
             case 'github': return 'GitHub Gist';
-            case 'local': return 'Local Versioning';
+            case 'local': return 'Local Auto Backup';
             case 'onedrive': return 'OneDrive';
             case 'gdrive': return 'Google Drive';
             default: return 'Backup';
@@ -46,6 +51,15 @@
         providerLabel,
 
         providerAvailable,
+
+        retentionSettings(app) {
+            const mode = app.backupRetentionMode || 'count';
+            return {
+                mode,
+                count: Math.max(1, Number(app.backupRetentionCount || 100)),
+                days: Math.max(1, Number(app.backupRetentionDays || 30))
+            };
+        },
 
         isProviderConfigured(app) {
             switch (app.backupProvider) {
@@ -135,12 +149,12 @@
             }
         },
 
-        async backupNow(app) {
+        async backupNow(app, options = {}) {
             switch (app.backupProvider) {
                 case 'github':
                     return await this.backupToGist(app);
                 case 'local':
-                    return await this.backupToLocalVersioning(app);
+                    return await this.backupToLocalVersioning(app, options);
                 case 'onedrive':
                 case 'gdrive':
                     return { success: false, error: `${providerLabel(app.backupProvider)} backup is not implemented yet.` };
@@ -324,7 +338,7 @@
             }
         },
 
-        async backupToLocalVersioning(app) {
+        async backupToLocalVersioning(app, options = {}) {
             if (!app.currentProject) {
                 return { success: false, error: 'No project selected' };
             }
@@ -340,7 +354,13 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(projectData)
+                    body: JSON.stringify({
+                        ...projectData,
+                        backupRequest: {
+                            reason: options.reason || 'manual',
+                            retention: this.retentionSettings(app)
+                        }
+                    })
                 });
 
                 const result = await response.json().catch(() => ({}));
@@ -353,7 +373,10 @@
                     provider: 'local',
                     backupId: result.backupId,
                     path: result.path,
-                    timestamp: result.timestamp
+                    timestamp: result.timestamp,
+                    skipped: !!result.skipped,
+                    backupCount: result.backupCount,
+                    backupLocation: result.backupLocation
                 };
             } catch (e) {
                 return { success: false, error: e.message };
@@ -382,8 +405,15 @@
                         ref: backup.id,
                         provider: 'local',
                         path: backup.path,
-                        size: backup.size
-                    }))
+                        size: backup.size,
+                        reason: backup.reason || 'manual',
+                        hash: backup.hash || '',
+                        wordCount: backup.wordCount || 0,
+                        chapterCount: backup.chapterCount || 0,
+                        sceneCount: backup.sceneCount || 0
+                    })),
+                    backupCount: result.backups ? result.backups.length : 0,
+                    backupLocation: result.backupLocation || ''
                 };
             } catch (e) {
                 return { success: false, error: e.message };
@@ -396,6 +426,11 @@
             }
 
             try {
+                const preRestore = await this.backupToLocalVersioning(app, { reason: 'before-restore' });
+                if (!preRestore.success) {
+                    return { success: false, error: `Could not create pre-restore snapshot: ${preRestore.error}` };
+                }
+
                 const query = new URLSearchParams({
                     projectId: String(app.currentProject.id),
                     backupId: String(backupId)
@@ -407,7 +442,106 @@
                 }
 
                 await this.restoreProjectData(app, backupData.backup);
-                return { success: true, provider: 'local' };
+                return { success: true, provider: 'local', preRestoreBackupId: preRestore.backupId };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async refreshLocalBackupInfo(app) {
+            if (!app.currentProject || app.backupProvider !== 'local') return;
+            const result = await this.listLocalBackups(app);
+            if (result.success) {
+                app.backupCount = result.backupCount || 0;
+                app.backupLocation = result.backupLocation || app.backupLocation || '';
+            }
+        },
+
+        async loadBackupLocation(app) {
+            try {
+                const response = await fetch(LOCAL_BACKUP_LOCATION_ENDPOINT);
+                const result = await response.json().catch(() => ({}));
+                if (response.ok && result.ok) {
+                    app.backupLocation = result.path || '';
+                }
+            } catch (e) {
+                console.warn('Failed to load backup location:', e);
+            }
+        },
+
+        async setBackupLocation(app, path) {
+            try {
+                const response = await fetch(LOCAL_BACKUP_LOCATION_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                app.backupLocation = result.path || '';
+                this.saveBackupSettings(app);
+                return { success: true, path: app.backupLocation };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async chooseBackupLocation(app) {
+            try {
+                const response = await fetch(LOCAL_BACKUP_CHOOSE_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ currentPath: app.backupLocation || '' })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                if (result.canceled) return { success: true, canceled: true };
+                app.backupLocation = result.path || '';
+                this.saveBackupSettings(app);
+                return { success: true, path: app.backupLocation };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async openBackupLocation(app) {
+            try {
+                const response = await fetch(LOCAL_BACKUP_OPEN_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: app.backupLocation || '' })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async cleanupLocalBackups(app, scope = 'project') {
+            try {
+                const response = await fetch(LOCAL_BACKUP_CLEANUP_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        scope,
+                        projectId: app.currentProject ? String(app.currentProject.id) : '',
+                        retention: this.retentionSettings(app)
+                    })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                app.backupCount = result.backupCount || 0;
+                return { success: true, deleted: result.deleted || 0 };
             } catch (e) {
                 return { success: false, error: e.message };
             }
@@ -484,10 +618,20 @@
                 if (!this.isAutoBackupReady(app) || !app.currentProject) return;
 
                 app.backupStatus = `Backing up to ${providerLabel(app.backupProvider)}...`;
-                const result = await this.backupNow(app);
+                const result = await this.backupNow(app, { reason: 'auto' });
                 if (result.success) {
-                    app.lastBackupTime = new Date();
-                    app.backupStatus = `${providerLabel(app.backupProvider)} backup complete`;
+                    if (result.skipped) {
+                        app.backupStatus = `${providerLabel(app.backupProvider)} unchanged`;
+                    } else {
+                        app.lastBackupTime = new Date();
+                        app.backupStatus = `${providerLabel(app.backupProvider)} backup complete`;
+                    }
+                    if (typeof result.backupCount === 'number') {
+                        app.backupCount = result.backupCount;
+                    }
+                    if (result.backupLocation) {
+                        app.backupLocation = result.backupLocation;
+                    }
                     if (result.gistId) {
                         app.currentProjectGistId = result.gistId;
                     }
@@ -515,9 +659,13 @@
                     token: app.githubToken,
                     gistId: app.currentProjectGistId,
                     username: app.githubUsername,
-                    lastBackupTime: app.lastBackupTime
+                    lastBackupTime: app.lastBackupTime,
+                    retentionMode: app.backupRetentionMode,
+                    retentionCount: app.backupRetentionCount,
+                    retentionDays: app.backupRetentionDays,
+                    location: app.backupLocation
                 };
-                localStorage.setItem('writingway:backupSettings', JSON.stringify(settings));
+                localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
             } catch (e) {
                 console.error('Failed to save backup settings:', e);
             }
@@ -525,16 +673,31 @@
 
         loadBackupSettings(app) {
             try {
-                const saved = localStorage.getItem('writingway:backupSettings');
-                if (!saved) return;
+                const saved = localStorage.getItem(SETTINGS_KEY);
+                if (!saved) {
+                    app.backupProvider = 'local';
+                    app.backupEnabled = true;
+                    app.backupRetentionMode = app.backupRetentionMode || 'count';
+                    app.backupRetentionCount = app.backupRetentionCount || 100;
+                    app.backupRetentionDays = app.backupRetentionDays || 30;
+                    this.saveBackupSettings(app);
+                    this.loadBackupLocation(app);
+                    setTimeout(() => this.startAutoBackup(app), 5000);
+                    return;
+                }
 
                 const settings = JSON.parse(saved);
-                app.backupProvider = settings.provider || 'github';
-                app.backupEnabled = settings.enabled || false;
+                app.backupProvider = settings.provider || 'local';
+                app.backupEnabled = settings.enabled !== undefined ? !!settings.enabled : true;
                 app.githubToken = settings.token || '';
                 app.currentProjectGistId = settings.gistId || '';
                 app.githubUsername = settings.username || '';
                 app.lastBackupTime = settings.lastBackupTime || null;
+                app.backupRetentionMode = settings.retentionMode || 'count';
+                app.backupRetentionCount = settings.retentionCount || 100;
+                app.backupRetentionDays = settings.retentionDays || 30;
+                app.backupLocation = settings.location || '';
+                this.loadBackupLocation(app);
 
                 if (app.backupEnabled && this.isProviderConfigured(app) && providerAvailable(app.backupProvider)) {
                     setTimeout(() => {

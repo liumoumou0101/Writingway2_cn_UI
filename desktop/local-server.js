@@ -59,8 +59,29 @@ function backupFilename(project, exportedAt) {
   return `${timestamp}--${sanitizeFilename(project.name || 'project')}--${sanitizeFilename(projectId)}.json`;
 }
 
-function backupDir(rootDir, projectId) {
-  return path.join(rootDir, 'project-backups', sanitizeFilename(projectId));
+function settingsPath(dataRoot) {
+  return path.join(dataRoot, '.writingway-settings.json');
+}
+
+async function readSettings(dataRoot) {
+  try {
+    return JSON.parse(await fsp.readFile(settingsPath(dataRoot), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+async function writeSettings(dataRoot, settings) {
+  await writeJsonAtomic(settingsPath(dataRoot), settings);
+}
+
+async function backupRoot(dataRoot) {
+  const settings = await readSettings(dataRoot);
+  return settings.backupLocation || path.join(dataRoot, 'project-backups');
+}
+
+async function backupDir(dataRoot, projectId) {
+  return path.join(await backupRoot(dataRoot), sanitizeFilename(projectId));
 }
 
 function jsonResponse(response, statusCode, payload, cors = false) {
@@ -103,6 +124,114 @@ async function writeJsonAtomic(filePath, payload) {
   const tempPath = path.join(path.dirname(filePath), `${path.basename(filePath)}.${crypto.randomUUID()}.tmp`);
   await fsp.writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   await fsp.rename(tempPath, filePath);
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function snapshotHash(payload) {
+  const clone = JSON.parse(JSON.stringify(payload));
+  delete clone.backupRequest;
+  delete clone.backupMeta;
+  delete clone.localBackupSavedAt;
+  delete clone.localBackupVersion;
+  return crypto.createHash('sha256').update(stableStringify(clone)).digest('hex');
+}
+
+function snapshotStats(payload) {
+  const sceneContents = payload.sceneContents || {};
+  const wordCount = Object.values(sceneContents).reduce((total, text) => {
+    const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+    return total + words.length;
+  }, 0);
+  return {
+    chapterCount: Array.isArray(payload.chapters) ? payload.chapters.length : 0,
+    sceneCount: Array.isArray(payload.scenes) ? payload.scenes.length : 0,
+    wordCount
+  };
+}
+
+async function listBackupFiles(dataRoot, projectId = '') {
+  const root = await backupRoot(dataRoot);
+  const dirs = [];
+  if (projectId) {
+    dirs.push(await backupDir(dataRoot, projectId));
+  } else {
+    try {
+      const entries = await fsp.readdir(root, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) dirs.push(path.join(root, entry.name));
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  const files = [];
+  for (const dir of dirs) {
+    try {
+      const entries = await fsp.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith('.json')) {
+          const filePath = path.join(dir, entry.name);
+          files.push({ dir, filePath, name: entry.name, stats: await fsp.stat(filePath) });
+        }
+      }
+    } catch {
+      // No backups for this project yet.
+    }
+  }
+  return files.sort((a, b) => b.stats.mtimeMs - a.stats.mtimeMs);
+}
+
+async function readBackupSummary(dataRoot, file) {
+  let payload = {};
+  try {
+    payload = JSON.parse(await fsp.readFile(file.filePath, 'utf8'));
+  } catch {
+    payload = {};
+  }
+  const meta = payload.backupMeta || {};
+  const stats = snapshotStats(payload);
+  return {
+    id: file.name,
+    timestamp: meta.createdAt || file.stats.mtime.toISOString(),
+    path: path.relative(await backupRoot(dataRoot), file.filePath).replace(/\\/g, '/'),
+    size: file.stats.size,
+    reason: meta.reason || 'manual',
+    hash: meta.hash || '',
+    chapterCount: meta.chapterCount || stats.chapterCount,
+    sceneCount: meta.sceneCount || stats.sceneCount,
+    wordCount: meta.wordCount || stats.wordCount
+  };
+}
+
+async function pruneBackups(dataRoot, projectId, retention) {
+  const mode = retention && retention.mode ? retention.mode : 'count';
+  if (mode === 'all') return 0;
+
+  const files = await listBackupFiles(dataRoot, projectId);
+  let toDelete = [];
+  if (mode === 'days') {
+    const days = Math.max(1, Number(retention.days || 30));
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    toDelete = files.filter((file) => file.stats.mtimeMs < cutoff);
+  } else {
+    const count = Math.max(1, Number(retention && retention.count || 100));
+    toDelete = files.slice(count);
+  }
+
+  for (const file of toDelete) {
+    await fsp.rm(file.filePath, { force: true });
+  }
+  return toDelete.length;
 }
 
 function runtimePlatform() {
@@ -399,7 +528,7 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       jsonResponse(response, 400, { ok: false, error: 'Missing projectId' });
       return true;
     }
-    const dir = backupDir(dataRoot, projectId);
+    const dir = await backupDir(dataRoot, projectId);
     const backups = [];
     try {
       const entries = await fsp.readdir(dir, { withFileTypes: true });
@@ -409,14 +538,13 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
         backups.push({
           id: entry.name,
           timestamp: stats.mtime.toISOString(),
-          path: path.relative(dataRoot, filePath).replace(/\\/g, '/'),
-          size: stats.size
+          ...(await readBackupSummary(dataRoot, { filePath, name: entry.name, stats }))
         });
       }
     } catch {
       // No backups yet.
     }
-    jsonResponse(response, 200, { ok: true, backups });
+    jsonResponse(response, 200, { ok: true, backups, backupLocation: await backupRoot(dataRoot) });
     return true;
   }
 
@@ -431,7 +559,7 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       jsonResponse(response, 400, { ok: false, error: 'Invalid backupId' });
       return true;
     }
-    const filePath = path.join(backupDir(dataRoot, projectId), backupId);
+    const filePath = path.join(await backupDir(dataRoot, projectId), backupId);
     if (!(await pathExists(filePath))) {
       jsonResponse(response, 404, { ok: false, error: 'Backup not found' });
       return true;
@@ -481,17 +609,45 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       if (!projectId) {
         throw new Error('Project id is required');
       }
-      const dir = backupDir(dataRoot, projectId);
-      const filename = backupFilename(project, payload.exportedAt);
+      const requestOptions = payload.backupRequest || {};
+      const reason = requestOptions.reason || 'manual';
+      const retention = requestOptions.retention || { mode: 'count', count: 100 };
+      const hash = snapshotHash(payload);
+      const existing = await listBackupFiles(dataRoot, projectId);
+      const latest = existing[0] ? await readBackupSummary(dataRoot, existing[0]) : null;
+      if (reason === 'auto' && latest && latest.hash === hash) {
+        jsonResponse(response, 200, {
+          ok: true,
+          skipped: true,
+          backupCount: existing.length,
+          backupLocation: await backupRoot(dataRoot),
+          timestamp: new Date().toISOString()
+        });
+        return true;
+      }
+      const dir = await backupDir(dataRoot, projectId);
+      const baseFilename = backupFilename(project, payload.exportedAt);
+      const filename = `${baseFilename.slice(0, -5)}--${sanitizeFilename(reason)}.json`;
       const target = path.join(dir, filename);
+      const stats = snapshotStats(payload);
       payload.localBackupSavedAt = new Date().toISOString();
       payload.localBackupVersion = 1;
+      payload.backupMeta = {
+        reason,
+        hash,
+        createdAt: payload.localBackupSavedAt,
+        ...stats
+      };
       await writeJsonAtomic(target, payload);
+      await pruneBackups(dataRoot, projectId, retention);
+      const backupCount = (await listBackupFiles(dataRoot, projectId)).length;
       jsonResponse(response, 200, {
         ok: true,
         backupId: filename,
-        path: path.relative(dataRoot, target).replace(/\\/g, '/'),
-        timestamp: payload.localBackupSavedAt
+        path: path.relative(await backupRoot(dataRoot), target).replace(/\\/g, '/'),
+        timestamp: payload.localBackupSavedAt,
+        backupCount,
+        backupLocation: await backupRoot(dataRoot)
       });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message });
@@ -515,6 +671,43 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       ok: true,
       message: 'Writingway is shutting down. Restart the launcher to enable local AI.'
     });
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/backup-location') {
+    jsonResponse(response, 200, { ok: true, path: await backupRoot(dataRoot) });
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/backup-location') {
+    try {
+      const payload = await readJsonPayload(request);
+      const settings = await readSettings(dataRoot);
+      const nextPath = String(payload.path || '').trim();
+      settings.backupLocation = nextPath ? path.resolve(nextPath) : '';
+      await writeSettings(dataRoot, settings);
+      await fsp.mkdir(await backupRoot(dataRoot), { recursive: true });
+      jsonResponse(response, 200, { ok: true, path: await backupRoot(dataRoot) });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/cleanup-backups') {
+    try {
+      const payload = await readJsonPayload(request);
+      const scope = payload.scope === 'all' ? 'all' : 'project';
+      const projectId = scope === 'all' ? '' : String(payload.projectId || '').trim();
+      if (scope === 'project' && !projectId) throw new Error('Missing projectId');
+      const files = await listBackupFiles(dataRoot, projectId);
+      for (const file of files) {
+        await fsp.rm(file.filePath, { force: true });
+      }
+      jsonResponse(response, 200, { ok: true, deleted: files.length, backupCount: 0 });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
     return true;
   }
 
@@ -681,11 +874,45 @@ function createServer(port, requestHandler) {
   });
 }
 
-async function startDesktopServers({ appRoot, dataRoot }) {
+async function startDesktopServers({ appRoot, dataRoot, chooseBackupFolder, openPath }) {
   await fsp.mkdir(path.join(dataRoot, 'projects'), { recursive: true });
   await fsp.mkdir(path.join(dataRoot, 'project-backups'), { recursive: true });
 
   const appServer = await createServer(APP_PORT, async (request, response, parsedUrl) => {
+    if (request.method === 'POST' && parsedUrl.pathname === '/api/choose-backup-folder') {
+      try {
+        if (typeof chooseBackupFolder !== 'function') throw new Error('Folder picker is not available in this environment.');
+        const payload = await readJsonPayload(request).catch(() => ({}));
+        const selected = await chooseBackupFolder(payload.currentPath || await backupRoot(dataRoot));
+        if (!selected) {
+          jsonResponse(response, 200, { ok: true, canceled: true });
+          return;
+        }
+        const settings = await readSettings(dataRoot);
+        settings.backupLocation = path.resolve(selected);
+        await writeSettings(dataRoot, settings);
+        await fsp.mkdir(await backupRoot(dataRoot), { recursive: true });
+        jsonResponse(response, 200, { ok: true, path: await backupRoot(dataRoot) });
+      } catch (error) {
+        jsonResponse(response, 500, { ok: false, error: error.message });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && parsedUrl.pathname === '/api/open-backup-folder') {
+      try {
+        const target = await backupRoot(dataRoot);
+        await fsp.mkdir(target, { recursive: true });
+        if (typeof openPath !== 'function') throw new Error('Open folder is not available in this environment.');
+        const result = await openPath(target);
+        if (result) throw new Error(result);
+        jsonResponse(response, 200, { ok: true });
+      } catch (error) {
+        jsonResponse(response, 500, { ok: false, error: error.message });
+      }
+      return;
+    }
+
     if (await handleAppApi(request, response, appRoot, dataRoot, parsedUrl)) {
       return;
     }

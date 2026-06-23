@@ -2410,6 +2410,9 @@ document.addEventListener('alpine:init', () => {
 
             async openBackupSettings() {
                 this.showBackupSettings = true;
+                if (window.BackupManager && typeof window.BackupManager.refreshLocalBackupInfo === 'function') {
+                    window.BackupManager.refreshLocalBackupInfo(this);
+                }
             },
 
             async closeBackupSettings() {
@@ -2451,6 +2454,14 @@ document.addEventListener('alpine:init', () => {
                     this.githubUsername = '';
                 }
 
+                if (this.backupProvider === 'local' && this.backupLocation) {
+                    const locationResult = await window.BackupManager.setBackupLocation(this, this.backupLocation);
+                    if (!locationResult.success) {
+                        alert('Failed to save backup location: ' + locationResult.error);
+                        return;
+                    }
+                }
+
                 window.BackupManager.saveBackupSettings(this);
 
                 if (window.BackupManager.isAutoBackupReady(this)) {
@@ -2471,11 +2482,21 @@ document.addEventListener('alpine:init', () => {
                 }
 
                 this.backupStatus = `Backing up to ${this.backupProviderName()}...`;
-                const result = await window.BackupManager.backupNow(this);
+                const result = await window.BackupManager.backupNow(this, { reason: 'manual' });
 
                 if (result.success) {
-                    this.lastBackupTime = new Date();
-                    this.backupStatus = `Backed up to ${this.backupProviderName()}`;
+                    if (result.skipped) {
+                        this.backupStatus = `${this.backupProviderName()} unchanged`;
+                    } else {
+                        this.lastBackupTime = new Date();
+                        this.backupStatus = `Backed up to ${this.backupProviderName()}`;
+                    }
+                    if (typeof result.backupCount === 'number') {
+                        this.backupCount = result.backupCount;
+                    }
+                    if (result.backupLocation) {
+                        this.backupLocation = result.backupLocation;
+                    }
                     if (result.gistId) {
                         this.currentProjectGistId = result.gistId;
                     }
@@ -2498,6 +2519,12 @@ document.addEventListener('alpine:init', () => {
 
                 if (result.success) {
                     this.backupList = result.backups;
+                    if (typeof result.backupCount === 'number') {
+                        this.backupCount = result.backupCount;
+                    }
+                    if (result.backupLocation) {
+                        this.backupLocation = result.backupLocation;
+                    }
                     this.showRestoreModal = true;
                     this.backupStatus = '';
                 } else {
@@ -2512,7 +2539,7 @@ document.addEventListener('alpine:init', () => {
             },
 
             async restoreBackup(backupRef) {
-                if (!confirm('This will replace your current project with the backup. Continue?')) {
+                if (!confirm('This will create a pre-restore snapshot, then replace your current project with the selected backup. Continue?')) {
                     return;
                 }
 
@@ -2521,12 +2548,50 @@ document.addEventListener('alpine:init', () => {
 
                 if (result.success) {
                     this.backupStatus = 'Restored';
-                    alert(`${this.backupProviderName()} backup restored successfully!`);
+                    const extra = result.preRestoreBackupId ? `\n\nA pre-restore snapshot was created: ${result.preRestoreBackupId}` : '';
+                    alert(`${this.backupProviderName()} backup restored successfully!${extra}`);
                     this.showRestoreModal = false;
                     this.backupList = [];
                 } else {
                     this.backupStatus = 'Restore failed';
                     alert('Restore failed: ' + result.error);
+                }
+            },
+
+            async chooseBackupLocation() {
+                if (!window.BackupManager || typeof window.BackupManager.chooseBackupLocation !== 'function') return;
+                const result = await window.BackupManager.chooseBackupLocation(this);
+                if (!result.success) {
+                    alert('Failed to choose backup folder: ' + result.error);
+                }
+            },
+
+            async openBackupLocation() {
+                if (!window.BackupManager || typeof window.BackupManager.openBackupLocation !== 'function') return;
+                const result = await window.BackupManager.openBackupLocation(this);
+                if (!result.success) {
+                    alert('Failed to open backup folder: ' + result.error);
+                }
+            },
+
+            async resetBackupLocation() {
+                if (!window.BackupManager || typeof window.BackupManager.setBackupLocation !== 'function') return;
+                const result = await window.BackupManager.setBackupLocation(this, '');
+                if (!result.success) {
+                    alert('Failed to reset backup folder: ' + result.error);
+                }
+            },
+
+            async cleanupLocalBackups(scope = 'project') {
+                if (!window.BackupManager || typeof window.BackupManager.cleanupLocalBackups !== 'function') return;
+                const label = scope === 'all' ? 'all local backup files' : 'this project’s local backups';
+                if (!confirm(`This will permanently delete ${label}. Continue?`)) return;
+                const result = await window.BackupManager.cleanupLocalBackups(this, scope);
+                if (result.success) {
+                    this.backupStatus = `Deleted ${result.deleted} backup file(s)`;
+                    alert(`Deleted ${result.deleted} backup file(s).`);
+                } else {
+                    alert('Failed to clean backups: ' + result.error);
                 }
             }
         }; // End of app state + methods

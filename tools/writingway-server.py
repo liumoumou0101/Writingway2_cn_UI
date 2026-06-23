@@ -19,6 +19,7 @@ import tempfile
 import threading
 import urllib.request
 import zipfile
+import hashlib
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +32,7 @@ PORT = 8000
 ROOT = Path(__file__).resolve().parent.parent
 PROJECTS_DIR = ROOT / "projects"
 BACKUPS_DIR = ROOT / "project-backups"
+SETTINGS_FILE = ROOT / ".writingway-settings.json"
 MODELS_DIR = ROOT / "models"
 LLAMA_DIR = ROOT / "llama"
 LLAMA_RELEASE_API = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
@@ -60,7 +62,29 @@ def project_filename(project: dict) -> str:
 
 def project_backup_dir(project_id: str) -> Path:
     safe_project_id = sanitize_filename(project_id)
-    return BACKUPS_DIR / safe_project_id
+    return backup_root_dir() / safe_project_id
+
+
+def read_settings() -> dict:
+    try:
+        return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def write_settings(settings: dict) -> None:
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=str(SETTINGS_FILE.parent), delete=False, suffix=".tmp") as f:
+        json.dump(settings, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+        temp_name = f.name
+    os.replace(temp_name, SETTINGS_FILE)
+
+
+def backup_root_dir() -> Path:
+    settings = read_settings()
+    custom_path = str(settings.get("backupLocation") or "").strip()
+    return Path(custom_path).expanduser().resolve() if custom_path else BACKUPS_DIR
 
 
 def runtime_platform() -> tuple[str, str]:
@@ -145,6 +169,84 @@ def backup_filename(project: dict, exported_at: str | None = None) -> str:
     timestamp = exported_at or datetime.now(timezone.utc).isoformat()
     timestamp = timestamp.replace(":", "-").replace(".", "-").replace("+00:00", "Z")
     return f"{timestamp}--{safe_name}--{sanitize_filename(project_id)}.json"
+
+
+def stable_json(value) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def snapshot_hash(payload: dict) -> str:
+    clone = dict(payload)
+    for key in ("backupRequest", "backupMeta", "localBackupSavedAt", "localBackupVersion"):
+        clone.pop(key, None)
+    return hashlib.sha256(stable_json(clone).encode("utf-8")).hexdigest()
+
+
+def snapshot_stats(payload: dict) -> dict:
+    scene_contents = payload.get("sceneContents") or {}
+    word_count = 0
+    for text in scene_contents.values():
+        words = [w for w in str(text or "").strip().split() if w]
+        word_count += len(words)
+    return {
+        "chapterCount": len(payload.get("chapters") or []),
+        "sceneCount": len(payload.get("scenes") or []),
+        "wordCount": word_count,
+    }
+
+
+def list_backup_files(project_id: str | None = None) -> list[Path]:
+    root = backup_root_dir()
+    if project_id:
+        dirs = [project_backup_dir(project_id)]
+    elif root.exists():
+        dirs = [p for p in root.iterdir() if p.is_dir()]
+    else:
+        dirs = []
+
+    files: list[Path] = []
+    for directory in dirs:
+        if directory.exists():
+            files.extend(path for path in directory.glob("*.json") if path.is_file())
+    return sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+def backup_summary(path: Path) -> dict:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        payload = {}
+    meta = payload.get("backupMeta") or {}
+    stats = snapshot_stats(payload)
+    stat = path.stat()
+    return {
+        "id": path.name,
+        "timestamp": meta.get("createdAt") or datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+        "path": str(path.relative_to(backup_root_dir())),
+        "size": stat.st_size,
+        "reason": meta.get("reason") or "manual",
+        "hash": meta.get("hash") or "",
+        "chapterCount": meta.get("chapterCount") or stats["chapterCount"],
+        "sceneCount": meta.get("sceneCount") or stats["sceneCount"],
+        "wordCount": meta.get("wordCount") or stats["wordCount"],
+    }
+
+
+def prune_backups(project_id: str, retention: dict) -> int:
+    mode = retention.get("mode") or "count"
+    if mode == "all":
+        return 0
+    files = list_backup_files(project_id)
+    if mode == "days":
+        days = max(1, int(retention.get("days") or 30))
+        cutoff = datetime.now(timezone.utc).timestamp() - days * 24 * 60 * 60
+        delete_files = [path for path in files if path.stat().st_mtime < cutoff]
+    else:
+        count = max(1, int(retention.get("count") or 100))
+        delete_files = files[count:]
+    for path in delete_files:
+        path.unlink(missing_ok=True)
+    return len(delete_files)
 
 
 def github_json(url: str) -> dict:
@@ -342,6 +444,9 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/get-backup":
             self.handle_get_backup(parsed.query)
             return
+        if parsed.path == "/api/backup-location":
+            self.respond_json(HTTPStatus.OK, {"ok": True, "path": str(backup_root_dir())})
+            return
         super().do_GET()
 
     def do_POST(self):
@@ -353,6 +458,18 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
             return
         if self.path == "/api/create-backup":
             self.handle_create_backup()
+            return
+        if self.path == "/api/backup-location":
+            self.handle_backup_location()
+            return
+        if self.path == "/api/cleanup-backups":
+            self.handle_cleanup_backups()
+            return
+        if self.path == "/api/open-backup-folder":
+            self.handle_open_backup_folder()
+            return
+        if self.path == "/api/choose-backup-folder":
+            self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Folder picker is available in the desktop app. Paste a path instead."})
             return
         if self.path == "/api/shutdown":
             self.handle_shutdown()
@@ -458,11 +575,37 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
 
             backup_dir = project_backup_dir(project_id)
             backup_dir.mkdir(parents=True, exist_ok=True)
-            filename = backup_filename(project, payload.get("exportedAt"))
+            request_options = payload.get("backupRequest") or {}
+            reason = sanitize_filename(str(request_options.get("reason") or "manual"))
+            retention = request_options.get("retention") or {"mode": "count", "count": 100}
+            hash_value = snapshot_hash(payload)
+            existing = list_backup_files(project_id)
+            if reason == "auto" and existing:
+                latest = backup_summary(existing[0])
+                if latest.get("hash") == hash_value:
+                    self.respond_json(
+                        HTTPStatus.OK,
+                        {
+                            "ok": True,
+                            "skipped": True,
+                            "backupCount": len(existing),
+                            "backupLocation": str(backup_root_dir()),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
+                    return
+            base_filename = backup_filename(project, payload.get("exportedAt"))
+            filename = f"{base_filename[:-5]}--{reason}.json"
             target = backup_dir / filename
 
             payload["localBackupSavedAt"] = datetime.now(timezone.utc).isoformat()
             payload["localBackupVersion"] = 1
+            payload["backupMeta"] = {
+                "reason": reason,
+                "hash": hash_value,
+                "createdAt": payload["localBackupSavedAt"],
+                **snapshot_stats(payload),
+            }
 
             with tempfile.NamedTemporaryFile(
                 "w",
@@ -476,14 +619,18 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
                 temp_name = tmp_file.name
 
             os.replace(temp_name, target)
+            prune_backups(project_id, retention)
+            backup_count = len(list_backup_files(project_id))
 
             self.respond_json(
                 HTTPStatus.OK,
                 {
                     "ok": True,
                     "backupId": filename,
-                    "path": str(target.relative_to(ROOT)),
+                    "path": str(target.relative_to(backup_root_dir())),
                     "timestamp": payload["localBackupSavedAt"],
+                    "backupCount": backup_count,
+                    "backupLocation": str(backup_root_dir()),
                 },
             )
         except Exception as exc:
@@ -527,18 +674,10 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
             backup_dir = project_backup_dir(project_id)
             backups = []
             if backup_dir.exists():
-                for backup_file in sorted(backup_dir.glob("*.json"), reverse=True):
-                    stat = backup_file.stat()
-                    backups.append(
-                        {
-                            "id": backup_file.name,
-                            "timestamp": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-                            "path": str(backup_file.relative_to(ROOT)),
-                            "size": stat.st_size,
-                        }
-                    )
+                for backup_file in list_backup_files(project_id):
+                    backups.append(backup_summary(backup_file))
 
-            self.respond_json(HTTPStatus.OK, {"ok": True, "backups": backups})
+            self.respond_json(HTTPStatus.OK, {"ok": True, "backups": backups, "backupLocation": str(backup_root_dir())})
         except Exception as exc:
             self.respond_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -573,10 +712,56 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
                 {"ok": False, "error": str(exc)},
             )
 
+    def handle_backup_location(self):
+        payload = self.read_json_payload()
+        if payload is None:
+            return
+        try:
+            settings = read_settings()
+            path_value = str(payload.get("path") or "").strip()
+            settings["backupLocation"] = str(Path(path_value).expanduser().resolve()) if path_value else ""
+            write_settings(settings)
+            backup_root_dir().mkdir(parents=True, exist_ok=True)
+            self.respond_json(HTTPStatus.OK, {"ok": True, "path": str(backup_root_dir())})
+        except Exception as exc:
+            self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+
+    def handle_cleanup_backups(self):
+        payload = self.read_json_payload()
+        if payload is None:
+            return
+        try:
+            scope = "all" if payload.get("scope") == "all" else "project"
+            project_id = "" if scope == "all" else str(payload.get("projectId") or "").strip()
+            if scope == "project" and not project_id:
+                raise ValueError("Missing projectId")
+            files = list_backup_files(project_id or None)
+            for path in files:
+                path.unlink(missing_ok=True)
+            self.respond_json(HTTPStatus.OK, {"ok": True, "deleted": len(files), "backupCount": 0})
+        except Exception as exc:
+            self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+
+    def handle_open_backup_folder(self):
+        try:
+            target = backup_root_dir()
+            target.mkdir(parents=True, exist_ok=True)
+            if platform.system().lower() == "windows":
+                os.startfile(str(target))  # type: ignore[attr-defined]
+            elif platform.system().lower() == "darwin":
+                import subprocess
+                subprocess.Popen(["open", str(target)])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", str(target)])
+            self.respond_json(HTTPStatus.OK, {"ok": True})
+        except Exception as exc:
+            self.respond_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+
 
 def main():
     PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
-    BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+    backup_root_dir().mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), WritingwayHandler)
     print(f"Writingway server running at http://{HOST}:{PORT}")
     print(f"Project saves will be written to {PROJECTS_DIR}")

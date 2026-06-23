@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, shell } = require('electron');
 const http = require('http');
 const path = require('path');
 const { startDesktopServers } = require('./local-server');
@@ -38,7 +38,16 @@ async function startServices() {
 
   managedServers = await startDesktopServers({
     appRoot: rootDir,
-    dataRoot: app.isPackaged ? app.getPath('userData') : rootDir
+    dataRoot: app.isPackaged ? app.getPath('userData') : rootDir,
+    chooseBackupFolder: async (currentPath) => {
+      const result = await dialog.showOpenDialog({
+        title: 'Choose backup folder',
+        defaultPath: currentPath || app.getPath('documents'),
+        properties: ['openDirectory', 'createDirectory']
+      });
+      return result.canceled ? null : result.filePaths[0];
+    },
+    openPath: async (targetPath) => shell.openPath(targetPath)
   });
   console.log('Writingway desktop services are ready.');
 }
