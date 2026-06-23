@@ -453,6 +453,8 @@
                         note: backup.note || '',
                         pinned: !!backup.pinned,
                         hash: backup.hash || '',
+                        health: backup.health || 'ok',
+                        healthMessage: backup.healthMessage || '',
                         wordCount: backup.wordCount || 0,
                         chapterCount: backup.chapterCount || 0,
                         sceneCount: backup.sceneCount || 0
@@ -480,6 +482,8 @@
                 note: backup.note || '',
                 pinned: !!backup.pinned,
                 hash: backup.hash || '',
+                health: backup.health || 'ok',
+                healthMessage: backup.healthMessage || '',
                 wordCount: backup.wordCount || 0,
                 chapterCount: backup.chapterCount || 0,
                 sceneCount: backup.sceneCount || 0

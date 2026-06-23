@@ -198,13 +198,16 @@ async function listBackupFiles(dataRoot, projectId = '') {
 
 async function readBackupSummary(dataRoot, file) {
   let payload = {};
+  let parseError = '';
   try {
     payload = JSON.parse(await fsp.readFile(file.filePath, 'utf8'));
-  } catch {
+  } catch (error) {
+    parseError = error.message || 'Invalid JSON';
     payload = {};
   }
   const meta = payload.backupMeta || {};
   const stats = snapshotStats(payload);
+  const healthy = !parseError && !!(payload.project && payload.project.id) && Array.isArray(payload.chapters) && Array.isArray(payload.scenes) && !!payload.sceneContents;
   return {
     id: file.name,
     projectId: payload.project && payload.project.id ? String(payload.project.id) : '',
@@ -218,7 +221,9 @@ async function readBackupSummary(dataRoot, file) {
     hash: meta.hash || '',
     chapterCount: meta.chapterCount || stats.chapterCount,
     sceneCount: meta.sceneCount || stats.sceneCount,
-    wordCount: meta.wordCount || stats.wordCount
+    wordCount: meta.wordCount || stats.wordCount,
+    health: healthy ? 'ok' : 'invalid',
+    healthMessage: healthy ? '' : (parseError || 'Backup is missing required project data')
   };
 }
 

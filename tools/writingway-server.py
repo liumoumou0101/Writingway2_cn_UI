@@ -218,13 +218,22 @@ def list_backup_files(project_id: str | None = None) -> list[Path]:
 
 
 def backup_summary(path: Path) -> dict:
+    parse_error = ""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        parse_error = str(exc)
         payload = {}
     meta = payload.get("backupMeta") or {}
     stats = snapshot_stats(payload)
     stat = path.stat()
+    healthy = (
+        not parse_error
+        and bool((payload.get("project") or {}).get("id"))
+        and isinstance(payload.get("chapters"), list)
+        and isinstance(payload.get("scenes"), list)
+        and isinstance(payload.get("sceneContents"), dict)
+    )
     return {
         "id": path.name,
         "projectId": str((payload.get("project") or {}).get("id") or ""),
@@ -239,6 +248,8 @@ def backup_summary(path: Path) -> dict:
         "chapterCount": meta.get("chapterCount") or stats["chapterCount"],
         "sceneCount": meta.get("sceneCount") or stats["sceneCount"],
         "wordCount": meta.get("wordCount") or stats["wordCount"],
+        "health": "ok" if healthy else "invalid",
+        "healthMessage": "" if healthy else (parse_error or "Backup is missing required project data"),
     }
 
 

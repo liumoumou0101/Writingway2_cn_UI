@@ -92,6 +92,8 @@ async function createBackup(payload, requestOptions) {
         assert.strictEqual(list.backups.length, 1, 'one backup should be listed after first create');
         assert.strictEqual(list.backups[0].pinned, false, 'new backups should not be pinned by default');
         assert.strictEqual(list.backups[0].note, 'stable draft', 'backup note should be preserved');
+        assert.strictEqual(list.backups[0].health, 'ok', 'valid backups should report healthy status');
+        assert.ok(list.backups[0].size > 0, 'backup summary should include file size');
 
         const pinned = await api('/api/update-backup', {
             method: 'POST',

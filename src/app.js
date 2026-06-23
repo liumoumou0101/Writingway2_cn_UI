@@ -2396,6 +2396,45 @@ document.addEventListener('alpine:init', () => {
                 return (this.backupList || []).filter(backup => backup.reason === this.backupListFilter);
             },
 
+            backupTimelineGroups() {
+                const backups = this.filteredBackupList();
+                const groups = [];
+                const pinned = backups.filter(backup => backup.pinned);
+                const regular = backups.filter(backup => !backup.pinned);
+                const now = new Date();
+                const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                const startYesterday = startToday - 24 * 60 * 60 * 1000;
+                const startWeek = startToday - 6 * 24 * 60 * 60 * 1000;
+
+                const addGroup = (key, labelKey, items) => {
+                    if (items.length > 0) groups.push({ key, label: this.t(labelKey), backups: items });
+                };
+
+                addGroup('pinned', 'backup.timelinePinned', pinned);
+                addGroup('today', 'backup.timelineToday', regular.filter(backup => Date.parse(backup.timestamp || 0) >= startToday));
+                addGroup('yesterday', 'backup.timelineYesterday', regular.filter(backup => {
+                    const time = Date.parse(backup.timestamp || 0);
+                    return time >= startYesterday && time < startToday;
+                }));
+                addGroup('week', 'backup.timelineThisWeek', regular.filter(backup => {
+                    const time = Date.parse(backup.timestamp || 0);
+                    return time >= startWeek && time < startYesterday;
+                }));
+                addGroup('older', 'backup.timelineOlder', regular.filter(backup => Date.parse(backup.timestamp || 0) < startWeek || Number.isNaN(Date.parse(backup.timestamp || 0))));
+                return groups;
+            },
+
+            backupStorageSummary() {
+                const backups = this.backupList || [];
+                const totalSize = backups.reduce((total, backup) => total + Number(backup.size || 0), 0);
+                return {
+                    count: backups.length,
+                    pinnedCount: backups.filter(backup => backup.pinned).length,
+                    invalidCount: backups.filter(backup => backup.health && backup.health !== 'ok').length,
+                    totalSize
+                };
+            },
+
             backupPreview(backup) {
                 const currentWords = this.totalWords || 0;
                 const targetWords = Number(backup?.wordCount || 0);

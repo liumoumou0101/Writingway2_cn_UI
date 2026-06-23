@@ -133,6 +133,7 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
                 alpineApp.currentProject = project;
                 alpineApp.chapters = [chapter];
                 alpineApp.scenes = [scene];
+                alpineApp.backupList = backups.success ? backups.backups : [];
                 confirmText = alpineApp.restoreBackupConfirmMessage(noteUpdate.backup, {
                     stats: alpineApp.backupPreview(noteUpdate.backup),
                     sceneDiff: { added: [], removed: [], modified: [], unchanged: 1 }
@@ -144,6 +145,8 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
                     backupText: 'original text'
                 });
             }
+            const storageSummary = alpineApp ? alpineApp.backupStorageSummary() : {};
+            const timelineGroups = alpineApp ? alpineApp.backupTimelineGroups().map(group => ({ key: group.key, count: group.backups.length })) : [];
 
             return {
                 restoredText: restoredContent && restoredContent.text,
@@ -152,6 +155,9 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
                 editedNote: noteUpdate.backup && noteUpdate.backup.note,
                 importedProjectName: importedProject && importedProject.name,
                 hasExportMethod: !!window.BackupManager.exportLocalBackup,
+                storageCount: storageSummary.count || 0,
+                storageSize: storageSummary.totalSize || 0,
+                timelineGroupKeys: timelineGroups.map(group => group.key),
                 confirmText,
                 sceneConfirmText,
                 backupCount: backups.success ? backups.backups.length : 0,
@@ -165,6 +171,9 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
         assert.strictEqual(result.editedNote, 'edited in browser test', 'backup note should be editable through BackupManager');
         assert.strictEqual(result.importedProjectName, 'Browser Backup Test (Recovered)', 'backup JSON should import as a recovered project');
         assert.strictEqual(result.hasExportMethod, true, 'BackupManager should expose JSON export');
+        assert.ok(result.storageCount >= 3, 'backup storage summary should count local backups');
+        assert.ok(result.storageSize > 0, 'backup storage summary should include total file size');
+        assert.ok(result.timelineGroupKeys.length > 0, 'backup timeline should return visible groups');
         assert.match(result.confirmText, /pre-restore snapshot|恢复前快照/, 'project restore confirmation should mention pre-restore snapshot');
         assert.match(result.confirmText, /replace|替换/, 'project restore confirmation should mention replacement');
         assert.match(result.sceneConfirmText, /Only this scene|只会修改这个场景/, 'scene restore confirmation should describe scene-level impact');
