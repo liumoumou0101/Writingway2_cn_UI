@@ -27,7 +27,6 @@
         "files": [
             "desktop/**/*",
             "src/**/*",
-            "tools/**/*",
             "main.html",
             "logo.png",
             "favicon.ico",

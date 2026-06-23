@@ -1,25 +1,12 @@
 const { app, BrowserWindow, dialog } = require('electron');
-const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
+const { startDesktopServers } = require('./local-server');
 
 const rootDir = path.resolve(__dirname, '..');
 const appUrl = 'http://127.0.0.1:8000/main.html';
 
-const services = [
-  {
-    name: 'Writingway app server',
-    url: 'http://127.0.0.1:8000/main.html',
-    script: path.join(rootDir, 'tools', 'writingway-server.py')
-  },
-  {
-    name: 'Writingway updater server',
-    url: 'http://127.0.0.1:8001/version',
-    script: path.join(rootDir, 'tools', 'updater-server.py')
-  }
-];
-
-const managedProcesses = [];
+let managedServers = null;
 
 function isReachable(url, timeoutMs = 900) {
   return new Promise((resolve) => {
@@ -36,61 +23,24 @@ function isReachable(url, timeoutMs = 900) {
   });
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+async function startServices() {
+  const appServerReady = await isReachable('http://127.0.0.1:8000/main.html');
+  const updaterServerReady = await isReachable('http://127.0.0.1:8001/version');
 
-function startPythonScript(service) {
-  const child = spawn('python', [service.script], {
-    cwd: rootDir,
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-
-  child.stdout.on('data', (data) => {
-    console.log(`[${service.name}] ${data.toString().trim()}`);
-  });
-
-  child.stderr.on('data', (data) => {
-    console.error(`[${service.name}] ${data.toString().trim()}`);
-  });
-
-  child.on('error', (error) => {
-    console.error(`[${service.name}] failed to start: ${error.message}`);
-  });
-
-  child.on('exit', (code, signal) => {
-    console.log(`[${service.name}] exited with code ${code} signal ${signal}`);
-  });
-
-  managedProcesses.push(child);
-  return child;
-}
-
-async function ensureService(service) {
-  if (await isReachable(service.url)) {
-    console.log(`${service.name} is already running.`);
+  if (appServerReady && updaterServerReady) {
+    console.log('Writingway local services are already running.');
     return;
   }
 
-  console.log(`Starting ${service.name}...`);
-  startPythonScript(service);
-
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    await delay(500);
-    if (await isReachable(service.url)) {
-      console.log(`${service.name} is ready.`);
-      return;
-    }
+  if (appServerReady || updaterServerReady) {
+    throw new Error('Port 8000 or 8001 is already in use. Close the other Writingway launcher and try again.');
   }
 
-  throw new Error(`${service.name} did not become ready in time.`);
-}
-
-async function startServices() {
-  for (const service of services) {
-    await ensureService(service);
-  }
+  managedServers = await startDesktopServers({
+    appRoot: rootDir,
+    dataRoot: app.isPackaged ? app.getPath('userData') : rootDir
+  });
+  console.log('Writingway desktop services are ready.');
 }
 
 function createWindow() {
@@ -122,11 +72,10 @@ function createWindow() {
   }
 }
 
-function stopManagedProcesses() {
-  for (const child of managedProcesses) {
-    if (!child.killed) {
-      child.kill();
-    }
+function stopManagedServers() {
+  if (managedServers) {
+    managedServers.close();
+    managedServers = null;
   }
 }
 
@@ -147,7 +96,7 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', stopManagedProcesses);
+app.on('before-quit', stopManagedServers);
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

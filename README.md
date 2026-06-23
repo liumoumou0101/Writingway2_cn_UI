@@ -69,7 +69,6 @@ This fork also includes an experimental Electron desktop shell. It starts the lo
 Requirements:
 
 - Node.js and npm for development
-- Python 3 available on `PATH`
 
 Run the desktop shell:
 
@@ -96,7 +95,7 @@ If Electron Builder downloads are unstable on your network, run this first in Po
 $env:ELECTRON_BUILDER_BINARIES_MIRROR='https://npmmirror.com/mirrors/electron-builder-binaries/'
 ```
 
-The desktop build currently still depends on Python being installed on the user's machine. Local GGUF model startup remains handled by `start.bat` for now.
+The desktop build serves the app through Electron's built-in Node runtime, so end users do not need Python for the desktop app. Local GGUF model startup remains handled by `start.bat` for now.
 
 ### macOS / Linux
 
