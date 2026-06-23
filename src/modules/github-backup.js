@@ -5,6 +5,7 @@
     const BACKUP_INTERVAL = 5 * 60 * 1000;
     const LOCAL_BACKUP_CREATE_ENDPOINT = '/api/create-backup';
     const LOCAL_BACKUP_LIST_ENDPOINT = '/api/list-backups';
+    const LOCAL_BACKUP_LIST_ALL_ENDPOINT = '/api/list-all-backups';
     const LOCAL_BACKUP_GET_ENDPOINT = '/api/get-backup';
     const LOCAL_BACKUP_CLEANUP_ENDPOINT = '/api/cleanup-backups';
     const LOCAL_BACKUP_LOCATION_ENDPOINT = '/api/backup-location';
@@ -29,6 +30,10 @@
 
     function providerAvailable(provider) {
         return provider === 'github' || provider === 'local';
+    }
+
+    function newId(prefix) {
+        return `${Date.now()}-${prefix}-${Math.random().toString(36).slice(2, 9)}`;
     }
 
     async function listByProject(tableName, projectId, sortField) {
@@ -426,6 +431,43 @@
             }
         },
 
+        normalizeLocalBackupList(backups) {
+            return (backups || []).map(backup => ({
+                id: backup.id,
+                version: backup.id,
+                timestamp: backup.timestamp,
+                ref: backup.id,
+                provider: 'local',
+                projectId: backup.projectId || '',
+                projectName: backup.projectName || '',
+                path: backup.path,
+                size: backup.size,
+                reason: backup.reason || 'manual',
+                note: backup.note || '',
+                hash: backup.hash || '',
+                wordCount: backup.wordCount || 0,
+                chapterCount: backup.chapterCount || 0,
+                sceneCount: backup.sceneCount || 0
+            }));
+        },
+
+        async listAllLocalBackups() {
+            try {
+                const response = await fetch(LOCAL_BACKUP_LIST_ALL_ENDPOINT);
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                return {
+                    success: true,
+                    backups: this.normalizeLocalBackupList(result.backups),
+                    backupLocation: result.backupLocation || ''
+                };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
         async restoreFromLocalBackup(app, backupId) {
             if (!app.currentProject) {
                 return { success: false, error: 'No project selected' };
@@ -449,6 +491,46 @@
 
                 await this.restoreProjectData(app, backupData.backup);
                 return { success: true, provider: 'local', preRestoreBackupId: preRestore.backupId };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async getLocalBackupData(projectId, backupId) {
+            try {
+                const query = new URLSearchParams({
+                    projectId: String(projectId),
+                    backupId: String(backupId)
+                });
+                const response = await fetch(`${LOCAL_BACKUP_GET_ENDPOINT}?${query.toString()}`);
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return { success: false, error: result.error || `HTTP ${response.status}` };
+                }
+                return { success: true, backup: result.backup };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        async restoreLocalBackupAsNewProject(app, backup) {
+            if (!backup || !backup.projectId || !backup.id) {
+                return { success: false, error: 'Missing backup reference' };
+            }
+
+            try {
+                const query = new URLSearchParams({
+                    projectId: String(backup.projectId),
+                    backupId: String(backup.id)
+                });
+                const response = await fetch(`${LOCAL_BACKUP_GET_ENDPOINT}?${query.toString()}`);
+                const backupData = await response.json().catch(() => ({}));
+                if (!response.ok || !backupData.ok) {
+                    return { success: false, error: backupData.error || `HTTP ${response.status}` };
+                }
+
+                const restoredId = await this.restoreProjectDataAsNew(app, backupData.backup);
+                return { success: true, projectId: restoredId };
             } catch (e) {
                 return { success: false, error: e.message };
             }
@@ -704,6 +786,87 @@
             }
 
             await app.selectProject(projectId);
+        },
+
+        async restoreProjectDataAsNew(app, backupData) {
+            const sourceProject = backupData?.project;
+            if (!sourceProject?.id) {
+                throw new Error('Backup payload is missing project data');
+            }
+
+            const projectId = newId('project');
+            const chapterMap = {};
+            const sceneMap = {};
+
+            const project = {
+                ...sourceProject,
+                id: projectId,
+                name: `${sourceProject.name || 'Recovered Project'} (Recovered)`,
+                created: new Date(),
+                modified: new Date(),
+                updatedAt: Date.now()
+            };
+            await db.projects.put(project);
+
+            for (const chapter of backupData.chapters || []) {
+                const id = newId('chapter');
+                chapterMap[chapter.id] = id;
+                await db.chapters.put({
+                    ...chapter,
+                    id,
+                    projectId,
+                    created: chapter.created || new Date(),
+                    modified: new Date(),
+                    updatedAt: Date.now()
+                });
+            }
+
+            for (const scene of backupData.scenes || []) {
+                const id = newId('scene');
+                sceneMap[scene.id] = id;
+                await db.scenes.put({
+                    ...scene,
+                    id,
+                    projectId,
+                    chapterId: chapterMap[scene.chapterId] || scene.chapterId,
+                    created: scene.created || new Date(),
+                    modified: new Date(),
+                    updatedAt: Date.now()
+                });
+            }
+
+            for (const [sceneId, text] of Object.entries(backupData.sceneContents || {})) {
+                const newSceneId = sceneMap[sceneId];
+                if (!newSceneId) continue;
+                const wordCount = text ? text.trim().split(/\s+/).filter(w => w.length > 0).length : 0;
+                await db.content.put({ sceneId: newSceneId, text, wordCount, updatedAt: Date.now() });
+            }
+
+            const cloneProjectRows = async (tableName, rows) => {
+                if (!db[tableName]) return;
+                for (const row of rows || []) {
+                    await db[tableName].put({
+                        ...row,
+                        id: newId(tableName),
+                        projectId,
+                        sceneId: sceneMap[row.sceneId] || row.sceneId,
+                        created: row.created || row.createdAt || new Date(),
+                        modified: new Date(),
+                        updatedAt: Date.now()
+                    });
+                }
+            };
+
+            await cloneProjectRows('compendium', backupData.compendium);
+            await cloneProjectRows('prompts', backupData.prompts);
+            await cloneProjectRows('codex', backupData.codex);
+            await cloneProjectRows('promptHistory', backupData.promptHistory);
+            await cloneProjectRows('workshopSessions', backupData.workshopSessions);
+
+            await app.loadProjects();
+            app.showProjectsView = false;
+            await app.selectProject(projectId);
+            return projectId;
         },
 
         startAutoBackup(app) {

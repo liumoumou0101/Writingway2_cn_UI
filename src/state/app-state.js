@@ -262,6 +262,9 @@ function createAppState() {
         backupSnapshotNote: '',
         backupListFilter: 'all',
         selectedBackupPreview: null,
+        showLocalBackupRecoveryModal: false,
+        localRecoveryBackups: [],
+        localRecoveryFilter: '',
 
         // ========== Generation Parameters ==========
         temperature: 0.8,

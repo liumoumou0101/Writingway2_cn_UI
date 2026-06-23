@@ -2407,6 +2407,44 @@ document.addEventListener('alpine:init', () => {
                 };
             },
 
+            sceneDiffSummary(backupData) {
+                const currentScenes = new Map((this.scenes || []).map(scene => [scene.id, scene]));
+                const backupScenes = new Map((backupData?.scenes || []).map(scene => [scene.id, scene]));
+                const backupContents = backupData?.sceneContents || {};
+                const currentContents = {};
+                for (const scene of this.scenes || []) {
+                    currentContents[scene.id] = scene.content || '';
+                }
+
+                const added = [];
+                const removed = [];
+                const modified = [];
+                let unchanged = 0;
+
+                for (const [sceneId, scene] of backupScenes.entries()) {
+                    if (!currentScenes.has(sceneId)) {
+                        added.push(scene.title || scene.name || sceneId);
+                        continue;
+                    }
+                    const currentScene = currentScenes.get(sceneId);
+                    const titleChanged = (currentScene.title || '') !== (scene.title || '');
+                    const contentChanged = String(currentContents[sceneId] || '') !== String(backupContents[sceneId] || '');
+                    if (titleChanged || contentChanged) {
+                        modified.push(scene.title || scene.name || sceneId);
+                    } else {
+                        unchanged += 1;
+                    }
+                }
+
+                for (const [sceneId, scene] of currentScenes.entries()) {
+                    if (!backupScenes.has(sceneId)) {
+                        removed.push(scene.title || scene.name || sceneId);
+                    }
+                }
+
+                return { added, removed, modified, unchanged };
+            },
+
             backupNeedsAttention() {
                 if (!this.backupEnabled) return true;
                 if (!this.backupProviderIsAvailable()) return true;
@@ -2562,11 +2600,19 @@ document.addEventListener('alpine:init', () => {
                 this.selectedBackupPreview = null;
             },
 
-            selectBackupForPreview(backup) {
-                this.selectedBackupPreview = {
+            async selectBackupForPreview(backup) {
+                const preview = {
                     backup,
-                    stats: this.backupPreview(backup)
+                    stats: this.backupPreview(backup),
+                    sceneDiff: null
                 };
+                if (backup.provider === 'local' && backup.projectId && window.BackupManager?.getLocalBackupData) {
+                    const result = await window.BackupManager.getLocalBackupData(backup.projectId, backup.id);
+                    if (result.success) {
+                        preview.sceneDiff = this.sceneDiffSummary(result.backup);
+                    }
+                }
+                this.selectedBackupPreview = preview;
             },
 
             async restoreBackup(backupRef) {
@@ -2642,6 +2688,49 @@ document.addEventListener('alpine:init', () => {
                 if (!window.BackupManager || typeof window.BackupManager.setProjectSaveLocation !== 'function') return;
                 const result = await window.BackupManager.setProjectSaveLocation(this, '');
                 if (!result.success) alert('Failed to reset project save folder: ' + result.error);
+            },
+
+            filteredLocalRecoveryBackups() {
+                const query = String(this.localRecoveryFilter || '').trim().toLowerCase();
+                if (!query) return this.localRecoveryBackups || [];
+                return (this.localRecoveryBackups || []).filter(backup =>
+                    String(backup.projectName || '').toLowerCase().includes(query)
+                    || String(backup.note || '').toLowerCase().includes(query)
+                    || String(backup.id || '').toLowerCase().includes(query)
+                );
+            },
+
+            async openLocalBackupRecovery() {
+                if (!window.BackupManager || typeof window.BackupManager.listAllLocalBackups !== 'function') return;
+                this.backupStatus = 'Loading local backups...';
+                const result = await window.BackupManager.listAllLocalBackups();
+                if (result.success) {
+                    this.localRecoveryBackups = result.backups;
+                    this.backupLocation = result.backupLocation || this.backupLocation;
+                    this.showLocalBackupRecoveryModal = true;
+                    this.backupStatus = '';
+                } else {
+                    this.backupStatus = 'Failed to load backups';
+                    alert('Failed to load local backups: ' + result.error);
+                }
+            },
+
+            closeLocalBackupRecovery() {
+                this.showLocalBackupRecoveryModal = false;
+                this.localRecoveryBackups = [];
+                this.localRecoveryFilter = '';
+            },
+
+            async restoreLocalBackupAsNewProject(backup) {
+                if (!confirm(`Restore "${backup.projectName || backup.id}" as a new project?`)) return;
+                const result = await window.BackupManager.restoreLocalBackupAsNewProject(this, backup);
+                if (result.success) {
+                    this.showLocalBackupRecoveryModal = false;
+                    this.localRecoveryBackups = [];
+                    alert('Project restored from local backup.');
+                } else {
+                    alert('Restore failed: ' + result.error);
+                }
             },
 
             async cleanupLocalBackups(scope = 'project') {

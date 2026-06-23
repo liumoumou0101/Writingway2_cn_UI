@@ -207,6 +207,8 @@ async function readBackupSummary(dataRoot, file) {
   const stats = snapshotStats(payload);
   return {
     id: file.name,
+    projectId: payload.project && payload.project.id ? String(payload.project.id) : '',
+    projectName: payload.project && payload.project.name ? String(payload.project.name) : '',
     timestamp: meta.createdAt || file.stats.mtime.toISOString(),
     path: path.relative(await backupRoot(dataRoot), file.filePath).replace(/\\/g, '/'),
     size: file.stats.size,
@@ -549,6 +551,15 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       }
     } catch {
       // No backups yet.
+    }
+    jsonResponse(response, 200, { ok: true, backups, backupLocation: await backupRoot(dataRoot) });
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/list-all-backups') {
+    const backups = [];
+    for (const file of await listBackupFiles(dataRoot)) {
+      backups.push(await readBackupSummary(dataRoot, file));
     }
     jsonResponse(response, 200, { ok: true, backups, backupLocation: await backupRoot(dataRoot) });
     return true;

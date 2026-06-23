@@ -227,6 +227,8 @@ def backup_summary(path: Path) -> dict:
     stat = path.stat()
     return {
         "id": path.name,
+        "projectId": str((payload.get("project") or {}).get("id") or ""),
+        "projectName": str((payload.get("project") or {}).get("name") or ""),
         "timestamp": meta.get("createdAt") or datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
         "path": str(path.relative_to(backup_root_dir())),
         "size": stat.st_size,
@@ -447,6 +449,9 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/list-backups":
             self.handle_list_backups(parsed.query)
+            return
+        if parsed.path == "/api/list-all-backups":
+            self.handle_list_all_backups()
             return
         if parsed.path == "/api/get-backup":
             self.handle_get_backup(parsed.query)
@@ -703,6 +708,16 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
                 for backup_file in list_backup_files(project_id):
                     backups.append(backup_summary(backup_file))
 
+            self.respond_json(HTTPStatus.OK, {"ok": True, "backups": backups, "backupLocation": str(backup_root_dir())})
+        except Exception as exc:
+            self.respond_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": str(exc)},
+            )
+
+    def handle_list_all_backups(self):
+        try:
+            backups = [backup_summary(path) for path in list_backup_files(None)]
             self.respond_json(HTTPStatus.OK, {"ok": True, "backups": backups, "backupLocation": str(backup_root_dir())})
         except Exception as exc:
             self.respond_json(
