@@ -15,6 +15,18 @@ function setupWatchers(app) {
         }
     });
 
+    app.$watch('showAISettings', (isOpen) => {
+        if (isOpen) return;
+
+        app.$nextTick(() => {
+            const panel = document.querySelector('.ai-settings-panel');
+            const active = document.activeElement;
+            if (panel && active && panel.contains(active) && typeof active.blur === 'function') {
+                active.blur();
+            }
+        });
+    });
+
     // Watch AI settings and auto-save when they change (but not during initialization)
     app.$watch('aiMode', () => {
         if (!app.isInitializing && window.AISettings && typeof window.AISettings.saveGenerationParams === 'function') {

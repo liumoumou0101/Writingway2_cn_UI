@@ -1695,6 +1695,20 @@ html.light-mode .backup-warning-banner,
     padding: 40px;
 }
 
+.model-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 40px;
+    text-align: center;
+    background: rgba(8, 10, 12, 0.82);
+    backdrop-filter: blur(4px);
+}
+
 .welcome-content {
     max-width: 600px;
 }

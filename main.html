@@ -120,7 +120,7 @@
                 </div>
             </div>
         </div>
-        <template x-if="showProjectsView && !showModelLoading">
+        <template x-if="showProjectsView">
             <div
                 style="min-height:100vh;background:linear-gradient(135deg, #1a1f2e 0%, #2d1b3d 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;position:relative;">
                 <div style="position:absolute;top:20px;right:20px;display:flex;gap:8px;align-items:center;">
@@ -250,7 +250,7 @@
             </div>
         </template>
 
-        <template x-if="currentProject && !showModelLoading && !showProjectsView">
+        <template x-if="currentProject && !showProjectsView">
             <div class="app-container">
                 <div class="sidebar">
                     <div class="sidebar-header" style="position:relative;">
@@ -1000,7 +1000,7 @@
         </div>
 
         <template x-if="showModelLoading">
-            <div class="welcome-screen">
+            <div class="model-loading-overlay">
                 <div class="welcome-content">
                     <h2>Setting Up AI</h2>
                     <p x-text="loadingMessage"></p>
@@ -1015,7 +1015,7 @@
             </div>
         </template>
 
-        <template x-if="!currentProject && !showModelLoading && !showProjectsView">
+        <template x-if="!currentProject && !showProjectsView">
             <div class="welcome-screen">
                 <div class="welcome-content">
                     <h2>Welcome to Writingway 2.0</h2>
