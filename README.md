@@ -62,6 +62,42 @@ It gives you:
 2. Double-click `start.bat`.
 3. Open Writingway in the browser window it launches.
 
+### Experimental desktop app
+
+This fork also includes an experimental Electron desktop shell. It starts the local app server and updater service, then opens Writingway in a desktop window instead of a browser tab.
+
+Requirements:
+
+- Node.js and npm for development
+- Python 3 available on `PATH`
+
+Run the desktop shell:
+
+```bash
+npm install
+npm run desktop
+```
+
+Create an unpacked desktop build:
+
+```bash
+npm run pack
+```
+
+Create Windows distributables in `release/`:
+
+```bash
+npm run dist
+```
+
+If Electron Builder downloads are unstable on your network, run this first in PowerShell:
+
+```powershell
+$env:ELECTRON_BUILDER_BINARIES_MIRROR='https://npmmirror.com/mirrors/electron-builder-binaries/'
+```
+
+The desktop build currently still depends on Python being installed on the user's machine. Local GGUF model startup remains handled by `start.bat` for now.
+
 ### macOS / Linux
 
 1. Download and extract the project.

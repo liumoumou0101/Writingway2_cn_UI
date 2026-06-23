@@ -1,15 +1,51 @@
 {
-    "name": "writingway2-smoke",
+    "name": "writingway2",
     "version": "1.0.0",
     "private": true,
+    "description": "AI-assisted creative writing, scene planning, and worldbuilding in a local-first app.",
+    "author": "Writingway contributors",
     "devDependencies": {
+        "electron": "^42.4.1",
+        "electron-builder": "^26.15.3",
         "eslint": "^8.45.0",
         "playwright": "^1.40.0"
     },
     "scripts": {
+        "desktop": "electron .",
+        "pack": "electron-builder --dir",
+        "dist": "electron-builder",
         "smoke": "node tests/smoke.js",
         "unit": "node tests/gen-buildPrompt.js",
         "ui": "node tests/ui-generation.js && node tests/ui-generation-retry.js && node tests/ui-move-scene.js && node tests/ui-sidebar.js",
         "test": "npm run smoke && npm run unit && npm run ui"
+    },
+    "main": "desktop/main.js",
+    "build": {
+        "appId": "com.writingway.app",
+        "productName": "Writingway",
+        "asar": false,
+        "files": [
+            "desktop/**/*",
+            "src/**/*",
+            "tools/**/*",
+            "main.html",
+            "logo.png",
+            "favicon.ico",
+            "README.md",
+            "package.json"
+        ],
+        "directories": {
+            "output": "release"
+        },
+        "win": {
+            "target": [
+                "nsis",
+                "portable"
+            ]
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true
+        }
     }
 }

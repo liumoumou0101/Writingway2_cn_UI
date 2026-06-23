@@ -14,6 +14,7 @@ env/
 .venv/
 build/
 dist/
+release/
 .vscode/
 .idea/
 todo.md
