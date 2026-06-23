@@ -822,10 +822,11 @@ class WritingwayHandler(SimpleHTTPRequestHandler):
                 raise FileNotFoundError("Backup not found")
 
             backup = json.loads(target.read_text(encoding="utf-8"))
-            backup["backupMeta"] = {
-                **(backup.get("backupMeta") or {}),
-                "pinned": bool(payload.get("pinned")),
-            }
+            backup["backupMeta"] = {**(backup.get("backupMeta") or {})}
+            if "pinned" in payload:
+                backup["backupMeta"]["pinned"] = bool(payload.get("pinned"))
+            if "note" in payload:
+                backup["backupMeta"]["note"] = str(payload.get("note") or "")
             with tempfile.NamedTemporaryFile(
                 "w",
                 encoding="utf-8",

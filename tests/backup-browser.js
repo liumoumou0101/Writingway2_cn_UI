@@ -65,6 +65,8 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
 
             const backup = await window.BackupManager.backupNow(app, { reason: 'manual', note: 'before edit' });
             if (!backup.success) throw new Error(backup.error || 'backup failed');
+            const noteUpdate = await window.BackupManager.updateLocalBackup(app, backup.backupId, { note: 'edited in browser test' });
+            if (!noteUpdate.success) throw new Error(noteUpdate.error || 'backup note update failed');
 
             await db.content.put({ sceneId, text: 'changed text', wordCount: 2, updatedAt: Date.now() });
             const backupData = await window.BackupManager.getLocalBackupData(projectId, backup.backupId);
@@ -111,6 +113,7 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
                 restoredText: restoredContent && restoredContent.text,
                 addedSceneTitle: newScene && newScene.title,
                 addedSceneText: newContent && newContent.text,
+                editedNote: noteUpdate.backup && noteUpdate.backup.note,
                 backupCount: backups.success ? backups.backups.length : 0,
                 beforeRestoreCount: backups.success ? backups.backups.filter(item => item.reason === 'before-restore').length : 0
             };
@@ -119,6 +122,7 @@ const APP_URL = 'http://127.0.0.1:8000/main.html';
         assert.strictEqual(result.restoredText, 'original text', 'modified scene should restore backup text');
         assert.strictEqual(result.addedSceneTitle, 'Recovered Scene (Recovered)', 'missing backup scene should be restored as a new scene');
         assert.strictEqual(result.addedSceneText, 'text from deleted scene', 'new restored scene should keep backup text');
+        assert.strictEqual(result.editedNote, 'edited in browser test', 'backup note should be editable through BackupManager');
         assert.ok(result.backupCount >= 3, 'manual backup plus pre-restore snapshots should be listed');
         assert.ok(result.beforeRestoreCount >= 2, 'scene restores should create pre-restore snapshots');
 

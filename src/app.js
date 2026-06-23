@@ -2410,6 +2410,27 @@ document.addEventListener('alpine:init', () => {
                 };
             },
 
+            formatBackupSize(bytes) {
+                const value = Number(bytes || 0);
+                if (!value) return '0 B';
+                const units = ['B', 'KB', 'MB', 'GB'];
+                let size = value;
+                let unitIndex = 0;
+                while (size >= 1024 && unitIndex < units.length - 1) {
+                    size /= 1024;
+                    unitIndex += 1;
+                }
+                return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+            },
+
+            backupShortHash(hash) {
+                return hash ? String(hash).slice(0, 12) : '';
+            },
+
+            selectedBackupDetails() {
+                return this.selectedBackupPreview?.backup || {};
+            },
+
             async sceneDiffSummary(backupData) {
                 const currentScenes = new Map((this.scenes || []).map(scene => [scene.id, scene]));
                 const backupScenes = new Map((backupData?.scenes || []).map(scene => [scene.id, scene]));
@@ -2655,6 +2676,7 @@ document.addEventListener('alpine:init', () => {
                 this.showRestoreModal = false;
                 this.backupList = [];
                 this.selectedBackupPreview = null;
+                this.selectedBackupNoteDraft = '';
                 this.closeBackupSceneCompare();
             },
 
@@ -2672,6 +2694,7 @@ document.addEventListener('alpine:init', () => {
                     }
                 }
                 this.selectedBackupPreview = preview;
+                this.selectedBackupNoteDraft = backup.note || '';
             },
 
             openBackupSceneCompare(sceneDiff) {
@@ -2791,6 +2814,21 @@ document.addEventListener('alpine:init', () => {
                     this.backupStatus = updated.pinned ? 'Backup pinned' : 'Backup unpinned';
                 } else {
                     alert('Failed to update backup: ' + result.error);
+                }
+            },
+
+            async saveSelectedBackupNote() {
+                const backup = this.selectedBackupPreview?.backup;
+                if (!backup || backup.provider !== 'local' || !window.BackupManager || typeof window.BackupManager.updateLocalBackup !== 'function') return;
+                const result = await window.BackupManager.updateLocalBackup(this, backup.id, { note: this.selectedBackupNoteDraft || '' });
+                if (result.success) {
+                    const updated = result.backup || { ...backup, note: this.selectedBackupNoteDraft || '' };
+                    this.backupList = (this.backupList || []).map(item => item.id === backup.id ? { ...item, ...updated } : item);
+                    this.selectedBackupPreview.backup = { ...this.selectedBackupPreview.backup, ...updated };
+                    this.selectedBackupNoteDraft = updated.note || '';
+                    this.backupStatus = 'Backup note saved';
+                } else {
+                    alert('Failed to save backup note: ' + result.error);
                 }
             },
 

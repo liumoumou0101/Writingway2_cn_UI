@@ -773,10 +773,13 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       const target = path.join(await backupDir(dataRoot, projectId), backupId);
       if (!(await pathExists(target))) throw new Error('Backup not found');
       const backup = JSON.parse(await fsp.readFile(target, 'utf8'));
-      backup.backupMeta = {
-        ...(backup.backupMeta || {}),
-        pinned: !!payload.pinned
-      };
+      backup.backupMeta = { ...(backup.backupMeta || {}) };
+      if (Object.prototype.hasOwnProperty.call(payload, 'pinned')) {
+        backup.backupMeta.pinned = !!payload.pinned;
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'note')) {
+        backup.backupMeta.note = String(payload.note || '');
+      }
       await writeJsonAtomic(target, backup);
       jsonResponse(response, 200, {
         ok: true,

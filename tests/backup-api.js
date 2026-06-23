@@ -99,6 +99,13 @@ async function createBackup(payload, requestOptions) {
         });
         assert.strictEqual(pinned.backup.pinned, true, 'update-backup should pin a backup');
 
+        const noted = await api('/api/update-backup', {
+            method: 'POST',
+            body: JSON.stringify({ projectId, backupId: first.backupId, note: 'edited important version' })
+        });
+        assert.strictEqual(noted.backup.note, 'edited important version', 'update-backup should edit a backup note');
+        assert.strictEqual(noted.backup.pinned, true, 'editing a note should not clear the pinned flag');
+
         for (let i = 1; i <= 3; i++) {
             await createBackup(
                 snapshot(projectId, 'Backup API Test', `revision ${i}`, new Date(baseTime + i * 1000).toISOString()),
