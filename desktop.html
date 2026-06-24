@@ -127,12 +127,32 @@
                                 <input type="range" data-reader-line-height min="1.45" max="2.2" step="0.05">
                             </label>
                             <label>
+                                <span>版心宽度</span>
+                                <input type="range" data-reader-width min="620" max="980" step="20">
+                            </label>
+                            <label>
+                                <span>段落间距</span>
+                                <input type="range" data-reader-paragraph-spacing min="0.4" max="1.6" step="0.1">
+                            </label>
+                            <label>
+                                <span>字体</span>
+                                <select data-reader-font-family>
+                                    <option value="system">系统默认</option>
+                                    <option value="serif">宋体/衬线</option>
+                                    <option value="yahei">微软雅黑</option>
+                                </select>
+                            </label>
+                            <label>
                                 <span>主题</span>
                                 <select data-reader-theme>
                                     <option value="dark">深色</option>
                                     <option value="paper">纸张</option>
                                     <option value="sepia">护眼</option>
                                 </select>
+                            </label>
+                            <label class="desktop-reader-check">
+                                <input type="checkbox" data-reader-indent>
+                                <span>段首缩进</span>
                             </label>
                         </div>
 
@@ -158,6 +178,10 @@
                                 <button class="desktop-primary-action" type="button" data-reader-next>下一章</button>
                             </div>
                         </header>
+                        <div class="desktop-reader-reading-bar">
+                            <span data-reader-position-label>准备阅读</span>
+                            <span>←/→ 切换章节，Space / PageDown 向下阅读</span>
+                        </div>
                         <div class="desktop-reader-content" data-reader-content>
                             <p>选择左侧的 txt 或 md 文件后，这里会显示正文。阶段 1 先提供本地导入、章节识别、进度和排版控制。</p>
                         </div>

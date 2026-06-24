@@ -595,8 +595,8 @@ textarea {
 
 .desktop-reader-sidebar {
     display: grid;
-    grid-template-rows: auto auto auto auto minmax(0, 1fr);
-    gap: 16px;
+    grid-template-rows: auto auto minmax(0, auto) auto minmax(0, 1fr);
+    gap: 14px;
     padding: 20px;
     overflow: hidden;
     background: rgba(23, 26, 32, 0.84);
@@ -640,12 +640,28 @@ textarea {
 
 .desktop-reader-controls {
     display: grid;
-    gap: 12px;
+    gap: 10px;
+    max-height: min(42vh, 360px);
+    overflow: auto;
+    padding-right: 3px;
 }
 
 .desktop-reader-controls select option {
     background: var(--desktop-panel);
     color: var(--desktop-text);
+}
+
+.desktop-reader-check {
+    display: flex !important;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 9px !important;
+}
+
+.desktop-reader-check input {
+    width: auto;
+    min-height: auto;
+    accent-color: var(--desktop-accent);
 }
 
 .desktop-reader-progress {
@@ -707,19 +723,21 @@ textarea {
 
 .desktop-reader-stage {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     overflow: hidden;
-    background: #15171c;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.035), transparent 34%),
+        #15171c;
 }
 
 .desktop-reader-stage[data-reader-theme="paper"] {
-    background: #f4ead7;
+    background: #f1e6d0;
     color: #28231d;
 }
 
 .desktop-reader-stage[data-reader-theme="sepia"] {
-    background: #211d15;
-    color: #eadfca;
+    background: #1f2118;
+    color: #e8e0c9;
 }
 
 .desktop-reader-header {
@@ -747,6 +765,15 @@ textarea {
     color: #7f5f30;
 }
 
+.desktop-reader-stage[data-reader-theme="sepia"] .desktop-reader-header {
+    border-color: rgba(226, 211, 172, 0.11);
+    background: rgba(226, 211, 172, 0.045);
+}
+
+.desktop-reader-stage[data-reader-theme="sepia"] .desktop-section-kicker {
+    color: #b9d088;
+}
+
 .desktop-reader-actions {
     display: flex;
     gap: 10px;
@@ -758,17 +785,62 @@ textarea {
     transform: none;
 }
 
+.desktop-reader-reading-bar {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 9px 24px;
+    border-bottom: 1px solid var(--desktop-line);
+    color: var(--desktop-faint);
+    font-size: 12px;
+}
+
+.desktop-reader-stage[data-reader-theme="paper"] .desktop-reader-reading-bar {
+    border-color: rgba(63, 50, 34, 0.13);
+    color: #796b58;
+}
+
+.desktop-reader-stage[data-reader-theme="sepia"] .desktop-reader-reading-bar {
+    border-color: rgba(226, 211, 172, 0.11);
+    color: #9da77b;
+}
+
 .desktop-reader-content {
     overflow: auto;
-    padding: 34px min(8vw, 84px);
+    padding: 44px min(8vw, 92px) 68px;
     font-size: var(--reader-font-size, 18px);
     line-height: var(--reader-line-height, 1.8);
+    font-family: var(--reader-font-family);
+    scroll-behavior: smooth;
 }
 
 .desktop-reader-content p {
-    max-width: 820px;
-    margin: 0 auto 1.15em;
+    max-width: var(--reader-width, 760px);
+    margin: 0 auto var(--reader-paragraph-spacing, 1.05em);
     white-space: pre-wrap;
+    letter-spacing: 0.01em;
+}
+
+.desktop-reader-stage[data-reader-indent-enabled="true"] .desktop-reader-content p {
+    text-indent: 2em;
+}
+
+.desktop-reader-stage[data-reader-indent-enabled="true"] .desktop-reader-content p:first-child {
+    text-indent: 0;
+}
+
+.desktop-reader-stage[data-reader-theme="paper"] .desktop-reader-content {
+    color: #2b241b;
+    background:
+        linear-gradient(90deg, rgba(80, 58, 32, 0.045), transparent 16%, transparent 84%, rgba(80, 58, 32, 0.045)),
+        #f6eddb;
+}
+
+.desktop-reader-stage[data-reader-theme="sepia"] .desktop-reader-content {
+    color: #e8e0c9;
+    background:
+        linear-gradient(90deg, rgba(226, 211, 172, 0.035), transparent 16%, transparent 84%, rgba(226, 211, 172, 0.035)),
+        #202116;
 }
 
 .desktop-modal-backdrop {
@@ -916,5 +988,10 @@ textarea {
 
     .desktop-reader-sidebar {
         overflow: visible;
+    }
+
+    .desktop-reader-reading-bar {
+        flex-direction: column;
+        gap: 4px;
     }
 }

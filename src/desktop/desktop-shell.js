@@ -20,7 +20,12 @@
         chapterIndex: 0,
         fontSize: 18,
         lineHeight: 1.8,
-        theme: 'dark'
+        theme: 'dark',
+        fontFamily: 'system',
+        textWidth: 760,
+        paragraphSpacing: 1.05,
+        indent: true,
+        scrollPositions: {}
     };
 
     function getState() {
@@ -584,6 +589,10 @@
             file: document.querySelector('[data-reader-file]'),
             fontSize: document.querySelector('[data-reader-font-size]'),
             lineHeight: document.querySelector('[data-reader-line-height]'),
+            textWidth: document.querySelector('[data-reader-width]'),
+            paragraphSpacing: document.querySelector('[data-reader-paragraph-spacing]'),
+            fontFamily: document.querySelector('[data-reader-font-family]'),
+            indent: document.querySelector('[data-reader-indent]'),
             theme: document.querySelector('[data-reader-theme]'),
             themePanel: document.querySelector('[data-reader-theme-panel]'),
             title: document.querySelector('[data-reader-title]'),
@@ -593,6 +602,7 @@
             progress: document.querySelector('[data-reader-progress]'),
             progressLabel: document.querySelector('[data-reader-progress-label]'),
             progressPercent: document.querySelector('[data-reader-progress-percent]'),
+            positionLabel: document.querySelector('[data-reader-position-label]'),
             prev: document.querySelector('[data-reader-prev]'),
             next: document.querySelector('[data-reader-next]')
         };
@@ -718,6 +728,68 @@
         return String(content || '').split('\n').map((line) => line.trim()).filter(Boolean);
     }
 
+    function readerDocumentKey() {
+        const documentData = readerState.document || {};
+        return documentData.source === 'project'
+            ? `project:${documentData.projectId || documentData.title || ''}`
+            : `file:${documentData.fileName || documentData.title || ''}`;
+    }
+
+    function readerChapterKey(index = readerState.chapterIndex) {
+        const chapters = readerState.document ? readerState.document.chapters || [] : [];
+        const chapter = chapters[index] || {};
+        return `${readerDocumentKey()}:${chapter.id || index}`;
+    }
+
+    function readerScrollRatio() {
+        const { content } = readerElements();
+        if (!content) return 0;
+        const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
+        if (maxScroll <= 0) return 0;
+        return Math.max(0, Math.min(1, content.scrollTop / maxScroll));
+    }
+
+    function rememberReaderScroll() {
+        if (!readerState.document) return;
+        readerState.scrollPositions[readerChapterKey()] = readerScrollRatio();
+        saveReaderState();
+    }
+
+    function restoreReaderScroll() {
+        const { content } = readerElements();
+        if (!content || !readerState.document) return;
+        const ratio = Number(readerState.scrollPositions[readerChapterKey()] || 0);
+        window.requestAnimationFrame(() => {
+            const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
+            content.scrollTop = maxScroll * Math.max(0, Math.min(1, ratio));
+            updateReaderProgress();
+        });
+    }
+
+    function readerFontStack() {
+        if (readerState.fontFamily === 'serif') {
+            return '"SimSun", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif';
+        }
+        if (readerState.fontFamily === 'yahei') {
+            return '"Microsoft YaHei", "Segoe UI", system-ui, sans-serif';
+        }
+        return '"Microsoft YaHei", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    }
+
+    function updateReaderProgress() {
+        const elements = readerElements();
+        const chapters = readerState.document ? readerState.document.chapters || [] : [];
+        if (!chapters.length) return;
+        const chapterRatio = readerScrollRatio();
+        const overall = Math.round(((readerState.chapterIndex + chapterRatio) / chapters.length) * 100);
+        const chapterPercent = Math.round(chapterRatio * 100);
+        if (elements.progress) elements.progress.value = Math.max(1, Math.min(100, overall || 1));
+        if (elements.progressPercent) elements.progressPercent.textContent = `${Math.max(1, Math.min(100, overall || 1))}%`;
+        if (elements.positionLabel) {
+            elements.positionLabel.textContent = `本章 ${chapterPercent}% / 全书 ${Math.max(1, Math.min(100, overall || 1))}%`;
+        }
+    }
+
     function saveReaderState() {
         try {
             localStorage.setItem(READER_STORAGE_KEY, JSON.stringify({
@@ -725,7 +797,12 @@
                 chapterIndex: readerState.chapterIndex,
                 fontSize: readerState.fontSize,
                 lineHeight: readerState.lineHeight,
-                theme: readerState.theme
+                theme: readerState.theme,
+                fontFamily: readerState.fontFamily,
+                textWidth: readerState.textWidth,
+                paragraphSpacing: readerState.paragraphSpacing,
+                indent: readerState.indent,
+                scrollPositions: readerState.scrollPositions
             }));
         } catch (error) {
             console.warn('Failed to save reader state:', error);
@@ -741,6 +818,13 @@
                 readerState.fontSize = Number(saved.fontSize) || readerState.fontSize;
                 readerState.lineHeight = Number(saved.lineHeight) || readerState.lineHeight;
                 readerState.theme = saved.theme || readerState.theme;
+                readerState.fontFamily = saved.fontFamily || readerState.fontFamily;
+                readerState.textWidth = Number(saved.textWidth) || readerState.textWidth;
+                readerState.paragraphSpacing = Number(saved.paragraphSpacing) || readerState.paragraphSpacing;
+                readerState.indent = typeof saved.indent === 'boolean' ? saved.indent : readerState.indent;
+                readerState.scrollPositions = saved.scrollPositions && typeof saved.scrollPositions === 'object'
+                    ? saved.scrollPositions
+                    : {};
             }
         } catch (error) {
             console.warn('Failed to load reader state:', error);
@@ -760,11 +844,19 @@
         const elements = readerElements();
         if (elements.fontSize) elements.fontSize.value = String(readerState.fontSize);
         if (elements.lineHeight) elements.lineHeight.value = String(readerState.lineHeight);
+        if (elements.textWidth) elements.textWidth.value = String(readerState.textWidth);
+        if (elements.paragraphSpacing) elements.paragraphSpacing.value = String(readerState.paragraphSpacing);
+        if (elements.fontFamily) elements.fontFamily.value = readerState.fontFamily;
+        if (elements.indent) elements.indent.checked = !!readerState.indent;
         if (elements.theme) elements.theme.value = readerState.theme;
         if (elements.themePanel) {
             elements.themePanel.dataset.readerTheme = readerState.theme;
+            elements.themePanel.dataset.readerIndentEnabled = readerState.indent ? 'true' : 'false';
             elements.themePanel.style.setProperty('--reader-font-size', `${readerState.fontSize}px`);
             elements.themePanel.style.setProperty('--reader-line-height', String(readerState.lineHeight));
+            elements.themePanel.style.setProperty('--reader-width', `${readerState.textWidth}px`);
+            elements.themePanel.style.setProperty('--reader-paragraph-spacing', `${readerState.paragraphSpacing}em`);
+            elements.themePanel.style.setProperty('--reader-font-family', readerFontStack());
         }
     }
 
@@ -796,12 +888,9 @@
             return;
         }
 
-        const progress = Math.round(((readerState.chapterIndex + 1) / chapters.length) * 100);
         if (elements.title) elements.title.textContent = chapter.title;
         if (elements.source) elements.source.textContent = `${documentData.title} / ${readerState.chapterIndex + 1} / ${chapters.length}`;
-        if (elements.progress) elements.progress.value = progress;
         if (elements.progressLabel) elements.progressLabel.textContent = `${readerState.chapterIndex + 1} / ${chapters.length} 章`;
-        if (elements.progressPercent) elements.progressPercent.textContent = `${progress}%`;
         if (elements.prev) elements.prev.disabled = readerState.chapterIndex <= 0;
         if (elements.next) elements.next.disabled = readerState.chapterIndex >= chapters.length - 1;
 
@@ -828,6 +917,7 @@
                 button.classList.toggle('is-active', index === readerState.chapterIndex);
                 button.textContent = item.title || `第 ${index + 1} 章`;
                 button.addEventListener('click', () => {
+                    rememberReaderScroll();
                     readerState.chapterIndex = index;
                     saveReaderState();
                     renderReader();
@@ -835,6 +925,8 @@
                 elements.chapters.appendChild(button);
             });
         }
+
+        restoreReaderScroll();
     }
 
     function readReaderFile(file) {
@@ -897,9 +989,53 @@
             });
         }
 
+        let scrollSaveTimer = null;
+        if (elements.content) {
+            elements.content.addEventListener('scroll', () => {
+                updateReaderProgress();
+                if (scrollSaveTimer) window.clearTimeout(scrollSaveTimer);
+                scrollSaveTimer = window.setTimeout(() => {
+                    rememberReaderScroll();
+                    scrollSaveTimer = null;
+                }, 220);
+            });
+        }
+
         if (elements.fontSize) {
             elements.fontSize.addEventListener('input', () => {
                 readerState.fontSize = Number(elements.fontSize.value) || 18;
+                applyReaderSettings();
+                saveReaderState();
+            });
+        }
+
+        if (elements.textWidth) {
+            elements.textWidth.addEventListener('input', () => {
+                readerState.textWidth = Number(elements.textWidth.value) || 760;
+                applyReaderSettings();
+                saveReaderState();
+            });
+        }
+
+        if (elements.paragraphSpacing) {
+            elements.paragraphSpacing.addEventListener('input', () => {
+                readerState.paragraphSpacing = Number(elements.paragraphSpacing.value) || 1.05;
+                applyReaderSettings();
+                saveReaderState();
+            });
+        }
+
+        if (elements.fontFamily) {
+            elements.fontFamily.addEventListener('change', () => {
+                readerState.fontFamily = elements.fontFamily.value || 'system';
+                applyReaderSettings();
+                saveReaderState();
+            });
+        }
+
+        if (elements.indent) {
+            elements.indent.addEventListener('change', () => {
+                readerState.indent = !!elements.indent.checked;
                 applyReaderSettings();
                 saveReaderState();
             });
@@ -923,6 +1059,7 @@
 
         if (elements.prev) {
             elements.prev.addEventListener('click', () => {
+                rememberReaderScroll();
                 readerState.chapterIndex -= 1;
                 saveReaderState();
                 renderReader();
@@ -931,11 +1068,39 @@
 
         if (elements.next) {
             elements.next.addEventListener('click', () => {
+                rememberReaderScroll();
                 readerState.chapterIndex += 1;
                 saveReaderState();
                 renderReader();
             });
         }
+
+        document.addEventListener('keydown', (event) => {
+            const root = document.getElementById('desktop-root');
+            if (!root || root.dataset.view !== 'reader') return;
+            const target = event.target;
+            if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+
+            if (event.key === 'ArrowLeft' && elements.prev && !elements.prev.disabled) {
+                event.preventDefault();
+                elements.prev.click();
+                return;
+            }
+            if (event.key === 'ArrowRight' && elements.next && !elements.next.disabled) {
+                event.preventDefault();
+                elements.next.click();
+                return;
+            }
+            if ((event.key === ' ' || event.key === 'PageDown') && elements.content) {
+                event.preventDefault();
+                elements.content.scrollBy({ top: Math.max(220, elements.content.clientHeight * 0.82), behavior: 'smooth' });
+                return;
+            }
+            if (event.key === 'PageUp' && elements.content) {
+                event.preventDefault();
+                elements.content.scrollBy({ top: -Math.max(220, elements.content.clientHeight * 0.82), behavior: 'smooth' });
+            }
+        });
     }
 
     async function toggleFullscreen() {
