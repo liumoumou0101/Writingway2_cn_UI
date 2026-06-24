@@ -2003,6 +2003,50 @@ html.light-mode .backup-warning-banner,
     overflow-y: auto;
 }
 
+.rewrite-template-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.rewrite-field-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.rewrite-select,
+.rewrite-instruction-textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-radius: 6px;
+}
+
+.rewrite-instruction-textarea {
+    min-height: 132px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.rewrite-prompt-preview summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    user-select: none;
+}
+
+@media (max-width: 760px) {
+    .rewrite-template-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Summary status dot shown next to scene titles */
 .summary-dot {
     display: inline-block;

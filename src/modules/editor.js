@@ -4,7 +4,132 @@
  */
 
 (function () {
+    const REWRITE_PRESETS = [
+        {
+            id: 'balanced-polish',
+            title: '均衡润色',
+            description: '提升流畅度、画面感和完成度，不明显改变原意。',
+            prompt: '请重写选中文段，使语言更自然、流畅、有画面感，同时保留原意、事实信息、人物关系和叙事视角。不要扩写过多，长度尽量接近原文。'
+        },
+        {
+            id: 'tighten',
+            title: '压缩精炼',
+            description: '删掉松散重复的表达，让句子更利落。',
+            prompt: '请压缩并精炼选中文段，删去重复、拖沓、解释过度的句子，让表达更干净有力。保留关键动作、信息和情绪，长度约为原文的 60%-80%。'
+        },
+        {
+            id: 'expand',
+            title: '适度扩写',
+            description: '在不跑题的前提下补足动作、情绪和场景细节。',
+            prompt: '请适度扩写选中文段，补足必要的动作衔接、心理反应、环境细节和节奏停顿。不要改变剧情走向和人物意图，长度约为原文的 1.3-1.8 倍。'
+        },
+        {
+            id: 'show-dont-tell',
+            title: '少解释多呈现',
+            description: '把直白说明改成动作、细节和反应。',
+            prompt: '请把选中文段中直白说明、总结性描述和情绪标签，改写成具体动作、感官细节、人物反应和可观察的场景表现。保留原本要表达的情绪和信息。'
+        },
+        {
+            id: 'sensory',
+            title: '增强感官',
+            description: '强化视觉、声音、触感、气味和空间感。',
+            prompt: '请重写选中文段，增强感官描写和空间感，优先使用视觉、声音、触感、气味或温度等细节，让场景更可感。不要堆砌形容词，不要偏离原剧情。'
+        },
+        {
+            id: 'tension',
+            title: '提高紧张感',
+            description: '让冲突、危险或不安更明显。',
+            prompt: '请重写选中文段，提高紧张感和压迫感。加强动作节奏、停顿、未知感、人物警觉或危险暗示。保持原事件不变，不要提前揭示答案。'
+        },
+        {
+            id: 'pace-fast',
+            title: '加快节奏',
+            description: '适合动作、追逐、争执、关键转折。',
+            prompt: '请重写选中文段，让节奏更快、更利落。减少解释和内心独白，使用更短的句子、更清晰的动作链和更直接的冲突推进。'
+        },
+        {
+            id: 'pace-slow',
+            title: '放慢节奏',
+            description: '适合重要情绪、悬念、氛围和转场。',
+            prompt: '请重写选中文段，放慢叙事节奏，增加停顿、观察、细微动作和情绪层次。让读者更充分地感受到这一刻的重要性，但不要重复啰嗦。'
+        },
+        {
+            id: 'dialogue-natural',
+            title: '对白自然化',
+            description: '让台词更像真人说话，同时保留信息。',
+            prompt: '请重写选中文段中的对白，让台词更自然、有角色感，减少书面腔和信息直给。保留原本要传达的信息，并加入适量动作或停顿来承载潜台词。'
+        },
+        {
+            id: 'subtext',
+            title: '增加潜台词',
+            description: '让人物不把话说满，情绪藏在动作里。',
+            prompt: '请重写选中文段，增加潜台词。让人物少直接说出真实想法，把矛盾、犹豫、亲近或敌意藏在措辞、停顿、动作和反应里。不要改变人物立场。'
+        },
+        {
+            id: 'emotion-deeper',
+            title: '加深情绪',
+            description: '强化人物内在波动，但避免煽情。',
+            prompt: '请重写选中文段，加深人物情绪层次。通过身体反应、记忆闪回、细微动作或自我克制来表现情绪，不要直接堆砌“悲伤、愤怒、害怕”等标签。'
+        },
+        {
+            id: 'character-voice',
+            title: '强化角色声音',
+            description: '让叙述和台词更贴合该人物。',
+            prompt: '请重写选中文段，让语言更贴合当前视角人物的性格、身份、年龄、经验和情绪状态。保留原信息，但调整用词、观察重点和反应方式，使角色声音更鲜明。'
+        },
+        {
+            id: 'literary',
+            title: '文学化',
+            description: '更细腻、更凝练、更有余韵。',
+            prompt: '请将选中文段重写得更文学化：语言更凝练，意象更准确，节奏更有余韵。避免华丽堆砌和空泛比喻，保持叙事清晰。'
+        },
+        {
+            id: 'webnovel',
+            title: '网文爽感',
+            description: '更直接、更抓人，更适合连载阅读。',
+            prompt: '请将选中文段重写得更适合中文网文连载：节奏明确，情绪更外放，冲突更清楚，句子更有推进力。保留原剧情，不要过度中二或夸张。'
+        },
+        {
+            id: 'cinematic',
+            title: '电影镜头感',
+            description: '像镜头一样组织动作、视线和画面。',
+            prompt: '请重写选中文段，增强电影镜头感。用清晰的画面调度、动作顺序、视线移动和环境反应来呈现场景。避免解释镜头术语，直接写成小说正文。'
+        },
+        {
+            id: 'clarity',
+            title: '理清逻辑',
+            description: '修正语序、指代、因果和动作衔接。',
+            prompt: '请重写选中文段，重点理清句子逻辑、人物指代、动作先后和因果关系。不要改变剧情，只让读者更容易理解正在发生什么。'
+        },
+        {
+            id: 'continuity',
+            title: '贴合上下文',
+            description: '让选段更像自然接在前后文里。',
+            prompt: '请重写选中文段，让它更自然地衔接上下文。注意代词、时间、动作连续性、情绪延续和叙述视角一致性。不要引入新的设定或剧情。'
+        },
+        {
+            id: 'remove-cliche',
+            title: '去套路化',
+            description: '替换陈词滥调和过熟表达。',
+            prompt: '请重写选中文段，去掉陈词滥调、套路化形容和常见套话，换成更具体、更贴合当前场景和人物的表达。保持自然，不要刻意炫技。'
+        },
+        {
+            id: 'grammar-copyedit',
+            title: '校对修正',
+            description: '只修病句、错字、标点和轻微不顺。',
+            prompt: '请只对选中文段做校对级修改：修正错别字、病句、标点、重复和明显不顺的表达。尽量保留原句结构、风格和长度，不要主动扩写或改剧情。'
+        },
+        {
+            id: 'same-meaning-alt',
+            title: '换一种写法',
+            description: '保留含义，换更顺的表达。',
+            prompt: '请在不改变原意、不增删剧情信息的前提下，把选中文段换一种更自然、更有可读性的写法。长度接近原文。'
+        }
+    ];
+
     const Editor = {
+        rewritePresets: REWRITE_PRESETS,
+
         regenerateContextChars: 8000,
 
         /**
@@ -148,10 +273,44 @@
                 app.rewriteOutput = '';
                 app.rewritePromptPreview = '';
                 app.rewriteInProgress = false;
+                app.selectedRewritePresetId = app.selectedRewritePresetId || 'balanced-polish';
+                if (!app.rewriteInstruction) {
+                    this.applyRewritePreset(app);
+                }
                 app.showRewriteModal = true;
                 app.showRewriteBtn = false;
             } catch (e) {
                 console.error('handleRewriteButtonClick error', e);
+            }
+        },
+
+        getRewritePresets() {
+            return REWRITE_PRESETS;
+        },
+
+        applyRewritePreset(app) {
+            try {
+                const preset = REWRITE_PRESETS.find(item => item.id === app.selectedRewritePresetId);
+                if (!preset) return;
+                app.selectedRewritePromptId = null;
+                app.rewriteInstruction = preset.prompt;
+                app.rewritePromptPreview = '';
+            } catch (e) {
+                console.error('applyRewritePreset error', e);
+            }
+        },
+
+        applySavedRewritePrompt(app) {
+            try {
+                if (!app.selectedRewritePromptId) return;
+                const selected = (app.prompts || []).find(p => p.id === app.selectedRewritePromptId);
+                if (selected && selected.content) {
+                    app.selectedRewritePresetId = '';
+                    app.rewriteInstruction = selected.content;
+                    app.rewritePromptPreview = '';
+                }
+            } catch (e) {
+                console.error('applySavedRewritePrompt error', e);
             }
         },
 
@@ -162,21 +321,11 @@
          */
         buildRewritePrompt(app) {
             try {
-                // Show the rewrite prompt list for selection
-                app.showRewritePromptList = true;
-
-                // If a rewrite prompt is selected, use it
-                let rewritePrompt = '';
-                if (app.selectedRewritePromptId) {
-                    const selected = app.prompts.find(p => p.id === app.selectedRewritePromptId);
-                    if (selected && selected.content) {
-                        rewritePrompt = selected.content;
-                    }
-                }
-
-                // Build the full prompt
-                let prompt = rewritePrompt || 'Rewrite the following passage to be more vivid and polished while preserving its meaning and details. Keep roughly the same length.';
-                prompt += '\n\nORIGINAL TEXT:\n' + app.rewriteOriginalText + '\n\nREWRITTEN TEXT:';
+                const instruction = (app.rewriteInstruction || '').trim()
+                    || '请重写选中文段，使语言更自然、流畅、有画面感，同时保留原意、事实信息、人物关系和叙事视角。不要扩写过多，长度尽量接近原文。';
+                let prompt = instruction;
+                prompt += '\n\n要求：只输出重写后的正文，不要解释修改思路，不要添加标题，不要使用列表。';
+                prompt += '\n\n原文：\n' + app.rewriteOriginalText + '\n\n重写后：';
                 app.rewritePromptPreview = prompt;
                 return prompt;
             } catch (e) {
@@ -252,6 +401,9 @@
                 app.showRewriteModal = false;
                 app.rewriteOriginalText = '';
                 app.rewriteOutput = '';
+                app.rewriteInstruction = '';
+                app.selectedRewritePresetId = 'balanced-polish';
+                app.selectedRewritePromptId = null;
                 app.rewriteSelectionRange = null;
                 app.rewriteTextareaStart = null;
                 app.rewriteTextareaEnd = null;
@@ -275,10 +427,11 @@
          */
         discardRewrite(app) {
             app.showRewriteModal = false;
-            app.showRewritePromptList = false;
             app.selectedRewritePromptId = null;
+            app.selectedRewritePresetId = 'balanced-polish';
             app.rewriteOriginalText = '';
             app.rewriteOutput = '';
+            app.rewriteInstruction = '';
             app.rewritePromptPreview = '';
             app.rewriteTextareaStart = null;
             app.rewriteTextareaEnd = null;

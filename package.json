@@ -15,7 +15,7 @@
         "pack": "electron-builder --dir",
         "dist": "electron-builder",
         "smoke": "node tests/smoke.js",
-        "unit": "node tests/gen-buildPrompt.js",
+        "unit": "node tests/gen-buildPrompt.js && node tests/unit-context-tags.js && node tests/unit-rewrite-presets.js",
         "backup-test": "node tests/backup-api.js && node tests/backup-browser.js",
         "ui": "node tests/ui-generation.js && node tests/ui-generation-retry.js && node tests/ui-move-scene.js && node tests/ui-sidebar.js",
         "test": "npm run smoke && npm run unit && npm run ui"

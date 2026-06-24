@@ -21,18 +21,21 @@ const path = require('path');
         const sceneContext = "Alice sat by the window, watching the streetlights.";
         const options = { povCharacter: 'Alice', pov: '1st person', tense: 'present' };
 
-        const prompt = await page.evaluate(({ b, s, o }) => {
-            return window.Generation.buildPrompt(b, s, o);
+        const promptText = await page.evaluate(({ b, s, o }) => {
+            const prompt = window.Generation.buildPrompt(b, s, o);
+            return typeof prompt === 'object' && prompt.asString
+                ? prompt.asString()
+                : String(prompt);
         }, { b: beat, s: sceneContext, o: options });
 
-        console.log('Generated prompt preview (first 200 chars):', prompt.slice(0, 200).replace(/\n/g, '\\n'));
+        console.log('Generated prompt preview (first 200 chars):', promptText.slice(0, 200).replace(/\n/g, '\\n'));
 
         const checks = [
-            { ok: prompt.includes('Alice'), msg: 'POV character not found' },
-            { ok: prompt.includes('present tense'), msg: 'tense text not found' },
-            { ok: prompt.includes('1st person'), msg: 'POV text not found' },
-            { ok: prompt.includes('BEAT TO EXPAND') || prompt.includes('BEAT TO EXPAND:'), msg: 'beat marker missing' },
-            { ok: prompt.includes('She grabs her coat'), msg: 'beat content not included' }
+            { ok: promptText.includes('Alice'), msg: 'POV character not found' },
+            { ok: promptText.includes('present tense'), msg: 'tense text not found' },
+            { ok: promptText.includes('1st person'), msg: 'POV text not found' },
+            { ok: promptText.includes('BEAT TO EXPAND') || promptText.includes('BEAT TO EXPAND:'), msg: 'beat marker missing' },
+            { ok: promptText.includes('She grabs her coat'), msg: 'beat content not included' }
         ];
 
         const failed = checks.filter(c => !c.ok);

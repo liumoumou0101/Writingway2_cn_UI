@@ -1,6 +1,27 @@
 // Beat Mentions Module
 // Handles @compendium and #scene mention detection, search, selection, and resolution
 (function () {
+    function escapeRegExp(value) {
+        return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function normalizeLookup(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    function textMentionsTerm(text, term) {
+        const source = String(text || '');
+        const raw = String(term || '').trim();
+        if (!source || !raw) return false;
+
+        if (/^[A-Za-z0-9_-]+$/.test(raw)) {
+            const re = new RegExp('(^|[^A-Za-z0-9_-])' + escapeRegExp(raw) + '($|[^A-Za-z0-9_-])', 'i');
+            return re.test(source);
+        }
+
+        return source.toLowerCase().includes(raw.toLowerCase());
+    }
+
     const BeatMentions = {
         /**
          * Handle beat input changes to detect @ and # mentions
@@ -297,8 +318,9 @@
         },
 
         /**
-         * Parse beatInput for @[Title] mentions and return resolved compendium rows
-         * Also includes entries marked with alwaysInContext flag
+         * Parse beat/current-scene text for compendium references and return resolved rows.
+         * Supports inserted @[Title] mentions, direct title lookup fallback, and plain tag mentions.
+         * Also includes entries marked with alwaysInContext flag.
          * @param {Object} app - Alpine app instance
          * @param {string} beatText - Beat text to parse
          * @returns {Promise<Array>} Array of compendium entries
@@ -306,38 +328,81 @@
         async resolveCompendiumEntriesFromBeat(app, beatText) {
             try {
                 const ids = new Set();
+                const projectId = app.currentProject && app.currentProject.id ? app.currentProject.id : null;
+                const sceneText = app.currentScene && app.currentScene.content ? app.currentScene.content : '';
+                const mentionText = [beatText || '', sceneText || ''].filter(Boolean).join('\n\n');
+                let projectEntries = [];
 
-                // First, add all entries marked as "always in context" for the current project
-                if (app.currentProject && app.currentProject.id) {
+                if (projectId) {
                     try {
-                        const alwaysInContext = await db.compendium
+                        projectEntries = await db.compendium
                             .where('projectId')
-                            .equals(app.currentProject.id)
-                            .filter(e => e.alwaysInContext === true)
+                            .equals(projectId)
                             .toArray();
-                        for (const entry of alwaysInContext) {
-                            ids.add(entry.id);
-                        }
                     } catch (e) {
-                        console.warn('Failed to fetch alwaysInContext entries:', e);
+                        console.warn('Failed to fetch compendium entries:', e);
+                        projectEntries = [];
                     }
                 }
 
-                // Parse @[Title] mentions and look up IDs from our mapping
-                if (beatText) {
+                const entriesByTitle = new Map();
+                const entriesByTag = new Map();
+                for (const entry of projectEntries || []) {
+                    if (!entry || !entry.id) continue;
+
+                    const titleKey = normalizeLookup(entry.title);
+                    if (titleKey && !entriesByTitle.has(titleKey)) {
+                        entriesByTitle.set(titleKey, entry);
+                    }
+
+                    for (const tag of (Array.isArray(entry.tags) ? entry.tags : [])) {
+                        const tagKey = normalizeLookup(tag);
+                        if (!tagKey) continue;
+                        if (!entriesByTag.has(tagKey)) entriesByTag.set(tagKey, []);
+                        entriesByTag.get(tagKey).push(entry);
+                    }
+
+                    if (entry.alwaysInContext === true) {
+                        ids.add(entry.id);
+                    }
+                }
+
+                const addEntriesForTitleOrTag = (rawTitle) => {
+                    const key = normalizeLookup(rawTitle);
+                    if (!key) return;
+
+                    if (app.beatCompendiumMap && app.beatCompendiumMap[rawTitle]) {
+                        ids.add(app.beatCompendiumMap[rawTitle]);
+                    }
+
+                    const byTitle = entriesByTitle.get(key);
+                    if (byTitle) ids.add(byTitle.id);
+
+                    const byTag = entriesByTag.get(key) || [];
+                    for (const entry of byTag) {
+                        ids.add(entry.id);
+                    }
+                };
+
+                if (mentionText) {
                     const reMention = /@\[([^\]]+)\]/g;
                     let m;
-                    while ((m = reMention.exec(beatText)) !== null) {
-                        const title = m[1];
-                        if (app.beatCompendiumMap[title]) {
-                            ids.add(app.beatCompendiumMap[title]);
-                        }
+                    while ((m = reMention.exec(mentionText)) !== null) {
+                        addEntriesForTitleOrTag(m[1]);
                     }
 
                     // Also support legacy formats for backward compatibility
                     const reLegacy = /\[\[comp:([^\]]+)\]\]/g;
-                    while ((m = reLegacy.exec(beatText)) !== null) {
+                    while ((m = reLegacy.exec(mentionText)) !== null) {
                         if (m[1]) ids.add(m[1]);
+                    }
+
+                    for (const entry of projectEntries || []) {
+                        if (!entry || !entry.id || ids.has(entry.id)) continue;
+                        const tags = Array.isArray(entry.tags) ? entry.tags : [];
+                        if (tags.some(tag => textMentionsTerm(mentionText, tag))) {
+                            ids.add(entry.id);
+                        }
                     }
                 }
 

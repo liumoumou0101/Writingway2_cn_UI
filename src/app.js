@@ -417,6 +417,24 @@ document.addEventListener('alpine:init', () => {
                 return window.Editor ? window.Editor.buildRewritePrompt(this) : '';
             },
 
+            getRewritePresets() {
+                return window.Editor && typeof window.Editor.getRewritePresets === 'function'
+                    ? window.Editor.getRewritePresets()
+                    : [];
+            },
+
+            applyRewritePreset() {
+                if (window.Editor && typeof window.Editor.applyRewritePreset === 'function') {
+                    window.Editor.applyRewritePreset(this);
+                }
+            },
+
+            applySavedRewritePrompt() {
+                if (window.Editor && typeof window.Editor.applySavedRewritePrompt === 'function') {
+                    window.Editor.applySavedRewritePrompt(this);
+                }
+            },
+
             async performRewrite() {
                 if (window.Editor) await window.Editor.performRewrite(this);
             },
