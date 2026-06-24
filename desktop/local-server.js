@@ -825,7 +825,7 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
 
 async function serveStatic(request, response, appRoot, parsedUrl) {
   const decodedPath = decodeURIComponent(parsedUrl.pathname);
-  const relativePath = decodedPath === '/' ? 'main.html' : decodedPath.replace(/^\/+/, '');
+  const relativePath = decodedPath === '/' ? 'desktop.html' : decodedPath.replace(/^\/+/, '');
   const filePath = path.resolve(appRoot, relativePath);
   if (filePath !== appRoot && !filePath.startsWith(`${appRoot}${path.sep}`)) {
     response.writeHead(403);

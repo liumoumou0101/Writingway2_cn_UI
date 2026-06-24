@@ -130,6 +130,13 @@ document.addEventListener('alpine:init', () => {
             // Initialize
             async init() {
                 try {
+                    const params = new URLSearchParams(window.location.search || '');
+                    this.runtimeMode = params.get('runtime') === 'desktop' ? 'desktop' : 'legacy-web';
+                } catch (e) {
+                    this.runtimeMode = 'legacy-web';
+                }
+
+                try {
                     const savedLanguage = localStorage.getItem('writingway:uiLanguage');
                     this.setUILanguage(savedLanguage || (window.I18N && window.I18N.defaultLanguage) || 'zh');
                 } catch (e) {

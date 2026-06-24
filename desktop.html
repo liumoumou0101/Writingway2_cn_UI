@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Writingway Desktop</title>
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: #14161b;
+        }
+
+        .desktop-host {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            display: block;
+            background: #14161b;
+        }
+
+        .desktop-fallback {
+            min-height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            color: #e8eaed;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Transitional desktop-owned entry point.
+         The current app is still hosted by main.html, but Electron now owns desktop.html.
+         Future bookshelf, reader, and native-app shell work should happen here instead of
+         adding more browser-era entry logic to main.html. -->
+    <iframe
+        class="desktop-host"
+        src="/main.html?runtime=desktop"
+        title="Writingway Desktop App">
+    </iframe>
+    <noscript>
+        <div class="desktop-fallback">Writingway Desktop requires JavaScript.</div>
+    </noscript>
+</body>
+
+</html>

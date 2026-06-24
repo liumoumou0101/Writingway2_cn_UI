@@ -2,7 +2,7 @@
     "name": "writingway2",
     "version": "1.0.0",
     "private": true,
-    "description": "AI-assisted creative writing, scene planning, and worldbuilding in a local-first app.",
+    "description": "Desktop-first AI fiction writing, project management, and local reading workbench.",
     "author": "Writingway contributors",
     "devDependencies": {
         "electron": "^42.4.1",
@@ -28,6 +28,7 @@
         "files": [
             "desktop/**/*",
             "src/**/*",
+            "desktop.html",
             "main.html",
             "logo.png",
             "favicon.ico",

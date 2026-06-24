@@ -97,6 +97,7 @@ function createAppState() {
         // ========== App Initialization State ==========
         appReady: false,
         initProgress: 0,
+        runtimeMode: 'legacy-web',
         runtimeInfo: {
             platform: '',
             arch: '',

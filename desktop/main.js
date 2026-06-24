@@ -4,7 +4,7 @@ const path = require('path');
 const { startDesktopServers } = require('./local-server');
 
 const rootDir = path.resolve(__dirname, '..');
-const appUrl = 'http://127.0.0.1:8000/main.html';
+const appUrl = 'http://127.0.0.1:8000/desktop.html';
 const appId = 'com.writingway.app';
 const iconPath = path.join(__dirname, 'icon.ico');
 
@@ -26,7 +26,7 @@ function isReachable(url, timeoutMs = 900) {
 }
 
 async function startServices() {
-  const appServerReady = await isReachable('http://127.0.0.1:8000/main.html');
+  const appServerReady = await isReachable('http://127.0.0.1:8000/desktop.html');
   const updaterServerReady = await isReachable('http://127.0.0.1:8001/version');
 
   if (appServerReady && updaterServerReady) {
