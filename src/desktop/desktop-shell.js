@@ -169,7 +169,16 @@
             await openProjectBackupSettings(project);
         });
 
-        actions.append(editButton, revealButton, copyPathButton, backupButton);
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'desktop-mini-action desktop-mini-action-danger';
+        removeButton.textContent = '移出书库';
+        removeButton.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            await removeProjectFromLibrary(project);
+        });
+
+        actions.append(editButton, revealButton, copyPathButton, backupButton, removeButton);
 
         body.append(name, badges, description, stats, time, path, actions);
         card.append(cover, body);
@@ -294,6 +303,10 @@
         }
     }
 
+    function parseTags(value) {
+        return String(value || '').split(',').map((tag) => tag.trim()).filter(Boolean);
+    }
+
     async function revealProjectFile(project) {
         setProjectLibraryStatus('正在定位项目文件...', 'info');
         try {
@@ -350,6 +363,32 @@
         } catch (error) {
             console.warn('Failed to open project backup settings:', error);
             setProjectLibraryStatus(`打开备份设置失败：${error.message || error}`, 'error');
+        }
+    }
+
+    async function removeProjectFromLibrary(project) {
+        const confirmed = window.confirm(`确定要把《${project.name || '未命名项目'}》移出书库吗？\n\n项目文件不会被删除，只会移动到项目目录下的 .removed-projects 文件夹。`);
+        if (!confirmed) return;
+
+        setProjectLibraryStatus('正在移出书库...', 'info');
+        try {
+            const response = await fetch('/api/remove-project-from-library', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: project.id,
+                    filename: project.filename
+                })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            await loadProjectLibrary();
+            setProjectLibraryStatus('已移出书库，文件仍保留在 .removed-projects 文件夹。', 'ok');
+        } catch (error) {
+            console.warn('Failed to remove project from library:', error);
+            setProjectLibraryStatus(`移出书库失败：${error.message || error}`, 'error');
         }
     }
 
@@ -447,7 +486,7 @@
         const metadata = {
             name: elements.name.value,
             status: elements.status.value,
-            tags: elements.tags.value.split(',').map((tag) => tag.trim()).filter(Boolean),
+            tags: parseTags(elements.tags.value),
             description: elements.description.value,
             coverImage: projectLibraryState.editingCoverImage
         };
@@ -470,6 +509,66 @@
         closeProjectEditor();
         await loadProjectLibrary();
         setProjectLibraryStatus('作品信息已保存。', 'ok');
+    }
+
+    function projectCreatorElements() {
+        return {
+            modal: document.querySelector('[data-project-create-modal]'),
+            form: document.querySelector('[data-project-create-form]'),
+            name: document.querySelector('[data-project-create-name]'),
+            status: document.querySelector('[data-project-create-status]'),
+            tags: document.querySelector('[data-project-create-tags]'),
+            description: document.querySelector('[data-project-create-description]'),
+            statusMessage: document.querySelector('[data-project-create-status-message]')
+        };
+    }
+
+    function setProjectCreatorStatus(message, tone) {
+        const { statusMessage } = projectCreatorElements();
+        if (!statusMessage) return;
+        statusMessage.textContent = message || '';
+        statusMessage.dataset.tone = tone || 'info';
+    }
+
+    function openProjectCreator() {
+        const elements = projectCreatorElements();
+        if (!elements.modal || !elements.form) return;
+        elements.form.reset();
+        if (elements.status) elements.status.value = '构思中';
+        setProjectCreatorStatus('', 'info');
+        elements.modal.hidden = false;
+        window.setTimeout(() => elements.name && elements.name.focus(), 0);
+    }
+
+    function closeProjectCreator() {
+        const { modal } = projectCreatorElements();
+        if (modal) modal.hidden = true;
+    }
+
+    async function createProjectFromDesktop() {
+        const elements = projectCreatorElements();
+        const metadata = {
+            name: elements.name.value,
+            status: elements.status.value,
+            tags: parseTags(elements.tags.value),
+            description: elements.description.value,
+            coverImage: ''
+        };
+
+        setProjectCreatorStatus('正在创建...', 'info');
+        const response = await fetch('/api/create-project', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ metadata })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+            throw new Error(result.error || `HTTP ${response.status}`);
+        }
+
+        closeProjectCreator();
+        await loadProjectLibrary();
+        await openDesktopProject(result.summary);
     }
 
     async function toggleFullscreen() {
@@ -503,6 +602,10 @@
             });
         });
 
+        document.querySelectorAll('[data-open-new-project]').forEach((button) => {
+            button.addEventListener('click', openProjectCreator);
+        });
+
         document.querySelectorAll('[data-open-project-folder]').forEach((button) => {
             button.addEventListener('click', () => {
                 openProjectFolder();
@@ -524,6 +627,29 @@
                 renderProjectLibrary();
             });
         }
+    }
+
+    function bindProjectCreator() {
+        const elements = projectCreatorElements();
+        if (!elements.modal || !elements.form) return;
+
+        elements.form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            try {
+                await createProjectFromDesktop();
+            } catch (error) {
+                console.error('Failed to create desktop project:', error);
+                setProjectCreatorStatus(`创建失败：${error.message || error}`, 'error');
+            }
+        });
+
+        document.querySelectorAll('[data-close-project-creator]').forEach((button) => {
+            button.addEventListener('click', closeProjectCreator);
+        });
+
+        elements.modal.addEventListener('click', (event) => {
+            if (event.target === elements.modal) closeProjectCreator();
+        });
     }
 
     function bindProjectEditor() {
@@ -795,6 +921,7 @@
         bindNavigation();
         bindWindowControls();
         bindProjectLibrary();
+        bindProjectCreator();
         bindProjectEditor();
         bindLegacyActions();
         const state = getState();

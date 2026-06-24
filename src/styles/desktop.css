@@ -509,6 +509,7 @@ textarea {
 
 .desktop-project-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 9px;
 }
@@ -526,6 +527,16 @@ textarea {
 .desktop-mini-action:hover {
     border-color: rgba(73, 166, 155, 0.42);
     background: rgba(73, 166, 155, 0.12);
+}
+
+.desktop-mini-action-danger {
+    border-color: rgba(214, 92, 92, 0.34);
+    color: #ffb4a8;
+}
+
+.desktop-mini-action-danger:hover {
+    border-color: rgba(214, 92, 92, 0.58);
+    background: rgba(214, 92, 92, 0.14);
 }
 
 .desktop-project-cover img {

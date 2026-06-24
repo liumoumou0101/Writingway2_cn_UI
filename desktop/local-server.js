@@ -260,6 +260,73 @@ async function findProjectFile(dataRoot, projectId, filename) {
   return null;
 }
 
+function createProjectSnapshot(metadata) {
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  const chapterId = `${id}-chapter-1`;
+  const sceneId = `${id}-scene-1`;
+  const project = {
+    id,
+    name: metadata.name,
+    description: metadata.description || '',
+    status: metadata.status || '',
+    tags: metadata.tags || [],
+    coverImage: metadata.coverImage || '',
+    created: now,
+    modified: now,
+    updatedAt: Date.now()
+  };
+
+  return {
+    version: '2.1-desktop',
+    exportedAt: now,
+    filesystemSavedAt: now,
+    filesystemSaveVersion: 1,
+    project,
+    chapters: [{
+      id: chapterId,
+      projectId: id,
+      title: '第一章',
+      order: 0,
+      created: now,
+      modified: now,
+      updatedAt: Date.now()
+    }],
+    scenes: [{
+      id: sceneId,
+      projectId: id,
+      chapterId,
+      title: '第一场',
+      order: 0,
+      created: now,
+      modified: now,
+      updatedAt: Date.now()
+    }],
+    sceneContents: {
+      [sceneId]: ''
+    },
+    compendium: [],
+    prompts: [],
+    codex: [],
+    promptHistory: [],
+    workshopSessions: []
+  };
+}
+
+async function uniqueFilePath(dir, filename) {
+  let target = path.join(dir, filename);
+  if (!(await pathExists(target))) return target;
+
+  const ext = path.extname(filename);
+  const base = path.basename(filename, ext);
+  let index = 2;
+  while (await pathExists(target)) {
+    target = path.join(dir, `${base}-${index}${ext}`);
+    index += 1;
+  }
+  return target;
+}
+
 async function listBackupFiles(dataRoot, projectId = '') {
   const root = await backupRoot(dataRoot);
   const dirs = [];
@@ -728,6 +795,59 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message || 'Could not update project metadata' });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/create-project') {
+    try {
+      const payload = await readJsonPayload(request);
+      const metadata = normalizeProjectMetadata(payload.metadata || {});
+      const snapshot = createProjectSnapshot(metadata);
+      const projectsDir = await projectSaveRoot(dataRoot);
+      await fsp.mkdir(projectsDir, { recursive: true });
+      const target = path.join(projectsDir, projectFilename(snapshot.project));
+      await writeJsonAtomic(target, snapshot);
+
+      const file = {
+        filePath: target,
+        name: path.basename(target),
+        stats: await fsp.stat(target)
+      };
+      jsonResponse(response, 200, {
+        ok: true,
+        project: snapshot,
+        summary: await readProjectSummary(dataRoot, file),
+        projectSaveLocation: projectsDir
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message || 'Could not create project' });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/remove-project-from-library') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const filename = String(payload.filename || '').trim();
+      const file = await findProjectFile(dataRoot, projectId, filename);
+      if (!file) {
+        jsonResponse(response, 404, { ok: false, error: 'Project not found' });
+        return true;
+      }
+
+      const removedDir = path.join(await projectSaveRoot(dataRoot), '.removed-projects');
+      await fsp.mkdir(removedDir, { recursive: true });
+      const target = await uniqueFilePath(removedDir, file.name);
+      await fsp.rename(file.filePath, target);
+      jsonResponse(response, 200, {
+        ok: true,
+        removed: true,
+        path: target
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message || 'Could not remove project from library' });
     }
     return true;
   }

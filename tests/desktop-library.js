@@ -141,6 +141,43 @@ function snapshot(id, name, text, exportedAt) {
             return app.currentProject && app.currentProject.id === 'book-2' && app.currentProject.name === '短篇集修订版';
         }, { timeout: 12000 });
 
+        await page.click('[data-view-target="bookshelf"]');
+        await page.waitForFunction(() => document.querySelectorAll('.desktop-project-card').length === 1);
+        page.once('dialog', async (dialog) => {
+            await dialog.accept();
+        });
+        await page.locator('.desktop-mini-action-danger').first().click();
+        await page.waitForFunction(() => document.querySelectorAll('.desktop-project-card').length === 0);
+
+        const removedListResponse = await fetch('http://127.0.0.1:8000/api/list-projects');
+        const removedListBody = await removedListResponse.json();
+        assert.ok(removedListResponse.ok && removedListBody.ok, 'project list should remain readable after remove');
+        assert.strictEqual(removedListBody.projects.some((project) => project.id === 'book-2'), false, 'removed project should leave the active library');
+        const removedFiles = await fs.readdir(path.join(projectsDir, '.removed-projects'));
+        assert.ok(removedFiles.some((file) => file.includes('book-2.json')), 'removed project should be moved to the recovery folder');
+
+        await page.fill('[data-project-search]', '');
+        await page.waitForFunction(() => document.querySelectorAll('.desktop-project-card').length === 1);
+        await page.click('[data-open-new-project]');
+        await page.fill('[data-project-create-name]', 'Desktop Draft');
+        await page.fill('[data-project-create-tags]', 'desktop, draft');
+        await page.fill('[data-project-create-description]', 'Created from the native desktop library.');
+        await page.locator('[data-project-create-form] button[type="submit"]').click();
+        await page.waitForFunction(() => {
+            const frame = document.getElementById('legacy-writer-frame');
+            const writerWindow = frame && frame.contentWindow;
+            const writerDocument = frame && frame.contentDocument;
+            const root = writerDocument && writerDocument.querySelector('[x-data="app"]');
+            if (!writerWindow || !writerWindow.Alpine || !root) return false;
+            const app = writerWindow.Alpine.$data(root);
+            return app.currentProject && app.currentProject.name === 'Desktop Draft';
+        }, { timeout: 12000 });
+
+        const createdListResponse = await fetch('http://127.0.0.1:8000/api/list-projects');
+        const createdListBody = await createdListResponse.json();
+        assert.ok(createdListResponse.ok && createdListBody.ok, 'project list should remain readable after create');
+        assert.ok(createdListBody.projects.some((project) => project.name === 'Desktop Draft'), 'created project should be saved to the desktop library');
+
         console.log('Desktop project library test passed.');
     } finally {
         if (browser) await browser.close();

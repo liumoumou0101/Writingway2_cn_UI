@@ -71,7 +71,7 @@
                         </p>
                         <div class="desktop-placeholder-actions">
                             <button class="desktop-primary-action" type="button" data-view-target="writer">打开当前写作功能</button>
-                            <button class="desktop-primary-action" type="button" data-legacy-action="new-project">新建项目</button>
+                            <button class="desktop-primary-action" type="button" data-open-new-project>新建项目</button>
                             <button class="desktop-secondary-action" type="button" data-refresh-projects>刷新书库</button>
                             <button class="desktop-secondary-action" type="button" data-open-project-folder>打开项目目录</button>
                         </div>
@@ -191,6 +191,50 @@
                 <span></span>
                 <button class="desktop-secondary-action" type="button" data-close-project-editor>取消</button>
                 <button class="desktop-primary-action" type="submit">保存</button>
+            </footer>
+        </form>
+    </div>
+
+    <div class="desktop-modal-backdrop" data-project-create-modal hidden>
+        <form class="desktop-modal" data-project-create-form>
+            <header class="desktop-modal-header">
+                <div>
+                    <p class="desktop-section-kicker">New Project</p>
+                    <h2>新建作品</h2>
+                </div>
+                <button class="desktop-icon-action" type="button" data-close-project-creator aria-label="关闭">×</button>
+            </header>
+
+            <div class="desktop-form-grid">
+                <label class="desktop-form-wide">
+                    <span>书名</span>
+                    <input type="text" data-project-create-name maxlength="120" required placeholder="例如：雾城长夜">
+                </label>
+                <label>
+                    <span>状态</span>
+                    <select data-project-create-status>
+                        <option value="构思中">构思中</option>
+                        <option value="连载中">连载中</option>
+                        <option value="修订中">修订中</option>
+                        <option value="">未设置</option>
+                    </select>
+                </label>
+                <label>
+                    <span>标签</span>
+                    <input type="text" data-project-create-tags placeholder="奇幻, 长篇">
+                </label>
+                <label class="desktop-form-wide">
+                    <span>简介</span>
+                    <textarea data-project-create-description rows="4" maxlength="2000" placeholder="先写一点作品方向，之后可以随时改。"></textarea>
+                </label>
+            </div>
+
+            <p class="desktop-modal-status" data-project-create-status-message></p>
+
+            <footer class="desktop-modal-actions">
+                <span></span>
+                <button class="desktop-secondary-action" type="button" data-close-project-creator>取消</button>
+                <button class="desktop-primary-action" type="submit">创建并打开</button>
             </footer>
         </form>
     </div>
