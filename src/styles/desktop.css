@@ -278,6 +278,49 @@ input {
     margin-top: 24px;
 }
 
+.desktop-action-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 22px;
+}
+
+.desktop-action-card {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    padding: 16px;
+    border: 1px solid var(--desktop-line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--desktop-text);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+.desktop-action-card:hover {
+    border-color: rgba(73, 166, 155, 0.42);
+    background: rgba(73, 166, 155, 0.1);
+    transform: translateY(-1px);
+}
+
+.desktop-action-card:disabled {
+    cursor: wait;
+    opacity: 0.66;
+    transform: none;
+}
+
+.desktop-action-card strong {
+    color: var(--desktop-text);
+    font-size: 15px;
+}
+
+.desktop-action-card span {
+    color: var(--desktop-muted);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
 .desktop-bookshelf-preview {
     display: grid;
     gap: 14px;
