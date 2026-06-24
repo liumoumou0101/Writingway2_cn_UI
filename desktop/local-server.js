@@ -181,6 +181,9 @@ async function readProjectSummary(dataRoot, file) {
   return {
     id: projectId,
     name: project.name ? String(project.name) : path.basename(file.name, '.json'),
+    description: typeof project.description === 'string' ? project.description : '',
+    status: typeof project.status === 'string' ? project.status : '',
+    tags: Array.isArray(project.tags) ? project.tags.filter((tag) => typeof tag === 'string').slice(0, 20) : [],
     coverImage: typeof project.coverImage === 'string' ? project.coverImage : '',
     created: project.created || '',
     modified: project.modified || '',
@@ -193,6 +196,29 @@ async function readProjectSummary(dataRoot, file) {
     wordCount: stats.wordCount,
     health: parseError ? 'invalid' : 'ok',
     healthMessage: parseError
+  };
+}
+
+function normalizeProjectMetadata(payload) {
+  const metadata = payload && typeof payload === 'object' ? payload : {};
+  const name = String(metadata.name || '').trim();
+  if (!name) {
+    throw new Error('Project name is required');
+  }
+
+  const tags = Array.isArray(metadata.tags)
+    ? metadata.tags
+    : String(metadata.tags || '').split(',');
+
+  return {
+    name: name.slice(0, 120),
+    description: String(metadata.description || '').trim().slice(0, 2000),
+    status: String(metadata.status || '').trim().slice(0, 40),
+    tags: tags
+      .map((tag) => String(tag || '').trim())
+      .filter(Boolean)
+      .slice(0, 20),
+    coverImage: String(metadata.coverImage || '').trim().slice(0, 4000000)
   };
 }
 
@@ -650,6 +676,57 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message || 'Could not read project' });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/update-project-metadata') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const filename = String(payload.filename || '').trim();
+      const file = await findProjectFile(dataRoot, projectId, filename);
+      if (!file) {
+        jsonResponse(response, 404, { ok: false, error: 'Project not found' });
+        return true;
+      }
+
+      const snapshot = JSON.parse(await fsp.readFile(file.filePath, 'utf8'));
+      if (!snapshot.project || typeof snapshot.project !== 'object') {
+        throw new Error('Project snapshot is missing project metadata');
+      }
+
+      const metadata = normalizeProjectMetadata(payload.metadata || {});
+      snapshot.project = {
+        ...snapshot.project,
+        ...metadata,
+        modified: new Date().toISOString(),
+        updatedAt: Date.now()
+      };
+      snapshot.filesystemSavedAt = new Date().toISOString();
+      const saveVersion = Number(snapshot.filesystemSaveVersion || 1);
+      snapshot.filesystemSaveVersion = Number.isFinite(saveVersion) ? Math.max(1, saveVersion) : 1;
+
+      const projectsDir = await projectSaveRoot(dataRoot);
+      const nextPath = path.join(projectsDir, projectFilename(snapshot.project));
+      await writeJsonAtomic(nextPath, snapshot);
+      if (nextPath !== file.filePath) {
+        await fsp.rm(file.filePath, { force: true });
+      }
+
+      const nextFile = {
+        filePath: nextPath,
+        name: path.basename(nextPath),
+        stats: await fsp.stat(nextPath)
+      };
+      jsonResponse(response, 200, {
+        ok: true,
+        project: snapshot,
+        summary: await readProjectSummary(dataRoot, nextFile),
+        projectSaveLocation: projectsDir
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message || 'Could not update project metadata' });
     }
     return true;
   }

@@ -142,6 +142,58 @@
             </section>
         </main>
     </div>
+
+    <div class="desktop-modal-backdrop" data-project-edit-modal hidden>
+        <form class="desktop-modal" data-project-edit-form>
+            <header class="desktop-modal-header">
+                <div>
+                    <p class="desktop-section-kicker">Project Info</p>
+                    <h2>编辑作品信息</h2>
+                </div>
+                <button class="desktop-icon-action" type="button" data-close-project-editor aria-label="关闭">×</button>
+            </header>
+
+            <div class="desktop-form-grid">
+                <label>
+                    <span>书名</span>
+                    <input type="text" data-project-edit-name maxlength="120" required>
+                </label>
+                <label>
+                    <span>状态</span>
+                    <select data-project-edit-status>
+                        <option value="">未设置</option>
+                        <option value="构思中">构思中</option>
+                        <option value="连载中">连载中</option>
+                        <option value="修订中">修订中</option>
+                        <option value="已完成">已完成</option>
+                        <option value="暂停">暂停</option>
+                    </select>
+                </label>
+                <label class="desktop-form-wide">
+                    <span>标签</span>
+                    <input type="text" data-project-edit-tags placeholder="奇幻, 长篇, 第一人称">
+                </label>
+                <label class="desktop-form-wide">
+                    <span>简介</span>
+                    <textarea data-project-edit-description rows="5" maxlength="2000" placeholder="写一点给自己看的作品简介、主题方向或创作备注。"></textarea>
+                </label>
+                <label class="desktop-form-wide">
+                    <span>封面</span>
+                    <input type="file" data-project-edit-cover accept="image/png,image/jpeg,image/webp,image/gif">
+                </label>
+            </div>
+
+            <div class="desktop-cover-preview" data-project-edit-cover-preview></div>
+            <p class="desktop-modal-status" data-project-edit-status-message></p>
+
+            <footer class="desktop-modal-actions">
+                <button class="desktop-secondary-action" type="button" data-clear-project-cover>清除封面</button>
+                <span></span>
+                <button class="desktop-secondary-action" type="button" data-close-project-editor>取消</button>
+                <button class="desktop-primary-action" type="submit">保存</button>
+            </footer>
+        </form>
+    </div>
 </body>
 
 </html>

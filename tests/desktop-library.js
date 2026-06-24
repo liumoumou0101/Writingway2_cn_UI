@@ -72,9 +72,25 @@ function snapshot(id, name, text, exportedAt) {
         await page.click('[data-toggle-fullscreen]');
         assert.strictEqual(await page.evaluate(() => window.__fullscreenClicked), true, 'fullscreen button should call desktop API');
 
-        const cardText = await page.locator('.desktop-project-card').first().innerText();
+        let cardText = await page.locator('.desktop-project-card').first().innerText();
         assert.ok(cardText.includes('短篇集'), 'first card should render project name');
         assert.ok(cardText.includes('2 字'), 'first card should render word count');
+
+        await page.locator('.desktop-mini-action').first().click();
+        await page.fill('[data-project-edit-name]', '短篇集修订版');
+        await page.selectOption('[data-project-edit-status]', '修订中');
+        await page.fill('[data-project-edit-tags]', '短篇, 测试');
+        await page.fill('[data-project-edit-description]', '这是一个用于桌面书库测试的简介。');
+        await page.locator('[data-project-edit-form] button[type="submit"]').click();
+        await page.waitForFunction(() => document.body.innerText.includes('短篇集修订版'));
+
+        const updatedProjectResponse = await fetch('http://127.0.0.1:8000/api/get-project?projectId=book-2');
+        const updatedProjectBody = await updatedProjectResponse.json();
+        assert.ok(updatedProjectResponse.ok && updatedProjectBody.ok, 'edited project should remain readable');
+        assert.strictEqual(updatedProjectBody.project.project.name, '短篇集修订版', 'project metadata edit should rename the project');
+        assert.strictEqual(updatedProjectBody.project.project.status, '修订中', 'project metadata edit should save status');
+        assert.deepStrictEqual(updatedProjectBody.project.project.tags, ['短篇', '测试'], 'project metadata edit should save tags');
+        assert.strictEqual(updatedProjectBody.project.project.description, '这是一个用于桌面书库测试的简介。', 'project metadata edit should save description');
 
         await page.selectOption('[data-project-sort]', 'words');
         const wordSortedText = await page.locator('.desktop-project-card').first().innerText();
@@ -83,7 +99,9 @@ function snapshot(id, name, text, exportedAt) {
         await page.fill('[data-project-search]', '短篇');
         await page.waitForFunction(() => document.querySelectorAll('.desktop-project-card').length === 1);
         const filteredText = await page.locator('.desktop-project-card').first().innerText();
-        assert.ok(filteredText.includes('短篇集'), 'search should filter project cards by name');
+        assert.ok(filteredText.includes('短篇集修订版'), 'search should filter project cards by name');
+        assert.ok(filteredText.includes('修订中'), 'project card should show edited status');
+        assert.ok(filteredText.includes('桌面书库测试'), 'project card should show edited description');
 
         await page.locator('.desktop-project-card').first().click();
         await page.waitForFunction(() => {
@@ -93,7 +111,7 @@ function snapshot(id, name, text, exportedAt) {
             const root = writerDocument && writerDocument.querySelector('[x-data="app"]');
             if (!writerWindow || !writerWindow.Alpine || !root) return false;
             const app = writerWindow.Alpine.$data(root);
-            return app.currentProject && app.currentProject.id === 'book-2' && app.currentProject.name === '短篇集';
+            return app.currentProject && app.currentProject.id === 'book-2' && app.currentProject.name === '短篇集修订版';
         }, { timeout: 12000 });
 
         console.log('Desktop project library test passed.');

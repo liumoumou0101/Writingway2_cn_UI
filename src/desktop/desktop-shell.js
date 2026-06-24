@@ -10,7 +10,9 @@
         projects: [],
         projectSaveLocation: '',
         query: '',
-        sort: 'recent'
+        sort: 'recent',
+        editingProject: null,
+        editingCoverImage: ''
     };
 
     function getState() {
@@ -75,12 +77,13 @@
     }
 
     function createProjectCard(project) {
-        const card = document.createElement('button');
-        card.type = 'button';
+        const card = document.createElement('article');
         card.className = 'desktop-project-card';
         card.dataset.projectId = project.id || '';
         card.dataset.projectFilename = project.filename || '';
         card.title = project.name || '未命名项目';
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
 
         const cover = document.createElement('div');
         cover.className = 'desktop-project-cover';
@@ -99,6 +102,25 @@
         const name = document.createElement('strong');
         name.textContent = project.name || '未命名项目';
 
+        const badges = document.createElement('div');
+        badges.className = 'desktop-project-badges';
+        if (project.status) {
+            const status = document.createElement('span');
+            status.className = 'desktop-project-badge';
+            status.textContent = project.status;
+            badges.appendChild(status);
+        }
+        (project.tags || []).slice(0, 3).forEach((tag) => {
+            const tagBadge = document.createElement('span');
+            tagBadge.className = 'desktop-project-badge';
+            tagBadge.textContent = tag;
+            badges.appendChild(tagBadge);
+        });
+
+        const description = document.createElement('p');
+        description.className = 'desktop-project-description';
+        description.textContent = project.description || '还没有简介。';
+
         const stats = document.createElement('span');
         stats.textContent = `${formatNumber(project.wordCount)} 字 / ${formatNumber(project.chapterCount)} 章 / ${formatNumber(project.sceneCount)} 场`;
 
@@ -109,17 +131,38 @@
         path.textContent = project.health === 'invalid' ? `文件异常：${project.healthMessage || '无法读取'}` : (project.filename || project.path || '');
         if (project.health === 'invalid') path.dataset.tone = 'error';
 
-        body.append(name, stats, time, path);
+        const actions = document.createElement('div');
+        actions.className = 'desktop-project-actions';
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'desktop-mini-action';
+        editButton.textContent = '编辑信息';
+        editButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            openProjectEditor(project);
+        });
+        actions.appendChild(editButton);
+
+        body.append(name, badges, description, stats, time, path, actions);
         card.append(cover, body);
-        card.addEventListener('click', async () => {
-            card.disabled = true;
+
+        const openProject = async () => {
+            card.setAttribute('aria-disabled', 'true');
             try {
                 await openDesktopProject(project);
             } catch (error) {
                 console.error('Failed to open desktop project:', error);
                 setProjectLibraryStatus(`打开失败：${error.message || error}`, 'error');
             } finally {
-                card.disabled = false;
+                card.removeAttribute('aria-disabled');
+            }
+        };
+
+        card.addEventListener('click', openProject);
+        card.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openProject();
             }
         });
 
@@ -133,7 +176,10 @@
             return [
                 project.name,
                 project.filename,
-                project.path
+                project.path,
+                project.description,
+                project.status,
+                ...(project.tags || [])
             ].some((value) => String(value || '').toLowerCase().includes(query));
         });
 
@@ -220,6 +266,125 @@
         }
     }
 
+    function projectEditorElements() {
+        return {
+            modal: document.querySelector('[data-project-edit-modal]'),
+            form: document.querySelector('[data-project-edit-form]'),
+            name: document.querySelector('[data-project-edit-name]'),
+            status: document.querySelector('[data-project-edit-status]'),
+            tags: document.querySelector('[data-project-edit-tags]'),
+            description: document.querySelector('[data-project-edit-description]'),
+            cover: document.querySelector('[data-project-edit-cover]'),
+            coverPreview: document.querySelector('[data-project-edit-cover-preview]'),
+            statusMessage: document.querySelector('[data-project-edit-status-message]')
+        };
+    }
+
+    function renderCoverPreview(coverImage) {
+        const { coverPreview } = projectEditorElements();
+        if (!coverPreview) return;
+        coverPreview.replaceChildren();
+
+        if (!coverImage) {
+            coverPreview.textContent = '未设置封面';
+            coverPreview.dataset.empty = 'true';
+            return;
+        }
+
+        delete coverPreview.dataset.empty;
+        const image = document.createElement('img');
+        image.src = coverImage;
+        image.alt = '封面预览';
+        coverPreview.appendChild(image);
+    }
+
+    function setProjectEditorStatus(message, tone) {
+        const { statusMessage } = projectEditorElements();
+        if (!statusMessage) return;
+        statusMessage.textContent = message || '';
+        statusMessage.dataset.tone = tone || 'info';
+    }
+
+    function openProjectEditor(project) {
+        const elements = projectEditorElements();
+        if (!elements.modal || !elements.form) return;
+
+        projectLibraryState.editingProject = project;
+        projectLibraryState.editingCoverImage = project.coverImage || '';
+
+        elements.name.value = project.name || '';
+        elements.status.value = project.status || '';
+        elements.tags.value = (project.tags || []).join(', ');
+        elements.description.value = project.description || '';
+        if (elements.cover) elements.cover.value = '';
+        setProjectEditorStatus('', 'info');
+        renderCoverPreview(projectLibraryState.editingCoverImage);
+
+        elements.modal.hidden = false;
+        window.setTimeout(() => elements.name && elements.name.focus(), 0);
+    }
+
+    function closeProjectEditor() {
+        const { modal } = projectEditorElements();
+        if (modal) modal.hidden = true;
+        projectLibraryState.editingProject = null;
+        projectLibraryState.editingCoverImage = '';
+    }
+
+    function readCoverFile(file) {
+        return new Promise((resolve, reject) => {
+            if (!file) {
+                resolve('');
+                return;
+            }
+            if (!file.type || !file.type.startsWith('image/')) {
+                reject(new Error('请选择图片文件'));
+                return;
+            }
+            if (file.size > 2500000) {
+                reject(new Error('封面图片不能超过 2.5MB'));
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('读取封面失败'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function saveProjectEditor() {
+        const project = projectLibraryState.editingProject;
+        const elements = projectEditorElements();
+        if (!project || !elements.form) return;
+
+        const metadata = {
+            name: elements.name.value,
+            status: elements.status.value,
+            tags: elements.tags.value.split(',').map((tag) => tag.trim()).filter(Boolean),
+            description: elements.description.value,
+            coverImage: projectLibraryState.editingCoverImage
+        };
+
+        setProjectEditorStatus('正在保存...', 'info');
+        const response = await fetch('/api/update-project-metadata', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                projectId: project.id,
+                filename: project.filename,
+                metadata
+            })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+            throw new Error(result.error || `HTTP ${response.status}`);
+        }
+
+        closeProjectEditor();
+        await loadProjectLibrary();
+        setProjectLibraryStatus('作品信息已保存。', 'ok');
+    }
+
     async function toggleFullscreen() {
         if (window.writingwayDesktop && typeof window.writingwayDesktop.toggleFullscreen === 'function') {
             await window.writingwayDesktop.toggleFullscreen();
@@ -270,6 +435,52 @@
             sort.addEventListener('change', () => {
                 projectLibraryState.sort = sort.value || 'recent';
                 renderProjectLibrary();
+            });
+        }
+    }
+
+    function bindProjectEditor() {
+        const elements = projectEditorElements();
+        if (!elements.modal || !elements.form) return;
+
+        elements.form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            try {
+                await saveProjectEditor();
+            } catch (error) {
+                console.error('Failed to save project metadata:', error);
+                setProjectEditorStatus(`保存失败：${error.message || error}`, 'error');
+            }
+        });
+
+        document.querySelectorAll('[data-close-project-editor]').forEach((button) => {
+            button.addEventListener('click', closeProjectEditor);
+        });
+
+        elements.modal.addEventListener('click', (event) => {
+            if (event.target === elements.modal) closeProjectEditor();
+        });
+
+        const clearCover = document.querySelector('[data-clear-project-cover]');
+        if (clearCover) {
+            clearCover.addEventListener('click', () => {
+                projectLibraryState.editingCoverImage = '';
+                if (elements.cover) elements.cover.value = '';
+                renderCoverPreview('');
+            });
+        }
+
+        if (elements.cover) {
+            elements.cover.addEventListener('change', async () => {
+                try {
+                    const image = await readCoverFile(elements.cover.files && elements.cover.files[0]);
+                    projectLibraryState.editingCoverImage = image;
+                    renderCoverPreview(image);
+                    setProjectEditorStatus('', 'info');
+                } catch (error) {
+                    setProjectEditorStatus(error.message || String(error), 'error');
+                    elements.cover.value = '';
+                }
             });
         }
     }
@@ -497,6 +708,7 @@
         bindNavigation();
         bindWindowControls();
         bindProjectLibrary();
+        bindProjectEditor();
         bindLegacyActions();
         const state = getState();
         setView(state ? state.loadInitialView() : 'bookshelf');
