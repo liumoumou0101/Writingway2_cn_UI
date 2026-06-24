@@ -163,6 +163,55 @@ function snapshotStats(payload) {
   };
 }
 
+async function readProjectSummary(dataRoot, file) {
+  let payload = {};
+  let parseError = '';
+  try {
+    payload = JSON.parse(await fsp.readFile(file.filePath, 'utf8'));
+  } catch (error) {
+    parseError = error.message || 'Invalid JSON';
+    payload = {};
+  }
+
+  const project = payload.project || {};
+  const stats = snapshotStats(payload);
+  const projectId = project.id ? String(project.id) : path.basename(file.name, '.json');
+  const timestamp = payload.filesystemSavedAt || payload.exportedAt || project.modified || file.stats.mtime.toISOString();
+
+  return {
+    id: projectId,
+    name: project.name ? String(project.name) : path.basename(file.name, '.json'),
+    coverImage: typeof project.coverImage === 'string' ? project.coverImage : '',
+    created: project.created || '',
+    modified: project.modified || '',
+    timestamp,
+    path: path.relative(await projectSaveRoot(dataRoot), file.filePath).replace(/\\/g, '/'),
+    filename: file.name,
+    size: file.stats.size,
+    chapterCount: stats.chapterCount,
+    sceneCount: stats.sceneCount,
+    wordCount: stats.wordCount,
+    health: parseError ? 'invalid' : 'ok',
+    healthMessage: parseError
+  };
+}
+
+async function listProjectFiles(dataRoot) {
+  const root = await projectSaveRoot(dataRoot);
+  try {
+    const entries = await fsp.readdir(root, { withFileTypes: true });
+    const files = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.json')) continue;
+      const filePath = path.join(root, entry.name);
+      files.push({ filePath, name: entry.name, stats: await fsp.stat(filePath) });
+    }
+    return files.sort((a, b) => b.stats.mtimeMs - a.stats.mtimeMs);
+  } catch {
+    return [];
+  }
+}
+
 async function listBackupFiles(dataRoot, projectId = '') {
   const root = await backupRoot(dataRoot);
   const dirs = [];
@@ -549,6 +598,15 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
 
   if (request.method === 'GET' && parsedUrl.pathname === '/api/runtime-info') {
     jsonResponse(response, 200, await runtimeInfo(dataRoot));
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/list-projects') {
+    const projects = [];
+    for (const file of await listProjectFiles(dataRoot)) {
+      projects.push(await readProjectSummary(dataRoot, file));
+    }
+    jsonResponse(response, 200, { ok: true, projects, projectSaveLocation: await projectSaveRoot(dataRoot) });
     return true;
   }
 

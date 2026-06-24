@@ -63,39 +63,21 @@
             <section class="desktop-view desktop-view-bookshelf is-active" data-view-panel="bookshelf">
                 <div class="desktop-placeholder-layout">
                     <div class="desktop-placeholder-copy">
-                        <p class="desktop-section-kicker">阶段 1 / 桌面壳</p>
-                        <h2>新的书库首页会从这里开始。</h2>
+                        <p class="desktop-section-kicker">阶段 1 / 本地书库</p>
+                        <h2>打开软件后，先看见自己的书。</h2>
                         <p>
-                            当前阶段先建立本地应用外壳和导航边界。下一阶段会把这里替换成真正的书籍卡片、封面、搜索、排序和作品入口。
+                            这里会读取桌面端保存到磁盘的项目快照。当前阶段先提供书籍卡片、封面占位、字数统计和快速进入写作器，后续再加入简介编辑、筛选排序和原生打开流程。
                         </p>
                         <div class="desktop-placeholder-actions">
                             <button class="desktop-primary-action" type="button" data-view-target="writer">打开当前写作功能</button>
-                            <button class="desktop-secondary-action" type="button" data-view-target="reader">查看阅读器占位</button>
+                            <button class="desktop-secondary-action" type="button" data-refresh-projects>刷新书库</button>
                         </div>
+                        <p class="desktop-library-meta" data-project-library-meta>正在读取本地书库...</p>
                     </div>
 
-                    <div class="desktop-bookshelf-preview" aria-label="Bookshelf preview">
-                        <div class="desktop-book-card">
-                            <div class="desktop-book-cover">长</div>
-                            <div>
-                                <strong>长篇项目</strong>
-                                <span>封面、简介、字数、状态</span>
-                            </div>
-                        </div>
-                        <div class="desktop-book-card">
-                            <div class="desktop-book-cover alt">短</div>
-                            <div>
-                                <strong>短篇集</strong>
-                                <span>下一阶段接入真实项目数据</span>
-                            </div>
-                        </div>
-                        <div class="desktop-book-card">
-                            <div class="desktop-book-cover warm">阅</div>
-                            <div>
-                                <strong>本地阅读</strong>
-                                <span>后续导入 txt / md</span>
-                            </div>
-                        </div>
+                    <div class="desktop-bookshelf-preview" aria-label="Bookshelf projects">
+                        <div class="desktop-library-status" data-project-library-status>正在读取项目...</div>
+                        <div class="desktop-project-grid" data-project-grid></div>
                     </div>
                 </div>
             </section>

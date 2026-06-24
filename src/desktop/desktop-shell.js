@@ -33,10 +33,130 @@
         if (state) state.saveView(nextView);
     }
 
+    function formatNumber(value) {
+        return new Intl.NumberFormat('zh-CN').format(Number(value) || 0);
+    }
+
+    function formatDate(value) {
+        if (!value) return '未知时间';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '未知时间';
+        return new Intl.DateTimeFormat('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        }).format(date);
+    }
+
+    function firstBookGlyph(name) {
+        const text = String(name || '书').trim();
+        return Array.from(text)[0] || '书';
+    }
+
+    function setProjectLibraryStatus(message, tone) {
+        const status = document.querySelector('[data-project-library-status]');
+        if (!status) return;
+        status.textContent = message || '';
+        status.dataset.tone = tone || 'info';
+        status.hidden = !message;
+    }
+
+    function setProjectLibraryMeta(message) {
+        const meta = document.querySelector('[data-project-library-meta]');
+        if (meta) meta.textContent = message || '';
+    }
+
+    function createProjectCard(project) {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'desktop-project-card';
+        card.dataset.projectId = project.id || '';
+        card.title = project.name || '未命名项目';
+
+        const cover = document.createElement('div');
+        cover.className = 'desktop-project-cover';
+        if (project.coverImage) {
+            const image = document.createElement('img');
+            image.src = project.coverImage;
+            image.alt = '';
+            cover.appendChild(image);
+        } else {
+            cover.textContent = firstBookGlyph(project.name);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'desktop-project-card-body';
+
+        const name = document.createElement('strong');
+        name.textContent = project.name || '未命名项目';
+
+        const stats = document.createElement('span');
+        stats.textContent = `${formatNumber(project.wordCount)} 字 / ${formatNumber(project.chapterCount)} 章 / ${formatNumber(project.sceneCount)} 场`;
+
+        const time = document.createElement('span');
+        time.textContent = `最近保存 ${formatDate(project.timestamp)}`;
+
+        const path = document.createElement('small');
+        path.textContent = project.health === 'invalid' ? `文件异常：${project.healthMessage || '无法读取'}` : (project.filename || project.path || '');
+        if (project.health === 'invalid') path.dataset.tone = 'error';
+
+        body.append(name, stats, time, path);
+        card.append(cover, body);
+        card.addEventListener('click', () => setView('writer'));
+
+        return card;
+    }
+
+    function renderProjectLibrary(projects, projectSaveLocation) {
+        const grid = document.querySelector('[data-project-grid]');
+        if (!grid) return;
+
+        grid.replaceChildren();
+
+        if (!projects || projects.length === 0) {
+            setProjectLibraryStatus('还没有保存到磁盘的项目。进入写作器后点击保存，书库就会显示作品卡片。', 'empty');
+            setProjectLibraryMeta(projectSaveLocation ? `项目目录：${projectSaveLocation}` : '项目目录尚未建立');
+            return;
+        }
+
+        setProjectLibraryStatus('', 'ok');
+        setProjectLibraryMeta(`${projects.length} 本书 / 项目目录：${projectSaveLocation || '默认目录'}`);
+        projects.forEach((project) => {
+            grid.appendChild(createProjectCard(project));
+        });
+    }
+
+    async function loadProjectLibrary() {
+        setProjectLibraryStatus('正在读取项目...', 'info');
+        try {
+            const response = await fetch('/api/list-projects', { cache: 'no-store' });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            renderProjectLibrary(result.projects || [], result.projectSaveLocation || '');
+        } catch (error) {
+            console.warn('Failed to load desktop project library:', error);
+            renderProjectLibrary([], '');
+            setProjectLibraryStatus(`读取书库失败：${error.message || error}`, 'error');
+            setProjectLibraryMeta('请确认桌面本地服务正在运行。');
+        }
+    }
+
     function bindNavigation() {
         document.querySelectorAll('[data-view-target]').forEach((button) => {
             button.addEventListener('click', () => {
                 setView(button.dataset.viewTarget);
+            });
+        });
+    }
+
+    function bindProjectLibrary() {
+        document.querySelectorAll('[data-refresh-projects]').forEach((button) => {
+            button.addEventListener('click', () => {
+                loadProjectLibrary();
             });
         });
     }
@@ -132,9 +252,11 @@
 
     function init() {
         bindNavigation();
+        bindProjectLibrary();
         bindLegacyActions();
         const state = getState();
         setView(state ? state.loadInitialView() : 'bookshelf');
+        loadProjectLibrary();
     }
 
     if (document.readyState === 'loading') {
@@ -144,6 +266,7 @@
     }
 
     window.WritingwayDesktopShell = {
+        loadProjectLibrary,
         runLegacyAction,
         setView
     };

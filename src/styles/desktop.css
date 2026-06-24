@@ -271,6 +271,12 @@ input {
     line-height: 1.7;
 }
 
+.desktop-library-meta {
+    margin-top: 18px;
+    color: var(--desktop-faint);
+    font-size: 12px;
+}
+
 .desktop-placeholder-actions {
     display: flex;
     flex-wrap: wrap;
@@ -325,9 +331,31 @@ input {
     display: grid;
     gap: 14px;
     padding: 18px;
+    align-content: start;
 }
 
-.desktop-book-card {
+.desktop-library-status {
+    padding: 18px;
+    border: 1px dashed var(--desktop-line-strong);
+    border-radius: 8px;
+    color: var(--desktop-muted);
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.desktop-library-status[data-tone="error"] {
+    border-color: rgba(239, 107, 115, 0.38);
+    color: #ffb6bb;
+}
+
+.desktop-project-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+}
+
+.desktop-book-card,
+.desktop-project-card {
     display: grid;
     grid-template-columns: 74px minmax(0, 1fr);
     gap: 14px;
@@ -338,22 +366,58 @@ input {
     background: rgba(255, 255, 255, 0.035);
 }
 
+.desktop-project-card {
+    width: 100%;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.desktop-project-card:hover {
+    border-color: rgba(73, 166, 155, 0.42);
+    background: rgba(73, 166, 155, 0.1);
+    transform: translateY(-1px);
+}
+
 .desktop-book-card strong,
-.desktop-book-card span {
+.desktop-book-card span,
+.desktop-project-card strong,
+.desktop-project-card span,
+.desktop-project-card small {
     display: block;
 }
 
-.desktop-book-card strong {
+.desktop-book-card strong,
+.desktop-project-card strong {
     margin-bottom: 5px;
     color: var(--desktop-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.desktop-book-card span {
+.desktop-book-card span,
+.desktop-project-card span,
+.desktop-project-card small {
     color: var(--desktop-muted);
     font-size: 13px;
 }
 
-.desktop-book-cover {
+.desktop-project-card small {
+    margin-top: 5px;
+    color: var(--desktop-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.desktop-project-card small[data-tone="error"] {
+    color: #ffb6bb;
+}
+
+.desktop-book-cover,
+.desktop-project-cover {
     display: grid;
     place-items: center;
     aspect-ratio: 3 / 4;
@@ -363,6 +427,13 @@ input {
     font-size: 24px;
     font-weight: 800;
     box-shadow: 0 14px 28px rgba(0, 0, 0, 0.26);
+    overflow: hidden;
+}
+
+.desktop-project-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
 .desktop-book-cover.alt {
