@@ -650,6 +650,66 @@
         };
     }
 
+    function snapshotToReaderDocument(snapshot) {
+        const project = snapshot && snapshot.project;
+        if (!project || !project.id) return null;
+
+        const chapters = Array.isArray(snapshot.chapters) ? [...snapshot.chapters] : [];
+        const scenes = Array.isArray(snapshot.scenes) ? [...snapshot.scenes] : [];
+        const sceneContents = snapshot.sceneContents && typeof snapshot.sceneContents === 'object'
+            ? snapshot.sceneContents
+            : {};
+
+        const sortedChapters = chapters.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        const sortedScenes = scenes.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        const readerChapters = sortedChapters.map((chapter, index) => {
+            const chapterScenes = sortedScenes.filter((scene) => scene.chapterId === chapter.id);
+            const content = chapterScenes.map((scene) => {
+                const text = String(sceneContents[scene.id] || '').trim();
+                if (!text) return '';
+                return chapterScenes.length > 1 ? `${scene.title || '场景'}\n\n${text}` : text;
+            }).filter(Boolean).join('\n\n');
+
+            return {
+                id: chapter.id || `project-chapter-${index + 1}`,
+                title: chapter.title || `第 ${index + 1} 章`,
+                content
+            };
+        }).filter((chapter) => chapter.title || chapter.content);
+
+        if (!readerChapters.length && sortedScenes.length) {
+            readerChapters.push({
+                id: 'project-scenes',
+                title: project.name || '当前作品',
+                content: sortedScenes.map((scene) => String(sceneContents[scene.id] || '').trim()).filter(Boolean).join('\n\n')
+            });
+        }
+
+        return {
+            source: 'project',
+            projectId: String(project.id),
+            title: project.name || '当前作品',
+            fileName: `${project.name || 'project'}.writingway`,
+            importedAt: snapshot.filesystemSavedAt || snapshot.exportedAt || new Date().toISOString(),
+            chapters: readerChapters
+        };
+    }
+
+    function loadReaderFromProjectSnapshot(snapshot, options = {}) {
+        const documentData = snapshotToReaderDocument(snapshot);
+        if (!documentData) return false;
+
+        const previous = readerState.document;
+        const sameProject = previous && previous.source === 'project' && previous.projectId === documentData.projectId;
+        readerState.document = documentData;
+        readerState.chapterIndex = sameProject ? readerState.chapterIndex : 0;
+        saveReaderState();
+        renderReader();
+
+        if (options.showReader) setView('reader');
+        return true;
+    }
+
     function readerParagraphs(content) {
         const blocks = String(content || '').split(/\n{2,}/)
             .map((block) => block.trim())
@@ -905,8 +965,15 @@
     function bindLegacyProjectUpdates() {
         window.addEventListener('message', (event) => {
             if (event.origin !== window.location.origin) return;
-            if (!event.data || event.data.type !== 'writingway:desktop:project-data-changed') return;
-            loadProjectLibrary();
+            if (!event.data) return;
+            if (event.data.type === 'writingway:desktop:project-saved') {
+                loadReaderFromProjectSnapshot(event.data.snapshot);
+                loadProjectLibrary();
+                return;
+            }
+            if (event.data.type === 'writingway:desktop:project-data-changed') {
+                loadProjectLibrary();
+            }
         });
     }
 
@@ -1170,6 +1237,7 @@
 
         const app = await waitForLegacyAppData();
         const snapshot = await fetchProjectSnapshot(project);
+        loadReaderFromProjectSnapshot(snapshot);
         await importSnapshotIntoLegacyDb(snapshot);
 
         if (typeof app.loadProjects === 'function') await app.loadProjects();

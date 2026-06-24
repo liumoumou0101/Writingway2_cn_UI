@@ -178,6 +178,24 @@ function snapshot(id, name, text, exportedAt) {
         assert.ok(createdListResponse.ok && createdListBody.ok, 'project list should remain readable after create');
         assert.ok(createdListBody.projects.some((project) => project.name === 'Desktop Draft'), 'created project should be saved to the desktop library');
 
+        await page.evaluate(() => {
+            window.postMessage({
+                type: 'writingway:desktop:project-saved',
+                snapshot: {
+                    project: { id: 'saved-project', name: 'Saved Story' },
+                    chapters: [{ id: 'saved-chapter', projectId: 'saved-project', title: 'Saved Chapter', order: 0 }],
+                    scenes: [{ id: 'saved-scene', projectId: 'saved-project', chapterId: 'saved-chapter', title: 'Saved Scene', order: 0 }],
+                    sceneContents: { 'saved-scene': 'Freshly saved generated prose.' },
+                    exportedAt: new Date().toISOString()
+                },
+                result: { ok: true }
+            }, window.location.origin);
+        });
+        await page.click('[data-view-target="reader"]');
+        await page.waitForFunction(() => document.querySelector('[data-reader-title]').textContent === 'Saved Chapter');
+        const savedReaderText = await page.locator('[data-reader-content]').innerText();
+        assert.ok(savedReaderText.includes('Freshly saved generated prose.'), 'reader should refresh from the last saved project snapshot');
+
         console.log('Desktop project library test passed.');
     } finally {
         if (browser) await browser.close();

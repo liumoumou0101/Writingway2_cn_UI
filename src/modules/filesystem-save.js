@@ -121,6 +121,15 @@
             }
 
             app.lastFilesystemSavePath = result.path || '';
+            try {
+                window.parent?.postMessage({
+                    type: 'writingway:desktop:project-saved',
+                    snapshot,
+                    result
+                }, window.location.origin);
+            } catch (e) {
+                // Desktop shell refresh is best-effort; saving should not depend on the parent frame.
+            }
             setFilesystemSaveMessage(
                 app,
                 result.path ? `Saved to ${result.path}` : 'Saved to disk',
