@@ -212,6 +212,27 @@ async function listProjectFiles(dataRoot) {
   }
 }
 
+async function findProjectFile(dataRoot, projectId, filename) {
+  const files = await listProjectFiles(dataRoot);
+  const requestedFilename = filename ? path.basename(filename) : '';
+  if (requestedFilename) {
+    return files.find((file) => file.name === requestedFilename) || null;
+  }
+
+  const requestedProjectId = String(projectId || '').trim();
+  if (!requestedProjectId) return null;
+
+  for (const file of files) {
+    try {
+      const payload = JSON.parse(await fsp.readFile(file.filePath, 'utf8'));
+      if (payload.project && String(payload.project.id) === requestedProjectId) return file;
+    } catch {
+      // Ignore unreadable files while looking for a matching project.
+    }
+  }
+  return null;
+}
+
 async function listBackupFiles(dataRoot, projectId = '') {
   const root = await backupRoot(dataRoot);
   const dirs = [];
@@ -607,6 +628,29 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       projects.push(await readProjectSummary(dataRoot, file));
     }
     jsonResponse(response, 200, { ok: true, projects, projectSaveLocation: await projectSaveRoot(dataRoot) });
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/get-project') {
+    const projectId = String(parsedUrl.searchParams.get('projectId') || '').trim();
+    const filename = String(parsedUrl.searchParams.get('filename') || '').trim();
+    const file = await findProjectFile(dataRoot, projectId, filename);
+    if (!file) {
+      jsonResponse(response, 404, { ok: false, error: 'Project not found' });
+      return true;
+    }
+
+    try {
+      const project = JSON.parse(await fsp.readFile(file.filePath, 'utf8'));
+      jsonResponse(response, 200, {
+        ok: true,
+        project,
+        summary: await readProjectSummary(dataRoot, file),
+        projectSaveLocation: await projectSaveRoot(dataRoot)
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message || 'Could not read project' });
+    }
     return true;
   }
 

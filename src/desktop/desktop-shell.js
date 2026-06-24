@@ -73,6 +73,7 @@
         card.type = 'button';
         card.className = 'desktop-project-card';
         card.dataset.projectId = project.id || '';
+        card.dataset.projectFilename = project.filename || '';
         card.title = project.name || '未命名项目';
 
         const cover = document.createElement('div');
@@ -104,7 +105,17 @@
 
         body.append(name, stats, time, path);
         card.append(cover, body);
-        card.addEventListener('click', () => setView('writer'));
+        card.addEventListener('click', async () => {
+            card.disabled = true;
+            try {
+                await openDesktopProject(project);
+            } catch (error) {
+                console.error('Failed to open desktop project:', error);
+                setProjectLibraryStatus(`打开失败：${error.message || error}`, 'error');
+            } finally {
+                card.disabled = false;
+            }
+        });
 
         return card;
     }
@@ -182,6 +193,11 @@
         }
     }
 
+    function getLegacyWindow() {
+        const frame = getWriterFrame();
+        return frame ? frame.contentWindow : null;
+    }
+
     function waitForLegacyAppData() {
         return new Promise((resolve, reject) => {
             let attempts = 0;
@@ -205,6 +221,113 @@
 
             check();
         });
+    }
+
+    async function fetchProjectSnapshot(project) {
+        const params = new URLSearchParams();
+        if (project && project.id) params.set('projectId', project.id);
+        if (project && project.filename) params.set('filename', project.filename);
+
+        const response = await fetch(`/api/get-project?${params.toString()}`, { cache: 'no-store' });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+            throw new Error(result.error || `HTTP ${response.status}`);
+        }
+        return result.project;
+    }
+
+    function countWords(text) {
+        return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+    }
+
+    async function deleteProjectRows(db, projectId, sceneIds) {
+        const projectTables = ['chapters', 'scenes', 'compendium', 'prompts', 'codex', 'promptHistory', 'workshopSessions'];
+
+        for (const tableName of projectTables) {
+            if (!db[tableName]) continue;
+            try {
+                await db[tableName].where('projectId').equals(projectId).delete();
+            } catch (error) {
+                console.warn(`Failed to clear ${tableName} for desktop project import:`, error);
+            }
+        }
+
+        if (db.content) {
+            for (const sceneId of sceneIds) {
+                try { await db.content.delete(sceneId); } catch (error) { /* ignore individual stale rows */ }
+            }
+        }
+
+        await db.projects.delete(projectId);
+    }
+
+    async function importRows(db, tableName, rows) {
+        if (!db[tableName] || !Array.isArray(rows) || rows.length === 0) return;
+        await db[tableName].bulkPut(rows);
+    }
+
+    async function importSnapshotIntoLegacyDb(snapshot) {
+        const writerWindow = getLegacyWindow();
+        const db = writerWindow && writerWindow.db;
+        const project = snapshot && snapshot.project;
+        if (!db || !project || !project.id) {
+            throw new Error('Legacy writer database is not ready.');
+        }
+
+        const projectId = String(project.id);
+        const existingScenes = await db.scenes.where('projectId').equals(projectId).toArray().catch(() => []);
+        const snapshotScenes = Array.isArray(snapshot.scenes) ? snapshot.scenes : [];
+        const sceneIds = new Set([
+            ...existingScenes.map((scene) => scene.id),
+            ...snapshotScenes.map((scene) => scene.id)
+        ].filter(Boolean));
+
+        await deleteProjectRows(db, projectId, sceneIds);
+        await db.projects.put(project);
+        await importRows(db, 'chapters', snapshot.chapters || []);
+        await importRows(db, 'scenes', snapshotScenes);
+        await importRows(db, 'compendium', snapshot.compendium || []);
+        await importRows(db, 'prompts', snapshot.prompts || []);
+        await importRows(db, 'codex', snapshot.codex || []);
+        await importRows(db, 'promptHistory', snapshot.promptHistory || []);
+        await importRows(db, 'workshopSessions', snapshot.workshopSessions || []);
+
+        const contentRows = [];
+        if (snapshot.sceneContents && typeof snapshot.sceneContents === 'object') {
+            Object.entries(snapshot.sceneContents).forEach(([sceneId, text]) => {
+                contentRows.push({
+                    sceneId,
+                    text: text || '',
+                    wordCount: countWords(text),
+                    updatedAt: Date.now()
+                });
+            });
+        }
+        await importRows(db, 'content', contentRows);
+    }
+
+    async function openDesktopProject(project) {
+        if (project && project.health === 'invalid') {
+            setProjectLibraryStatus('这个项目文件暂时无法读取，请先检查磁盘快照。', 'error');
+            return;
+        }
+
+        setProjectLibraryStatus(`正在打开《${project.name || '未命名项目'}》...`, 'info');
+        setView('writer');
+
+        const app = await waitForLegacyAppData();
+        const snapshot = await fetchProjectSnapshot(project);
+        await importSnapshotIntoLegacyDb(snapshot);
+
+        if (typeof app.loadProjects === 'function') await app.loadProjects();
+        if (typeof app.openProject === 'function') {
+            await app.openProject(snapshot.project.id);
+        } else if (typeof app.selectProject === 'function') {
+            app.showProjectsView = false;
+            await app.selectProject(snapshot.project.id);
+        }
+
+        setProjectLibraryStatus('', 'ok');
     }
 
     async function runLegacyAction(action) {

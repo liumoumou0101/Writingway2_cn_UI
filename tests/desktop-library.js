@@ -50,6 +50,11 @@ function snapshot(id, name, text, exportedAt) {
         assert.strictEqual(apiBody.projects[0].name, '短篇集', 'newest project should be first');
         assert.strictEqual(apiBody.projects[0].wordCount, 2, 'word count should be calculated from sceneContents');
 
+        const projectResponse = await fetch('http://127.0.0.1:8000/api/get-project?projectId=book-2');
+        const projectBody = await projectResponse.json();
+        assert.ok(projectResponse.ok && projectBody.ok, 'get-project should return ok');
+        assert.strictEqual(projectBody.project.project.name, '短篇集', 'get-project should return the snapshot payload');
+
         browser = await chromium.launch({ headless: true });
         const page = await browser.newPage({ viewport: { width: 1366, height: 850 } });
         await page.goto('http://127.0.0.1:8000/desktop.html', { waitUntil: 'domcontentloaded' });
@@ -58,6 +63,17 @@ function snapshot(id, name, text, exportedAt) {
         const cardText = await page.locator('.desktop-project-card').first().innerText();
         assert.ok(cardText.includes('短篇集'), 'first card should render project name');
         assert.ok(cardText.includes('2 字'), 'first card should render word count');
+
+        await page.locator('.desktop-project-card').first().click();
+        await page.waitForFunction(() => {
+            const frame = document.getElementById('legacy-writer-frame');
+            const writerWindow = frame && frame.contentWindow;
+            const writerDocument = frame && frame.contentDocument;
+            const root = writerDocument && writerDocument.querySelector('[x-data="app"]');
+            if (!writerWindow || !writerWindow.Alpine || !root) return false;
+            const app = writerWindow.Alpine.$data(root);
+            return app.currentProject && app.currentProject.id === 'book-2' && app.currentProject.name === '短篇集';
+        }, { timeout: 12000 });
 
         console.log('Desktop project library test passed.');
     } finally {

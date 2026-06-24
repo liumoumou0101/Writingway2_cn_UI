@@ -380,6 +380,12 @@ input {
     transform: translateY(-1px);
 }
 
+.desktop-project-card:disabled {
+    cursor: wait;
+    opacity: 0.68;
+    transform: none;
+}
+
 .desktop-book-card strong,
 .desktop-book-card span,
 .desktop-project-card strong,
