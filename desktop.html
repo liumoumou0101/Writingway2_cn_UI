@@ -1,53 +1,133 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Writingway Desktop</title>
-    <style>
-        html,
-        body {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            overflow: hidden;
-            background: #14161b;
-        }
-
-        .desktop-host {
-            width: 100%;
-            height: 100%;
-            border: 0;
-            display: block;
-            background: #14161b;
-        }
-
-        .desktop-fallback {
-            min-height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-            color: #e8eaed;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        }
-    </style>
+    <link rel="stylesheet" href="src/styles/desktop.css">
+    <script defer src="src/desktop/desktop-state.js"></script>
+    <script defer src="src/desktop/desktop-shell.js"></script>
 </head>
 
 <body>
-    <!-- Transitional desktop-owned entry point.
-         The current app is still hosted by main.html, but Electron now owns desktop.html.
-         Future bookshelf, reader, and native-app shell work should happen here instead of
-         adding more browser-era entry logic to main.html. -->
-    <iframe
-        class="desktop-host"
-        src="/main.html?runtime=desktop"
-        title="Writingway Desktop App">
-    </iframe>
-    <noscript>
-        <div class="desktop-fallback">Writingway Desktop requires JavaScript.</div>
-    </noscript>
+    <div id="desktop-root" class="desktop-app" data-view="bookshelf">
+        <aside class="desktop-rail" aria-label="Writingway Desktop navigation">
+            <div class="desktop-brand" title="Writingway Desktop">
+                <div class="desktop-brand-mark">W</div>
+                <div class="desktop-brand-text">
+                    <strong>Writingway</strong>
+                    <span>Desktop</span>
+                </div>
+            </div>
+
+            <nav class="desktop-nav">
+                <button class="desktop-nav-item is-active" type="button" data-view-target="bookshelf" title="书库">
+                    <span class="desktop-nav-icon">书</span>
+                    <span>书库</span>
+                </button>
+                <button class="desktop-nav-item" type="button" data-view-target="writer" title="写作">
+                    <span class="desktop-nav-icon">写</span>
+                    <span>写作</span>
+                </button>
+                <button class="desktop-nav-item" type="button" data-view-target="reader" title="阅读">
+                    <span class="desktop-nav-icon">阅</span>
+                    <span>阅读</span>
+                </button>
+                <button class="desktop-nav-item" type="button" data-view-target="recovery" title="恢复">
+                    <span class="desktop-nav-icon">备</span>
+                    <span>恢复</span>
+                </button>
+                <button class="desktop-nav-item" type="button" data-view-target="settings" title="设置">
+                    <span class="desktop-nav-icon">设</span>
+                    <span>设置</span>
+                </button>
+            </nav>
+
+            <div class="desktop-rail-footer">
+                <span class="desktop-runtime-pill">Desktop mainline</span>
+            </div>
+        </aside>
+
+        <main class="desktop-main">
+            <header class="desktop-topbar">
+                <div>
+                    <p class="desktop-eyebrow">本地优先 AI 小说工作台</p>
+                    <h1 id="desktop-view-title">书库</h1>
+                </div>
+                <div class="desktop-topbar-actions">
+                    <button class="desktop-secondary-action" type="button" data-view-target="writer">进入旧写作器</button>
+                </div>
+            </header>
+
+            <section class="desktop-view desktop-view-bookshelf is-active" data-view-panel="bookshelf">
+                <div class="desktop-placeholder-layout">
+                    <div class="desktop-placeholder-copy">
+                        <p class="desktop-section-kicker">阶段 1 / 桌面壳</p>
+                        <h2>新的书库首页会从这里开始。</h2>
+                        <p>
+                            当前阶段先建立本地应用外壳和导航边界。下一阶段会把这里替换成真正的书籍卡片、封面、搜索、排序和作品入口。
+                        </p>
+                        <div class="desktop-placeholder-actions">
+                            <button class="desktop-primary-action" type="button" data-view-target="writer">打开当前写作功能</button>
+                            <button class="desktop-secondary-action" type="button" data-view-target="reader">查看阅读器占位</button>
+                        </div>
+                    </div>
+
+                    <div class="desktop-bookshelf-preview" aria-label="Bookshelf preview">
+                        <div class="desktop-book-card">
+                            <div class="desktop-book-cover">长</div>
+                            <div>
+                                <strong>长篇项目</strong>
+                                <span>封面、简介、字数、状态</span>
+                            </div>
+                        </div>
+                        <div class="desktop-book-card">
+                            <div class="desktop-book-cover alt">短</div>
+                            <div>
+                                <strong>短篇集</strong>
+                                <span>下一阶段接入真实项目数据</span>
+                            </div>
+                        </div>
+                        <div class="desktop-book-card">
+                            <div class="desktop-book-cover warm">阅</div>
+                            <div>
+                                <strong>本地阅读</strong>
+                                <span>后续导入 txt / md</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="desktop-view desktop-view-writer" data-view-panel="writer">
+                <iframe
+                    id="legacy-writer-frame"
+                    class="desktop-writer-frame"
+                    src="main.html?runtime=desktop&embedded=writer"
+                    title="Writingway writer">
+                </iframe>
+            </section>
+
+            <section class="desktop-view desktop-panel-placeholder" data-view-panel="reader">
+                <p class="desktop-section-kicker">Local Reader</p>
+                <h2>本地阅读器将在后续阶段开发。</h2>
+                <p>计划支持 txt / md 导入、章节识别、阅读进度、主题、字号、行距和搜索。</p>
+            </section>
+
+            <section class="desktop-view desktop-panel-placeholder" data-view-panel="recovery">
+                <p class="desktop-section-kicker">Recovery Center</p>
+                <h2>恢复中心入口已预留。</h2>
+                <p>下一步会把现有本地备份恢复功能从旧写作器里提升为桌面级入口。</p>
+            </section>
+
+            <section class="desktop-view desktop-panel-placeholder" data-view-panel="settings">
+                <p class="desktop-section-kicker">Settings</p>
+                <h2>设置中心入口已预留。</h2>
+                <p>后续会整理 AI、本地模型、备份、外观、语言和关于页面。</p>
+            </section>
+        </main>
+    </div>
 </body>
 
 </html>
