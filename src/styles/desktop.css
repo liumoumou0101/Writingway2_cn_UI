@@ -334,6 +334,34 @@ input {
     align-content: start;
 }
 
+.desktop-library-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 132px;
+    gap: 10px;
+}
+
+.desktop-library-toolbar input,
+.desktop-library-toolbar select {
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 11px;
+    border: 1px solid var(--desktop-line-strong);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.045);
+    color: var(--desktop-text);
+    outline: none;
+}
+
+.desktop-library-toolbar input:focus,
+.desktop-library-toolbar select:focus {
+    border-color: rgba(73, 166, 155, 0.62);
+}
+
+.desktop-library-toolbar select option {
+    background: var(--desktop-panel);
+    color: var(--desktop-text);
+}
+
 .desktop-library-status {
     padding: 18px;
     border: 1px dashed var(--desktop-line-strong);
@@ -480,6 +508,10 @@ input {
     }
 
     .desktop-placeholder-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .desktop-library-toolbar {
         grid-template-columns: 1fr;
     }
 }

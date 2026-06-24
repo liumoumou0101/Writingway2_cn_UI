@@ -64,6 +64,15 @@ function snapshot(id, name, text, exportedAt) {
         assert.ok(cardText.includes('短篇集'), 'first card should render project name');
         assert.ok(cardText.includes('2 字'), 'first card should render word count');
 
+        await page.selectOption('[data-project-sort]', 'words');
+        const wordSortedText = await page.locator('.desktop-project-card').first().innerText();
+        assert.ok(wordSortedText.includes('星河长卷'), 'word sort should put the longest project first');
+
+        await page.fill('[data-project-search]', '短篇');
+        await page.waitForFunction(() => document.querySelectorAll('.desktop-project-card').length === 1);
+        const filteredText = await page.locator('.desktop-project-card').first().innerText();
+        assert.ok(filteredText.includes('短篇集'), 'search should filter project cards by name');
+
         await page.locator('.desktop-project-card').first().click();
         await page.waitForFunction(() => {
             const frame = document.getElementById('legacy-writer-frame');

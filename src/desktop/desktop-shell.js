@@ -6,6 +6,12 @@
         recovery: '恢复中心',
         settings: '设置'
     };
+    const projectLibraryState = {
+        projects: [],
+        projectSaveLocation: '',
+        query: '',
+        sort: 'recent'
+    };
 
     function getState() {
         return window.WritingwayDesktopState;
@@ -120,20 +126,59 @@
         return card;
     }
 
-    function renderProjectLibrary(projects, projectSaveLocation) {
+    function getFilteredProjects() {
+        const query = projectLibraryState.query.trim().toLowerCase();
+        const projects = projectLibraryState.projects.filter((project) => {
+            if (!query) return true;
+            return [
+                project.name,
+                project.filename,
+                project.path
+            ].some((value) => String(value || '').toLowerCase().includes(query));
+        });
+
+        const sorted = [...projects];
+        sorted.sort((a, b) => {
+            if (projectLibraryState.sort === 'name') {
+                return String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN');
+            }
+            if (projectLibraryState.sort === 'words') {
+                return (Number(b.wordCount) || 0) - (Number(a.wordCount) || 0);
+            }
+            if (projectLibraryState.sort === 'chapters') {
+                return (Number(b.chapterCount) || 0) - (Number(a.chapterCount) || 0);
+            }
+
+            return new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime();
+        });
+
+        return sorted;
+    }
+
+    function renderProjectLibrary() {
         const grid = document.querySelector('[data-project-grid]');
         if (!grid) return;
 
         grid.replaceChildren();
+        const projects = getFilteredProjects();
+        const total = projectLibraryState.projects.length;
+        const projectSaveLocation = projectLibraryState.projectSaveLocation;
 
-        if (!projects || projects.length === 0) {
+        if (total === 0) {
             setProjectLibraryStatus('还没有保存到磁盘的项目。进入写作器后点击保存，书库就会显示作品卡片。', 'empty');
             setProjectLibraryMeta(projectSaveLocation ? `项目目录：${projectSaveLocation}` : '项目目录尚未建立');
             return;
         }
 
+        if (projects.length === 0) {
+            setProjectLibraryStatus('没有找到匹配的作品。换个关键词试试，或者清空搜索框。', 'empty');
+            setProjectLibraryMeta(`${total} 本书 / 项目目录：${projectSaveLocation || '默认目录'}`);
+            return;
+        }
+
         setProjectLibraryStatus('', 'ok');
-        setProjectLibraryMeta(`${projects.length} 本书 / 项目目录：${projectSaveLocation || '默认目录'}`);
+        const shownText = projects.length === total ? `${total} 本书` : `显示 ${projects.length} / ${total} 本书`;
+        setProjectLibraryMeta(`${shownText} / 项目目录：${projectSaveLocation || '默认目录'}`);
         projects.forEach((project) => {
             grid.appendChild(createProjectCard(project));
         });
@@ -147,12 +192,31 @@
             if (!response.ok || !result.ok) {
                 throw new Error(result.error || `HTTP ${response.status}`);
             }
-            renderProjectLibrary(result.projects || [], result.projectSaveLocation || '');
+            projectLibraryState.projects = result.projects || [];
+            projectLibraryState.projectSaveLocation = result.projectSaveLocation || '';
+            renderProjectLibrary();
         } catch (error) {
             console.warn('Failed to load desktop project library:', error);
-            renderProjectLibrary([], '');
+            projectLibraryState.projects = [];
+            projectLibraryState.projectSaveLocation = '';
+            renderProjectLibrary();
             setProjectLibraryStatus(`读取书库失败：${error.message || error}`, 'error');
             setProjectLibraryMeta('请确认桌面本地服务正在运行。');
+        }
+    }
+
+    async function openProjectFolder() {
+        setProjectLibraryStatus('正在打开项目目录...', 'info');
+        try {
+            const response = await fetch('/api/open-project-save-folder', { method: 'POST' });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            setProjectLibraryStatus('', 'ok');
+        } catch (error) {
+            console.warn('Failed to open project folder:', error);
+            setProjectLibraryStatus(`打开项目目录失败：${error.message || error}`, 'error');
         }
     }
 
@@ -170,6 +234,28 @@
                 loadProjectLibrary();
             });
         });
+
+        document.querySelectorAll('[data-open-project-folder]').forEach((button) => {
+            button.addEventListener('click', () => {
+                openProjectFolder();
+            });
+        });
+
+        const search = document.querySelector('[data-project-search]');
+        if (search) {
+            search.addEventListener('input', () => {
+                projectLibraryState.query = search.value || '';
+                renderProjectLibrary();
+            });
+        }
+
+        const sort = document.querySelector('[data-project-sort]');
+        if (sort) {
+            sort.addEventListener('change', () => {
+                projectLibraryState.sort = sort.value || 'recent';
+                renderProjectLibrary();
+            });
+        }
     }
 
     function getWriterFrame() {
@@ -336,6 +422,12 @@
         const app = await waitForLegacyAppData();
         if (action === 'ai-settings') {
             app.showAISettings = true;
+            return;
+        }
+
+        if (action === 'new-project') {
+            app.showProjectsView = true;
+            app.showNewProjectModal = true;
             return;
         }
 

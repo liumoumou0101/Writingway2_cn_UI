@@ -70,12 +70,23 @@
                         </p>
                         <div class="desktop-placeholder-actions">
                             <button class="desktop-primary-action" type="button" data-view-target="writer">打开当前写作功能</button>
+                            <button class="desktop-primary-action" type="button" data-legacy-action="new-project">新建项目</button>
                             <button class="desktop-secondary-action" type="button" data-refresh-projects>刷新书库</button>
+                            <button class="desktop-secondary-action" type="button" data-open-project-folder>打开项目目录</button>
                         </div>
                         <p class="desktop-library-meta" data-project-library-meta>正在读取本地书库...</p>
                     </div>
 
                     <div class="desktop-bookshelf-preview" aria-label="Bookshelf projects">
+                        <div class="desktop-library-toolbar" aria-label="Bookshelf filters">
+                            <input type="search" data-project-search placeholder="搜索书名或文件名">
+                            <select data-project-sort aria-label="项目排序">
+                                <option value="recent">最近保存</option>
+                                <option value="name">书名</option>
+                                <option value="words">字数</option>
+                                <option value="chapters">章节数</option>
+                            </select>
+                        </div>
                         <div class="desktop-library-status" data-project-library-status>正在读取项目...</div>
                         <div class="desktop-project-grid" data-project-grid></div>
                     </div>
