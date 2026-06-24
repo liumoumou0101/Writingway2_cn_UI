@@ -902,6 +902,14 @@
         });
     }
 
+    function bindLegacyProjectUpdates() {
+        window.addEventListener('message', (event) => {
+            if (event.origin !== window.location.origin) return;
+            if (!event.data || event.data.type !== 'writingway:desktop:project-data-changed') return;
+            loadProjectLibrary();
+        });
+    }
+
     function bindProjectLibrary() {
         document.querySelectorAll('[data-refresh-projects]').forEach((button) => {
             button.addEventListener('click', () => {
@@ -1231,6 +1239,7 @@
         bindProjectCreator();
         bindProjectEditor();
         bindReader();
+        bindLegacyProjectUpdates();
         bindLegacyActions();
         const state = getState();
         setView(state ? state.loadInitialView() : 'bookshelf');

@@ -2923,6 +2923,13 @@ document.addEventListener('alpine:init', () => {
                 }
 
                 this.backupStatus = 'Loading backups...';
+                this.backupList = [];
+                this.backupListLoading = true;
+                this.backupListLoaded = false;
+                this.backupListError = '';
+                this.selectedBackupPreview = null;
+                this.selectedBackupNoteDraft = '';
+                this.showRestoreModal = true;
                 const result = await window.BackupManager.listBackups(this);
 
                 if (result.success) {
@@ -2933,17 +2940,30 @@ document.addEventListener('alpine:init', () => {
                     if (result.backupLocation) {
                         this.backupLocation = result.backupLocation;
                     }
-                    this.showRestoreModal = true;
                     this.backupStatus = '';
+                    this.backupListLoaded = true;
                 } else {
+                    this.backupListError = result.error || 'Unknown error';
                     alert('Failed to load backups: ' + result.error);
                     this.backupStatus = 'Failed to load';
+                }
+                this.backupListLoading = false;
+            },
+
+            notifyDesktopProjectDataChanged() {
+                try {
+                    window.parent?.postMessage({ type: 'writingway:desktop:project-data-changed' }, window.location.origin);
+                } catch (e) {
+                    // Desktop shell refresh is best-effort.
                 }
             },
 
             async closeRestoreModal() {
                 this.showRestoreModal = false;
                 this.backupList = [];
+                this.backupListLoading = false;
+                this.backupListLoaded = false;
+                this.backupListError = '';
                 this.selectedBackupPreview = null;
                 this.selectedBackupNoteDraft = '';
                 this.closeBackupSceneCompare();
@@ -3037,10 +3057,14 @@ document.addEventListener('alpine:init', () => {
 
                 if (result.success) {
                     this.backupStatus = 'Restored';
+                    this.notifyDesktopProjectDataChanged();
                     const extra = result.preRestoreBackupId ? `\n\nA pre-restore snapshot was created: ${result.preRestoreBackupId}` : '';
                     alert(`${this.backupProviderName()} backup restored successfully!${extra}`);
                     this.showRestoreModal = false;
                     this.backupList = [];
+                    this.backupListLoading = false;
+                    this.backupListLoaded = false;
+                    this.backupListError = '';
                 } else {
                     this.backupStatus = 'Restore failed';
                     alert('Restore failed: ' + result.error);
@@ -3136,8 +3160,12 @@ document.addEventListener('alpine:init', () => {
                     if (result.success) {
                         this.showRestoreModal = false;
                         this.backupList = [];
+                        this.backupListLoading = false;
+                        this.backupListLoaded = false;
+                        this.backupListError = '';
                         this.selectedBackupPreview = null;
                         this.selectedBackupNoteDraft = '';
+                        this.notifyDesktopProjectDataChanged();
                         alert(this.t('backup.importedAsNew'));
                     } else {
                         alert('Failed to import backup: ' + result.error);
@@ -3178,21 +3206,31 @@ document.addEventListener('alpine:init', () => {
             async openLocalBackupRecovery() {
                 if (!window.BackupManager || typeof window.BackupManager.listAllLocalBackups !== 'function') return;
                 this.backupStatus = 'Loading local backups...';
+                this.localRecoveryBackups = [];
+                this.localRecoveryLoading = true;
+                this.localRecoveryLoaded = false;
+                this.localRecoveryError = '';
+                this.showLocalBackupRecoveryModal = true;
                 const result = await window.BackupManager.listAllLocalBackups();
                 if (result.success) {
                     this.localRecoveryBackups = result.backups;
                     this.backupLocation = result.backupLocation || this.backupLocation;
-                    this.showLocalBackupRecoveryModal = true;
                     this.backupStatus = '';
+                    this.localRecoveryLoaded = true;
                 } else {
+                    this.localRecoveryError = result.error || 'Unknown error';
                     this.backupStatus = 'Failed to load backups';
                     alert('Failed to load local backups: ' + result.error);
                 }
+                this.localRecoveryLoading = false;
             },
 
             closeLocalBackupRecovery() {
                 this.showLocalBackupRecoveryModal = false;
                 this.localRecoveryBackups = [];
+                this.localRecoveryLoading = false;
+                this.localRecoveryLoaded = false;
+                this.localRecoveryError = '';
                 this.localRecoveryFilter = '';
             },
 
@@ -3202,6 +3240,10 @@ document.addEventListener('alpine:init', () => {
                 if (result.success) {
                     this.showLocalBackupRecoveryModal = false;
                     this.localRecoveryBackups = [];
+                    this.localRecoveryLoading = false;
+                    this.localRecoveryLoaded = false;
+                    this.localRecoveryError = '';
+                    this.notifyDesktopProjectDataChanged();
                     alert('Project restored from local backup.');
                 } else {
                     alert('Restore failed: ' + result.error);

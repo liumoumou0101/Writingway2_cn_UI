@@ -89,6 +89,7 @@ async function createBackup(payload, requestOptions) {
         assert.ok(first.backupId, 'first backup should return an id');
 
         let list = await api(`/api/list-backups?projectId=${encodeURIComponent(projectId)}`);
+        assert.strictEqual(list.backupLocation, path.join(dataRoot, 'projects', 'backups'), 'default backup location should live under the project library');
         assert.strictEqual(list.backups.length, 1, 'one backup should be listed after first create');
         assert.strictEqual(list.backups[0].pinned, false, 'new backups should not be pinned by default');
         assert.strictEqual(list.backups[0].note, 'stable draft', 'backup note should be preserved');

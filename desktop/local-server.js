@@ -77,7 +77,7 @@ async function writeSettings(dataRoot, settings) {
 
 async function backupRoot(dataRoot) {
   const settings = await readSettings(dataRoot);
-  return settings.backupLocation || path.join(dataRoot, 'project-backups');
+  return settings.backupLocation || path.join(await projectSaveRoot(dataRoot), 'backups');
 }
 
 async function projectSaveRoot(dataRoot) {
@@ -87,6 +87,26 @@ async function projectSaveRoot(dataRoot) {
 
 async function backupDir(dataRoot, projectId) {
   return path.join(await backupRoot(dataRoot), sanitizeFilename(projectId));
+}
+
+function legacyBackupRoot(dataRoot) {
+  return path.join(dataRoot, 'project-backups');
+}
+
+async function backupSearchRoots(dataRoot) {
+  const roots = [await backupRoot(dataRoot), legacyBackupRoot(dataRoot)];
+  return Array.from(new Set(roots.map((root) => path.resolve(root))));
+}
+
+async function findBackupFile(dataRoot, projectId, backupId) {
+  for (const root of await backupSearchRoots(dataRoot)) {
+    const filePath = path.join(root, sanitizeFilename(projectId), backupId);
+    if (await pathExists(filePath)) {
+      const stats = await fsp.stat(filePath);
+      return { root, dir: path.dirname(filePath), filePath, name: backupId, stats };
+    }
+  }
+  return null;
 }
 
 function jsonResponse(response, statusCode, payload, cors = false) {
@@ -328,29 +348,34 @@ async function uniqueFilePath(dir, filename) {
 }
 
 async function listBackupFiles(dataRoot, projectId = '') {
-  const root = await backupRoot(dataRoot);
   const dirs = [];
-  if (projectId) {
-    dirs.push(await backupDir(dataRoot, projectId));
-  } else {
+  for (const root of await backupSearchRoots(dataRoot)) {
+    if (projectId) {
+      dirs.push({ root, dir: path.join(root, sanitizeFilename(projectId)) });
+      continue;
+    }
     try {
       const entries = await fsp.readdir(root, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.isDirectory()) dirs.push(path.join(root, entry.name));
+        if (entry.isDirectory()) dirs.push({ root, dir: path.join(root, entry.name) });
       }
     } catch {
-      return [];
+      // This backup root may not exist yet.
     }
   }
 
   const files = [];
-  for (const dir of dirs) {
+  const seen = new Set();
+  for (const { root, dir } of dirs) {
     try {
       const entries = await fsp.readdir(dir, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isFile() && entry.name.endsWith('.json')) {
           const filePath = path.join(dir, entry.name);
-          files.push({ dir, filePath, name: entry.name, stats: await fsp.stat(filePath) });
+          const key = path.resolve(filePath).toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          files.push({ root, dir, filePath, name: entry.name, stats: await fsp.stat(filePath) });
         }
       }
     } catch {
@@ -377,7 +402,7 @@ async function readBackupSummary(dataRoot, file) {
     projectId: payload.project && payload.project.id ? String(payload.project.id) : '',
     projectName: payload.project && payload.project.name ? String(payload.project.name) : '',
     timestamp: meta.createdAt || file.stats.mtime.toISOString(),
-    path: path.relative(await backupRoot(dataRoot), file.filePath).replace(/\\/g, '/'),
+    path: path.relative(file.root || await backupRoot(dataRoot), file.filePath).replace(/\\/g, '/'),
     size: file.stats.size,
     reason: meta.reason || 'manual',
     note: meta.note || '',
@@ -886,21 +911,9 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       jsonResponse(response, 400, { ok: false, error: 'Missing projectId' });
       return true;
     }
-    const dir = await backupDir(dataRoot, projectId);
     const backups = [];
-    try {
-      const entries = await fsp.readdir(dir, { withFileTypes: true });
-      for (const entry of entries.filter((item) => item.isFile() && item.name.endsWith('.json')).sort((a, b) => b.name.localeCompare(a.name))) {
-        const filePath = path.join(dir, entry.name);
-        const stats = await fsp.stat(filePath);
-        backups.push({
-          id: entry.name,
-          timestamp: stats.mtime.toISOString(),
-          ...(await readBackupSummary(dataRoot, { filePath, name: entry.name, stats }))
-        });
-      }
-    } catch {
-      // No backups yet.
+    for (const file of await listBackupFiles(dataRoot, projectId)) {
+      backups.push(await readBackupSummary(dataRoot, file));
     }
     jsonResponse(response, 200, { ok: true, backups, backupLocation: await backupRoot(dataRoot) });
     return true;
@@ -926,12 +939,12 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       jsonResponse(response, 400, { ok: false, error: 'Invalid backupId' });
       return true;
     }
-    const filePath = path.join(await backupDir(dataRoot, projectId), backupId);
-    if (!(await pathExists(filePath))) {
+    const file = await findBackupFile(dataRoot, projectId, backupId);
+    if (!file) {
       jsonResponse(response, 404, { ok: false, error: 'Backup not found' });
       return true;
     }
-    jsonResponse(response, 200, { ok: true, backup: JSON.parse(await fsp.readFile(filePath, 'utf8')) });
+    jsonResponse(response, 200, { ok: true, backup: JSON.parse(await fsp.readFile(file.filePath, 'utf8')) });
     return true;
   }
 
@@ -1087,8 +1100,8 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       const backupId = String(payload.backupId || '').trim();
       if (!projectId || !backupId) throw new Error('Missing projectId or backupId');
       if (path.basename(backupId) !== backupId) throw new Error('Invalid backupId');
-      const target = path.join(await backupDir(dataRoot, projectId), backupId);
-      await fsp.rm(target, { force: true });
+      const target = await findBackupFile(dataRoot, projectId, backupId);
+      if (target) await fsp.rm(target.filePath, { force: true });
       jsonResponse(response, 200, { ok: true, backupCount: (await listBackupFiles(dataRoot, projectId)).length });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message });
@@ -1103,9 +1116,9 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       const backupId = String(payload.backupId || '').trim();
       if (!projectId || !backupId) throw new Error('Missing projectId or backupId');
       if (path.basename(backupId) !== backupId) throw new Error('Invalid backupId');
-      const target = path.join(await backupDir(dataRoot, projectId), backupId);
-      if (!(await pathExists(target))) throw new Error('Backup not found');
-      const backup = JSON.parse(await fsp.readFile(target, 'utf8'));
+      const target = await findBackupFile(dataRoot, projectId, backupId);
+      if (!target) throw new Error('Backup not found');
+      const backup = JSON.parse(await fsp.readFile(target.filePath, 'utf8'));
       backup.backupMeta = { ...(backup.backupMeta || {}) };
       if (Object.prototype.hasOwnProperty.call(payload, 'pinned')) {
         backup.backupMeta.pinned = !!payload.pinned;
@@ -1113,13 +1126,14 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       if (Object.prototype.hasOwnProperty.call(payload, 'note')) {
         backup.backupMeta.note = String(payload.note || '');
       }
-      await writeJsonAtomic(target, backup);
+      await writeJsonAtomic(target.filePath, backup);
       jsonResponse(response, 200, {
         ok: true,
         backup: await readBackupSummary(dataRoot, {
-          filePath: target,
-          name: path.basename(target),
-          stats: await fsp.stat(target)
+          root: target.root,
+          filePath: target.filePath,
+          name: path.basename(target.filePath),
+          stats: await fsp.stat(target.filePath)
         })
       });
     } catch (error) {
@@ -1139,8 +1153,10 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       const settings = await readSettings(dataRoot);
       const nextPath = String(payload.path || '').trim();
       settings.projectSaveLocation = nextPath ? path.resolve(nextPath) : '';
+      settings.backupLocation = '';
       await writeSettings(dataRoot, settings);
       await fsp.mkdir(await projectSaveRoot(dataRoot), { recursive: true });
+      await fsp.mkdir(await backupRoot(dataRoot), { recursive: true });
       jsonResponse(response, 200, { ok: true, path: await projectSaveRoot(dataRoot) });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message });
@@ -1313,6 +1329,7 @@ function createServer(port, requestHandler) {
 
 async function startDesktopServers({ appRoot, dataRoot, chooseBackupFolder, chooseProjectSaveFolder, openPath, revealPath }) {
   await fsp.mkdir(await projectSaveRoot(dataRoot), { recursive: true });
+  await fsp.mkdir(await backupRoot(dataRoot), { recursive: true });
   await fsp.mkdir(path.join(dataRoot, 'project-backups'), { recursive: true });
 
   const appServer = await createServer(APP_PORT, async (request, response, parsedUrl) => {
@@ -1361,8 +1378,10 @@ async function startDesktopServers({ appRoot, dataRoot, chooseBackupFolder, choo
         }
         const settings = await readSettings(dataRoot);
         settings.projectSaveLocation = path.resolve(selected);
+        settings.backupLocation = '';
         await writeSettings(dataRoot, settings);
         await fsp.mkdir(await projectSaveRoot(dataRoot), { recursive: true });
+        await fsp.mkdir(await backupRoot(dataRoot), { recursive: true });
         jsonResponse(response, 200, { ok: true, path: await projectSaveRoot(dataRoot) });
       } catch (error) {
         jsonResponse(response, 500, { ok: false, error: error.message });

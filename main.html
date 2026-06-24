@@ -1661,26 +1661,6 @@
                 </div>
 
                 <div x-show="backupProvider === 'local'" style="margin-bottom:20px;">
-                    <label style="display:block;font-weight:600;margin-bottom:8px;" x-text="t('backup.location')">Backup Location</label>
-                    <input type="text" x-model="backupLocation" :placeholder="t('backup.defaultLocation')"
-                        style="width:100%;padding:10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;">
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                        <button class="btn btn-secondary" @click="chooseBackupLocation()" type="button">
-                            <span x-text="t('backup.chooseFolder')">Choose Folder</span>
-                        </button>
-                        <button class="btn btn-secondary" @click="openBackupLocation()" type="button">
-                            <span x-text="t('backup.openFolder')">Open Folder</span>
-                        </button>
-                        <button class="btn btn-secondary" @click="resetBackupLocation()" type="button">
-                            <span x-text="t('backup.resetLocation')">Use Default</span>
-                        </button>
-                    </div>
-                    <p style="font-size:12px;color:var(--text-secondary);margin-top:8px;">
-                        <span x-text="backupLocation || t('backup.defaultLocation')"></span>
-                    </p>
-                </div>
-
-                <div x-show="backupProvider === 'local'" style="margin-bottom:20px;">
                     <label style="display:block;font-weight:600;margin-bottom:8px;" x-text="t('backup.projectSaveLocation')">Project Save Location</label>
                     <input type="text" x-model="projectSaveLocation" :placeholder="t('backup.defaultProjectSaveLocation')"
                         style="width:100%;padding:10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;">
@@ -1697,6 +1677,8 @@
                     </div>
                     <p style="font-size:12px;color:var(--text-secondary);margin-top:8px;">
                         <span x-text="projectSaveLocation || t('backup.defaultProjectSaveLocation')"></span>
+                        <br>
+                        <span>项目文件和本地备份现在使用同一个作品库位置，备份会保存在该目录下的 backups 文件夹。</span>
                     </p>
                 </div>
 
@@ -1811,12 +1793,24 @@
                 style="background:var(--bg-secondary);padding:24px;border-radius:12px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;">
                 <h3 style="margin:0 0 20px 0;" x-text="t('backup.restore')">Restore from Backup</h3>
 
-                <div x-show="backupList.length === 0"
+                <div x-show="backupListLoading"
                     style="text-align:center;padding:40px;color:var(--text-secondary);">
                     <p x-text="t('backup.loading')">Loading backups...</p>
                 </div>
 
-                <div x-show="backupList.length > 0">
+                <div x-show="!backupListLoading && backupListError"
+                    style="text-align:center;padding:40px;color:var(--text-secondary);">
+                    <p>备份加载失败。</p>
+                    <p style="font-size:12px;" x-text="backupListError"></p>
+                </div>
+
+                <div x-show="!backupListLoading && backupListLoaded && backupList.length === 0"
+                    style="text-align:center;padding:40px;color:var(--text-secondary);">
+                    <p>当前项目还没有本地备份。</p>
+                    <button class="btn btn-secondary" @click="backupNow()" type="button" style="margin-top:10px;">立即创建备份</button>
+                </div>
+
+                <div x-show="!backupListLoading && backupList.length > 0">
                     <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">
                         <span x-text="t('backup.selectRestore')">Select a backup version to restore. This will replace your current project data.</span>
                     </p>
@@ -2075,11 +2069,20 @@
                 </div>
                 <input type="text" x-model="localRecoveryFilter" :placeholder="t('backup.searchBackups')"
                     style="width:100%;padding:10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;margin-bottom:14px;">
-                <div x-show="filteredLocalRecoveryBackups().length === 0"
+                <div x-show="localRecoveryLoading"
+                    style="text-align:center;padding:36px;color:var(--text-secondary);">
+                    <p x-text="t('backup.loading')">Loading backups...</p>
+                </div>
+                <div x-show="!localRecoveryLoading && localRecoveryError"
+                    style="text-align:center;padding:36px;color:var(--text-secondary);">
+                    <p>本机备份加载失败。</p>
+                    <p style="font-size:12px;" x-text="localRecoveryError"></p>
+                </div>
+                <div x-show="!localRecoveryLoading && localRecoveryLoaded && filteredLocalRecoveryBackups().length === 0"
                     style="text-align:center;padding:36px;color:var(--text-secondary);">
                     <p x-text="t('backup.noLocalBackups')">No local backups found.</p>
                 </div>
-                <div style="display:flex;flex-direction:column;gap:12px;">
+                <div x-show="!localRecoveryLoading && filteredLocalRecoveryBackups().length > 0" style="display:flex;flex-direction:column;gap:12px;">
                     <template x-for="backup in filteredLocalRecoveryBackups()" :key="backup.projectId + backup.id">
                         <div style="padding:16px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;">
                             <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">

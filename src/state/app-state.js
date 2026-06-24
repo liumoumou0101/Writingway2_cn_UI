@@ -254,6 +254,9 @@ function createAppState() {
         showBackupSettings: false,
         showRestoreModal: false,
         backupList: [],
+        backupListLoading: false,
+        backupListLoaded: false,
+        backupListError: '',
         currentProjectGistId: '',
         filesystemSaving: false,
         filesystemSaveStatus: '',
@@ -268,6 +271,9 @@ function createAppState() {
         backupSceneCompareOpen: false,
         showLocalBackupRecoveryModal: false,
         localRecoveryBackups: [],
+        localRecoveryLoading: false,
+        localRecoveryLoaded: false,
+        localRecoveryError: '',
         localRecoveryFilter: '',
 
         // ========== Generation Parameters ==========
