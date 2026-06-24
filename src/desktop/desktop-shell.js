@@ -14,6 +14,14 @@
         editingProject: null,
         editingCoverImage: ''
     };
+    const READER_STORAGE_KEY = 'writingway:desktop:reader';
+    const readerState = {
+        document: null,
+        chapterIndex: 0,
+        fontSize: 18,
+        lineHeight: 1.8,
+        theme: 'dark'
+    };
 
     function getState() {
         return window.WritingwayDesktopState;
@@ -571,6 +579,305 @@
         await openDesktopProject(result.summary);
     }
 
+    function readerElements() {
+        return {
+            file: document.querySelector('[data-reader-file]'),
+            fontSize: document.querySelector('[data-reader-font-size]'),
+            lineHeight: document.querySelector('[data-reader-line-height]'),
+            theme: document.querySelector('[data-reader-theme]'),
+            themePanel: document.querySelector('[data-reader-theme-panel]'),
+            title: document.querySelector('[data-reader-title]'),
+            source: document.querySelector('[data-reader-source]'),
+            content: document.querySelector('[data-reader-content]'),
+            chapters: document.querySelector('[data-reader-chapters]'),
+            progress: document.querySelector('[data-reader-progress]'),
+            progressLabel: document.querySelector('[data-reader-progress-label]'),
+            progressPercent: document.querySelector('[data-reader-progress-percent]'),
+            prev: document.querySelector('[data-reader-prev]'),
+            next: document.querySelector('[data-reader-next]')
+        };
+    }
+
+    function readerDocumentTitle(fileName) {
+        return String(fileName || '本地小说').replace(/\.(txt|md|markdown)$/i, '') || '本地小说';
+    }
+
+    function parseReaderChapters(text, fileName) {
+        const normalized = String(text || '').replace(/\r\n?/g, '\n').trim();
+        if (!normalized) {
+            return {
+                title: readerDocumentTitle(fileName),
+                chapters: []
+            };
+        }
+
+        const headingPattern = /^(?:#{1,3}\s+.+|第[零〇一二三四五六七八九十百千万\d]+[章节卷部集回].*|Chapter\s+\d+.*)$/i;
+        const lines = normalized.split('\n');
+        const chapters = [];
+        let current = {
+            title: readerDocumentTitle(fileName),
+            lines: []
+        };
+        let foundHeading = false;
+
+        lines.forEach((line) => {
+            const trimmed = line.trim();
+            if (headingPattern.test(trimmed)) {
+                if (foundHeading || current.lines.some((item) => item.trim())) {
+                    chapters.push(current);
+                }
+                foundHeading = true;
+                current = {
+                    title: trimmed.replace(/^#{1,3}\s+/, '').trim() || `第 ${chapters.length + 1} 章`,
+                    lines: []
+                };
+                return;
+            }
+            current.lines.push(line);
+        });
+
+        if (current.lines.some((line) => line.trim()) || !chapters.length) {
+            chapters.push(current);
+        }
+
+        return {
+            title: readerDocumentTitle(fileName),
+            chapters: chapters.map((chapter, index) => ({
+                id: `chapter-${index + 1}`,
+                title: chapter.title || `第 ${index + 1} 章`,
+                content: chapter.lines.join('\n').trim()
+            })).filter((chapter) => chapter.title || chapter.content)
+        };
+    }
+
+    function readerParagraphs(content) {
+        const blocks = String(content || '').split(/\n{2,}/)
+            .map((block) => block.trim())
+            .filter(Boolean);
+        if (blocks.length) return blocks;
+        return String(content || '').split('\n').map((line) => line.trim()).filter(Boolean);
+    }
+
+    function saveReaderState() {
+        try {
+            localStorage.setItem(READER_STORAGE_KEY, JSON.stringify({
+                document: readerState.document,
+                chapterIndex: readerState.chapterIndex,
+                fontSize: readerState.fontSize,
+                lineHeight: readerState.lineHeight,
+                theme: readerState.theme
+            }));
+        } catch (error) {
+            console.warn('Failed to save reader state:', error);
+        }
+    }
+
+    function loadReaderState() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(READER_STORAGE_KEY) || '{}');
+            if (saved && typeof saved === 'object') {
+                readerState.document = saved.document && Array.isArray(saved.document.chapters) ? saved.document : null;
+                readerState.chapterIndex = Number(saved.chapterIndex) || 0;
+                readerState.fontSize = Number(saved.fontSize) || readerState.fontSize;
+                readerState.lineHeight = Number(saved.lineHeight) || readerState.lineHeight;
+                readerState.theme = saved.theme || readerState.theme;
+            }
+        } catch (error) {
+            console.warn('Failed to load reader state:', error);
+        }
+    }
+
+    function clampReaderChapter() {
+        const total = readerState.document ? readerState.document.chapters.length : 0;
+        if (!total) {
+            readerState.chapterIndex = 0;
+            return;
+        }
+        readerState.chapterIndex = Math.max(0, Math.min(total - 1, readerState.chapterIndex));
+    }
+
+    function applyReaderSettings() {
+        const elements = readerElements();
+        if (elements.fontSize) elements.fontSize.value = String(readerState.fontSize);
+        if (elements.lineHeight) elements.lineHeight.value = String(readerState.lineHeight);
+        if (elements.theme) elements.theme.value = readerState.theme;
+        if (elements.themePanel) {
+            elements.themePanel.dataset.readerTheme = readerState.theme;
+            elements.themePanel.style.setProperty('--reader-font-size', `${readerState.fontSize}px`);
+            elements.themePanel.style.setProperty('--reader-line-height', String(readerState.lineHeight));
+        }
+    }
+
+    function renderReader() {
+        clampReaderChapter();
+        applyReaderSettings();
+        const elements = readerElements();
+        if (!elements.content) return;
+
+        const documentData = readerState.document;
+        const chapters = documentData ? documentData.chapters : [];
+        const chapter = chapters[readerState.chapterIndex];
+
+        if (!documentData || !chapters.length || !chapter) {
+            if (elements.title) elements.title.textContent = '还没有导入本地小说';
+            if (elements.source) elements.source.textContent = 'Reader';
+            if (elements.content) {
+                elements.content.replaceChildren();
+                const empty = document.createElement('p');
+                empty.textContent = '选择左侧的 txt 或 md 文件后，这里会显示正文。阶段 1 先提供本地导入、章节识别、进度和排版控制。';
+                elements.content.appendChild(empty);
+            }
+            if (elements.chapters) elements.chapters.replaceChildren();
+            if (elements.progress) elements.progress.value = 0;
+            if (elements.progressLabel) elements.progressLabel.textContent = '未导入';
+            if (elements.progressPercent) elements.progressPercent.textContent = '0%';
+            if (elements.prev) elements.prev.disabled = true;
+            if (elements.next) elements.next.disabled = true;
+            return;
+        }
+
+        const progress = Math.round(((readerState.chapterIndex + 1) / chapters.length) * 100);
+        if (elements.title) elements.title.textContent = chapter.title;
+        if (elements.source) elements.source.textContent = `${documentData.title} / ${readerState.chapterIndex + 1} / ${chapters.length}`;
+        if (elements.progress) elements.progress.value = progress;
+        if (elements.progressLabel) elements.progressLabel.textContent = `${readerState.chapterIndex + 1} / ${chapters.length} 章`;
+        if (elements.progressPercent) elements.progressPercent.textContent = `${progress}%`;
+        if (elements.prev) elements.prev.disabled = readerState.chapterIndex <= 0;
+        if (elements.next) elements.next.disabled = readerState.chapterIndex >= chapters.length - 1;
+
+        elements.content.replaceChildren();
+        const paragraphs = readerParagraphs(chapter.content);
+        if (!paragraphs.length) {
+            const empty = document.createElement('p');
+            empty.textContent = '这一章暂时没有正文。';
+            elements.content.appendChild(empty);
+        } else {
+            paragraphs.forEach((paragraph) => {
+                const node = document.createElement('p');
+                node.textContent = paragraph;
+                elements.content.appendChild(node);
+            });
+        }
+
+        if (elements.chapters) {
+            elements.chapters.replaceChildren();
+            chapters.forEach((item, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'desktop-reader-chapter';
+                button.classList.toggle('is-active', index === readerState.chapterIndex);
+                button.textContent = item.title || `第 ${index + 1} 章`;
+                button.addEventListener('click', () => {
+                    readerState.chapterIndex = index;
+                    saveReaderState();
+                    renderReader();
+                });
+                elements.chapters.appendChild(button);
+            });
+        }
+    }
+
+    function readReaderFile(file) {
+        return new Promise((resolve, reject) => {
+            if (!file) {
+                reject(new Error('请选择 txt 或 md 文件'));
+                return;
+            }
+            const name = String(file.name || '');
+            const isSupported = /\.(txt|md|markdown)$/i.test(name) || /^text\//.test(file.type || '');
+            if (!isSupported) {
+                reject(new Error('阅读器暂时只支持 txt / md 文件'));
+                return;
+            }
+            if (file.size > 5000000) {
+                reject(new Error('文件不能超过 5MB'));
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('读取文件失败'));
+            reader.readAsText(file, 'utf-8');
+        });
+    }
+
+    async function importReaderFile(file) {
+        const text = await readReaderFile(file);
+        const parsed = parseReaderChapters(text, file.name);
+        readerState.document = {
+            title: parsed.title,
+            fileName: file.name,
+            importedAt: new Date().toISOString(),
+            chapters: parsed.chapters
+        };
+        readerState.chapterIndex = 0;
+        saveReaderState();
+        renderReader();
+    }
+
+    function bindReader() {
+        loadReaderState();
+        renderReader();
+        const elements = readerElements();
+
+        if (elements.file) {
+            elements.file.addEventListener('change', async () => {
+                try {
+                    await importReaderFile(elements.file.files && elements.file.files[0]);
+                } catch (error) {
+                    console.warn('Failed to import reader file:', error);
+                    if (elements.content) {
+                        elements.content.replaceChildren();
+                        const message = document.createElement('p');
+                        message.textContent = error.message || String(error);
+                        elements.content.appendChild(message);
+                    }
+                } finally {
+                    elements.file.value = '';
+                }
+            });
+        }
+
+        if (elements.fontSize) {
+            elements.fontSize.addEventListener('input', () => {
+                readerState.fontSize = Number(elements.fontSize.value) || 18;
+                applyReaderSettings();
+                saveReaderState();
+            });
+        }
+
+        if (elements.lineHeight) {
+            elements.lineHeight.addEventListener('input', () => {
+                readerState.lineHeight = Number(elements.lineHeight.value) || 1.8;
+                applyReaderSettings();
+                saveReaderState();
+            });
+        }
+
+        if (elements.theme) {
+            elements.theme.addEventListener('change', () => {
+                readerState.theme = elements.theme.value || 'dark';
+                applyReaderSettings();
+                saveReaderState();
+            });
+        }
+
+        if (elements.prev) {
+            elements.prev.addEventListener('click', () => {
+                readerState.chapterIndex -= 1;
+                saveReaderState();
+                renderReader();
+            });
+        }
+
+        if (elements.next) {
+            elements.next.addEventListener('click', () => {
+                readerState.chapterIndex += 1;
+                saveReaderState();
+                renderReader();
+            });
+        }
+    }
+
     async function toggleFullscreen() {
         if (window.writingwayDesktop && typeof window.writingwayDesktop.toggleFullscreen === 'function') {
             await window.writingwayDesktop.toggleFullscreen();
@@ -923,6 +1230,7 @@
         bindProjectLibrary();
         bindProjectCreator();
         bindProjectEditor();
+        bindReader();
         bindLegacyActions();
         const state = getState();
         setView(state ? state.loadInitialView() : 'bookshelf');

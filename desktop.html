@@ -103,10 +103,66 @@
                 </iframe>
             </section>
 
-            <section class="desktop-view desktop-panel-placeholder" data-view-panel="reader">
-                <p class="desktop-section-kicker">Local Reader</p>
-                <h2>本地阅读器将在后续阶段开发。</h2>
-                <p>计划支持 txt / md 导入、章节识别、阅读进度、主题、字号、行距和搜索。</p>
+            <section class="desktop-view desktop-view-reader" data-view-panel="reader">
+                <div class="desktop-reader-shell">
+                    <aside class="desktop-reader-sidebar">
+                        <div>
+                            <p class="desktop-section-kicker">Local Reader</p>
+                            <h2>本地阅读</h2>
+                            <p>导入 txt / md 后自动识别章节，并在本机保存阅读进度。</p>
+                        </div>
+
+                        <label class="desktop-reader-import">
+                            <span>导入小说文件</span>
+                            <input type="file" data-reader-file accept=".txt,.md,text/plain,text/markdown">
+                        </label>
+
+                        <div class="desktop-reader-controls" aria-label="阅读设置">
+                            <label>
+                                <span>字号</span>
+                                <input type="range" data-reader-font-size min="15" max="26" step="1">
+                            </label>
+                            <label>
+                                <span>行距</span>
+                                <input type="range" data-reader-line-height min="1.45" max="2.2" step="0.05">
+                            </label>
+                            <label>
+                                <span>主题</span>
+                                <select data-reader-theme>
+                                    <option value="dark">深色</option>
+                                    <option value="paper">纸张</option>
+                                    <option value="sepia">护眼</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <div class="desktop-reader-progress">
+                            <div>
+                                <strong data-reader-progress-label>未导入</strong>
+                                <span data-reader-progress-percent>0%</span>
+                            </div>
+                            <progress data-reader-progress value="0" max="100"></progress>
+                        </div>
+
+                        <div class="desktop-reader-chapters" data-reader-chapters aria-label="章节列表"></div>
+                    </aside>
+
+                    <article class="desktop-reader-stage" data-reader-theme-panel>
+                        <header class="desktop-reader-header">
+                            <div>
+                                <p class="desktop-section-kicker" data-reader-source>Reader</p>
+                                <h2 data-reader-title>还没有导入本地小说</h2>
+                            </div>
+                            <div class="desktop-reader-actions">
+                                <button class="desktop-secondary-action" type="button" data-reader-prev>上一章</button>
+                                <button class="desktop-primary-action" type="button" data-reader-next>下一章</button>
+                            </div>
+                        </header>
+                        <div class="desktop-reader-content" data-reader-content>
+                            <p>选择左侧的 txt 或 md 文件后，这里会显示正文。阶段 1 先提供本地导入、章节识别、进度和排版控制。</p>
+                        </div>
+                    </article>
+                </div>
             </section>
 
             <section class="desktop-view desktop-panel-placeholder" data-view-panel="recovery">
