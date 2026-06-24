@@ -25,6 +25,7 @@ function snapshot(id, name, text, exportedAt) {
 (async () => {
     const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'writingway-library-test-'));
     const projectsDir = path.join(dataRoot, 'projects');
+    const revealedPaths = [];
     let servers = null;
     let browser = null;
 
@@ -41,7 +42,14 @@ function snapshot(id, name, text, exportedAt) {
             'utf8'
         );
 
-        servers = await startDesktopServers({ appRoot: path.resolve(__dirname, '..'), dataRoot });
+        servers = await startDesktopServers({
+            appRoot: path.resolve(__dirname, '..'),
+            dataRoot,
+            revealPath: async (targetPath) => {
+                revealedPaths.push(targetPath);
+                return '';
+            }
+        });
 
         const apiResponse = await fetch('http://127.0.0.1:8000/api/list-projects');
         const apiBody = await apiResponse.json();
@@ -102,6 +110,25 @@ function snapshot(id, name, text, exportedAt) {
         assert.ok(filteredText.includes('短篇集修订版'), 'search should filter project cards by name');
         assert.ok(filteredText.includes('修订中'), 'project card should show edited status');
         assert.ok(filteredText.includes('桌面书库测试'), 'project card should show edited description');
+
+        await page.evaluate(() => {
+            Object.defineProperty(navigator, 'clipboard', {
+                configurable: true,
+                value: {
+                    writeText: async (text) => {
+                        window.__copiedProjectPath = text;
+                    }
+                }
+            });
+        });
+        await page.locator('.desktop-mini-action', { hasText: '复制路径' }).first().click();
+        const copiedPath = await page.evaluate(() => window.__copiedProjectPath);
+        assert.ok(copiedPath && copiedPath.includes('book-2.json'), 'copy path should use the project snapshot path');
+
+        await page.locator('.desktop-mini-action', { hasText: '定位文件' }).first().click();
+        await page.waitForFunction(() => document.body.innerText.includes('已在文件管理器中定位项目文件'));
+        assert.strictEqual(revealedPaths.length, 1, 'reveal project file should call the desktop reveal hook');
+        assert.ok(revealedPaths[0].includes('book-2.json'), 'revealed path should point at the edited project snapshot');
 
         await page.locator('.desktop-project-card').first().click();
         await page.waitForFunction(() => {

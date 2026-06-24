@@ -188,6 +188,7 @@ async function readProjectSummary(dataRoot, file) {
     created: project.created || '',
     modified: project.modified || '',
     timestamp,
+    absolutePath: file.filePath,
     path: path.relative(await projectSaveRoot(dataRoot), file.filePath).replace(/\\/g, '/'),
     filename: file.name,
     size: file.stats.size,
@@ -637,7 +638,7 @@ async function installLlamaCpp(dataRoot, variant) {
   };
 }
 
-async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
+async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, integrations = {}) {
   if (request.method === 'GET' && parsedUrl.pathname === '/api/health') {
     jsonResponse(response, 200, { ok: true, service: 'writingway-desktop-server', timestamp: new Date().toISOString() });
     return true;
@@ -727,6 +728,34 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl) {
       });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message || 'Could not update project metadata' });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/reveal-project-file') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const filename = String(payload.filename || '').trim();
+      const file = await findProjectFile(dataRoot, projectId, filename);
+      if (!file) {
+        jsonResponse(response, 404, { ok: false, error: 'Project not found' });
+        return true;
+      }
+
+      if (typeof integrations.revealPath === 'function') {
+        const result = await integrations.revealPath(file.filePath);
+        if (result) throw new Error(result);
+      } else if (typeof integrations.openPath === 'function') {
+        const result = await integrations.openPath(path.dirname(file.filePath));
+        if (result) throw new Error(result);
+      } else {
+        throw new Error('Open folder is not available in this environment.');
+      }
+
+      jsonResponse(response, 200, { ok: true, path: file.filePath });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message || 'Could not reveal project file' });
     }
     return true;
   }
@@ -1162,7 +1191,7 @@ function createServer(port, requestHandler) {
   });
 }
 
-async function startDesktopServers({ appRoot, dataRoot, chooseBackupFolder, chooseProjectSaveFolder, openPath }) {
+async function startDesktopServers({ appRoot, dataRoot, chooseBackupFolder, chooseProjectSaveFolder, openPath, revealPath }) {
   await fsp.mkdir(await projectSaveRoot(dataRoot), { recursive: true });
   await fsp.mkdir(path.join(dataRoot, 'project-backups'), { recursive: true });
 
@@ -1235,7 +1264,7 @@ async function startDesktopServers({ appRoot, dataRoot, chooseBackupFolder, choo
       return;
     }
 
-    if (await handleAppApi(request, response, appRoot, dataRoot, parsedUrl)) {
+    if (await handleAppApi(request, response, appRoot, dataRoot, parsedUrl, { openPath, revealPath })) {
       return;
     }
     await serveStatic(request, response, appRoot, parsedUrl);

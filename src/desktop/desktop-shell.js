@@ -141,7 +141,35 @@
             event.stopPropagation();
             openProjectEditor(project);
         });
-        actions.appendChild(editButton);
+
+        const revealButton = document.createElement('button');
+        revealButton.type = 'button';
+        revealButton.className = 'desktop-mini-action';
+        revealButton.textContent = '定位文件';
+        revealButton.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            await revealProjectFile(project);
+        });
+
+        const copyPathButton = document.createElement('button');
+        copyPathButton.type = 'button';
+        copyPathButton.className = 'desktop-mini-action';
+        copyPathButton.textContent = '复制路径';
+        copyPathButton.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            await copyProjectPath(project);
+        });
+
+        const backupButton = document.createElement('button');
+        backupButton.type = 'button';
+        backupButton.className = 'desktop-mini-action';
+        backupButton.textContent = '备份';
+        backupButton.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            await openProjectBackupSettings(project);
+        });
+
+        actions.append(editButton, revealButton, copyPathButton, backupButton);
 
         body.append(name, badges, description, stats, time, path, actions);
         card.append(cover, body);
@@ -263,6 +291,65 @@
         } catch (error) {
             console.warn('Failed to open project folder:', error);
             setProjectLibraryStatus(`打开项目目录失败：${error.message || error}`, 'error');
+        }
+    }
+
+    async function revealProjectFile(project) {
+        setProjectLibraryStatus('正在定位项目文件...', 'info');
+        try {
+            const response = await fetch('/api/reveal-project-file', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: project.id,
+                    filename: project.filename
+                })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            setProjectLibraryStatus('已在文件管理器中定位项目文件。', 'ok');
+        } catch (error) {
+            console.warn('Failed to reveal project file:', error);
+            setProjectLibraryStatus(`定位项目文件失败：${error.message || error}`, 'error');
+        }
+    }
+
+    async function copyProjectPath(project) {
+        const path = project.absolutePath || project.path || project.filename || '';
+        if (!path) {
+            setProjectLibraryStatus('没有可复制的项目路径。', 'error');
+            return;
+        }
+
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(path);
+            } else {
+                const input = document.createElement('textarea');
+                input.value = path;
+                input.style.position = 'fixed';
+                input.style.opacity = '0';
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                input.remove();
+            }
+            setProjectLibraryStatus('项目路径已复制。', 'ok');
+        } catch (error) {
+            console.warn('Failed to copy project path:', error);
+            setProjectLibraryStatus(`复制路径失败：${error.message || error}`, 'error');
+        }
+    }
+
+    async function openProjectBackupSettings(project) {
+        try {
+            await openDesktopProject(project);
+            await runLegacyAction('backup-settings');
+        } catch (error) {
+            console.warn('Failed to open project backup settings:', error);
+            setProjectLibraryStatus(`打开备份设置失败：${error.message || error}`, 'error');
         }
     }
 

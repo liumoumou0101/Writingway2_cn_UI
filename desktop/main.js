@@ -64,7 +64,11 @@ async function startServices() {
       });
       return result.canceled ? null : result.filePaths[0];
     },
-    openPath: async (targetPath) => shell.openPath(targetPath)
+    openPath: async (targetPath) => shell.openPath(targetPath),
+    revealPath: async (targetPath) => {
+      shell.showItemInFolder(targetPath);
+      return '';
+    }
   });
   console.log('Writingway desktop services are ready.');
 }
