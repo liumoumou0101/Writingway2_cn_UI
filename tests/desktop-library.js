@@ -60,6 +60,18 @@ function snapshot(id, name, text, exportedAt) {
         await page.goto('http://127.0.0.1:8000/desktop.html', { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => document.querySelectorAll('.desktop-project-card').length === 2);
 
+        await page.evaluate(() => {
+            window.__fullscreenClicked = false;
+            window.writingwayDesktop = {
+                toggleFullscreen: async () => {
+                    window.__fullscreenClicked = true;
+                    return true;
+                }
+            };
+        });
+        await page.click('[data-toggle-fullscreen]');
+        assert.strictEqual(await page.evaluate(() => window.__fullscreenClicked), true, 'fullscreen button should call desktop API');
+
         const cardText = await page.locator('.desktop-project-card').first().innerText();
         assert.ok(cardText.includes('短篇集'), 'first card should render project name');
         assert.ok(cardText.includes('2 字'), 'first card should render word count');

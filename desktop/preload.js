@@ -1,1 +1,5 @@
-// Reserved for future desktop integrations.
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('writingwayDesktop', {
+  toggleFullscreen: () => ipcRenderer.invoke('writingway:toggle-fullscreen')
+});

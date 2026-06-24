@@ -220,6 +220,22 @@
         }
     }
 
+    async function toggleFullscreen() {
+        if (window.writingwayDesktop && typeof window.writingwayDesktop.toggleFullscreen === 'function') {
+            await window.writingwayDesktop.toggleFullscreen();
+            return;
+        }
+
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen();
+            return;
+        }
+
+        if (document.fullscreenElement && document.exitFullscreen) {
+            await document.exitFullscreen();
+        }
+    }
+
     function bindNavigation() {
         document.querySelectorAll('[data-view-target]').forEach((button) => {
             button.addEventListener('click', () => {
@@ -256,6 +272,18 @@
                 renderProjectLibrary();
             });
         }
+    }
+
+    function bindWindowControls() {
+        document.querySelectorAll('[data-toggle-fullscreen]').forEach((button) => {
+            button.addEventListener('click', async () => {
+                try {
+                    await toggleFullscreen();
+                } catch (error) {
+                    console.warn('Failed to toggle fullscreen:', error);
+                }
+            });
+        });
     }
 
     function getWriterFrame() {
@@ -467,6 +495,7 @@
 
     function init() {
         bindNavigation();
+        bindWindowControls();
         bindProjectLibrary();
         bindLegacyActions();
         const state = getState();
@@ -483,6 +512,7 @@
     window.WritingwayDesktopShell = {
         loadProjectLibrary,
         runLegacyAction,
-        setView
+        setView,
+        toggleFullscreen
     };
 })();

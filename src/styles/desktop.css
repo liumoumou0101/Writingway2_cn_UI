@@ -196,7 +196,8 @@ input {
 }
 
 .desktop-primary-action,
-.desktop-secondary-action {
+.desktop-secondary-action,
+.desktop-icon-action {
     min-height: 36px;
     padding: 8px 14px;
     border-radius: 8px;
@@ -216,8 +217,20 @@ input {
     color: var(--desktop-text);
 }
 
+.desktop-icon-action {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    padding: 0;
+    border: 1px solid var(--desktop-line-strong);
+    background: rgba(255, 255, 255, 0.045);
+    color: var(--desktop-text);
+    font-size: 16px;
+}
+
 .desktop-primary-action:hover,
-.desktop-secondary-action:hover {
+.desktop-secondary-action:hover,
+.desktop-icon-action:hover {
     transform: translateY(-1px);
 }
 

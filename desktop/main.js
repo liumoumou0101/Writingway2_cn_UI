@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const http = require('http');
 const path = require('path');
 const { startDesktopServers } = require('./local-server');
@@ -9,6 +9,13 @@ const appId = 'com.writingway.app';
 const iconPath = path.join(__dirname, 'icon.ico');
 
 let managedServers = null;
+
+function toggleFullscreen(window) {
+  if (!window || window.isDestroyed()) return false;
+  const nextFullscreen = !window.isFullScreen();
+  window.setFullScreen(nextFullscreen);
+  return nextFullscreen;
+}
 
 function isReachable(url, timeoutMs = 900) {
   return new Promise((resolve) => {
@@ -82,14 +89,16 @@ function createWindow() {
 
   window.loadURL(appUrl);
 
-  if (!app.isPackaged) {
-    window.webContents.on('before-input-event', (event, input) => {
-      if (input.key === 'F12') {
-        window.webContents.toggleDevTools();
-        event.preventDefault();
-      }
-    });
-  }
+  window.webContents.on('before-input-event', (event, input) => {
+    if (!app.isPackaged && input.key === 'F12') {
+      window.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+    if (input.key === 'F11') {
+      toggleFullscreen(window);
+      event.preventDefault();
+    }
+  });
 }
 
 function stopManagedServers() {
@@ -103,6 +112,9 @@ app.whenReady().then(async () => {
   try {
     app.setName('Writingway 2');
     app.setAppUserModelId(appId);
+    ipcMain.handle('writingway:toggle-fullscreen', (event) => {
+      return toggleFullscreen(BrowserWindow.fromWebContents(event.sender));
+    });
     await startServices();
     createWindow();
   } catch (error) {
