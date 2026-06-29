@@ -328,4 +328,5 @@
 - [x] Codex 验收修复：OpenCode 超时但留下实现；Codex 停止残留进程，补充保存/删除 rewrite Prompt 后刷新下拉、内置预设覆盖旧自定义指令两个细节。
 - [x] 验收：`npm run writer-audit` 覆盖保存的 rewrite Prompt、结果接受前不改正文、接受后替换选区、重试不污染正文、上下文开关影响 Prompt。
 - [x] Codex 直接补齐默认提示词模板：`prose`、`rewrite`、`summary`、`workshop`、`workflow` 分类均有只读默认模板；rewrite 默认模板会出现在原生改写面板的“已保存 Prompt”下拉中，默认模板不可删除，编辑保存时会另存为用户副本。
+- [x] Codex 扩充内置提示词模板库：从基础默认模板扩展为 70 个场景化模板（正文 20、改写 24、摘要 8、讨论 10、工作流 8），标题改为用途导向，覆盖续写、动作、对白、情绪、悬疑、情感、日常、世界观、转场、高潮、伏笔、校对、连续性、剧情诊断、场景规划、修订计划等常用写作场景。
 - [x] 验证：`npm run writer-audit`、`npm run desktop-mainline-test`、`npm run unit` 均通过。

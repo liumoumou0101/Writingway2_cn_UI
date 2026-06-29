@@ -5,6 +5,7 @@ const path = require('path');
 const { startDesktopServers } = require('../desktop/local-server');
 const projectService = require('../desktop/services/project-service');
 const promptService = require('../desktop/services/prompt-service');
+const PromptTemplateSchema = require('../src/core/prompt/prompt-template-schema');
 
 (async () => {
   const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'writingway-prompt-test-'));
@@ -24,21 +25,40 @@ const promptService = require('../desktop/services/prompt-service');
     assert.strictEqual(saved.ok, true);
     assert.strictEqual(saved.prompt.category, 'prose');
 
+    const expectedDefaultCounts = {
+      prose: 20,
+      rewrite: 24,
+      summary: 8,
+      workshop: 10,
+      workflow: 8
+    };
+    for (const [category, expectedCount] of Object.entries(expectedDefaultCounts)) {
+      const templates = PromptTemplateSchema.defaultPromptTemplates(category, 'prompt-project');
+      assert.strictEqual(templates.length, expectedCount, `${category} should expose the full built-in template set`);
+      assert.ok(templates.every((prompt) => prompt.isDefault), `${category} templates should be marked as default`);
+      assert.ok(templates.every((prompt) => prompt.title && !prompt.title.startsWith('默认')), `${category} templates should use scenario titles`);
+      assert.ok(templates.every((prompt) => prompt.content && prompt.content.trim().length > 20), `${category} templates should include usable content`);
+    }
+
     const listed = await promptService.listPrompts(dataRoot, 'prompt-project', { category: 'prose' });
-    assert.ok(listed.prompts.length >= 2, 'prose prompt list should include saved and default prompts');
+    assert.ok(listed.prompts.length >= 21, 'prose prompt list should include saved and expanded default prompts');
     assert.strictEqual(listed.prompts[0].title, 'Quiet Style');
     assert.ok(listed.prompts.some((prompt) => prompt.id === 'default-prose'), 'prose prompt list should keep the default prose template');
+    assert.ok(listed.prompts.some((prompt) => prompt.title === '对白场景：人物交锋'), 'prose prompt list should include scenario-specific writing templates');
 
     const rewriteDefaults = await promptService.listPrompts(dataRoot, 'prompt-project', { category: 'rewrite' });
-    assert.ok(rewriteDefaults.prompts.length >= 4, 'rewrite category should include default rewrite templates');
+    assert.ok(rewriteDefaults.prompts.length >= 24, 'rewrite category should include expanded default rewrite templates');
     assert.ok(rewriteDefaults.prompts.every((prompt) => prompt.category === 'rewrite'), 'rewrite defaults should stay in rewrite category');
     assert.ok(rewriteDefaults.prompts.some((prompt) => prompt.id === 'default-rewrite-balanced'), 'rewrite defaults should include balanced polish');
 
     for (const category of ['summary', 'workshop', 'workflow']) {
       const defaults = await promptService.listPrompts(dataRoot, 'prompt-project', { category });
-      assert.ok(defaults.prompts.length >= 1, `${category} category should include default templates`);
+      assert.ok(defaults.prompts.length >= expectedDefaultCounts[category], `${category} category should include expanded default templates`);
       assert.ok(defaults.prompts.every((prompt) => prompt.category === category), `${category} defaults should stay in category`);
     }
+
+    const dialogueSearch = await promptService.listPrompts(dataRoot, 'prompt-project', { category: 'prose', query: '对白' });
+    assert.ok(dialogueSearch.prompts.some((prompt) => prompt.title === '对白场景：人物交锋'), 'query should find built-in prose scenario templates');
 
     const deleteDefault = await promptService.deletePrompt(dataRoot, 'prompt-project', 'default-rewrite-balanced');
     assert.strictEqual(deleteDefault.deleted, 0, 'default prompt delete should be ignored');

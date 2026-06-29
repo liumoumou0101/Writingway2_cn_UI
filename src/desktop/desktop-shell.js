@@ -4418,7 +4418,7 @@
     function selectedPromptTemplate() {
         return promptState.prompts.find((prompt) => prompt.id === promptState.selectedId)
             || promptState.prompts[0]
-            || { id: 'default-prose', title: '默认正文扩写', category: 'prose', content: '', systemContent: '' };
+            || { id: 'default-prose', title: '正文续写：均衡扩写', category: 'prose', content: '', systemContent: '' };
     }
 
     function isNativeDefaultPrompt(prompt) {
@@ -4445,7 +4445,7 @@
             if (nativeEditorState.snapshot) nativeEditorState.snapshot.prompts = promptState.prompts.filter((prompt) => !isNativeDefaultPrompt(prompt));
         } catch (error) {
             console.warn('Failed to load prompts:', error);
-            promptState.prompts = [{ id: 'default-prose', title: '默认正文扩写', category: 'prose', content: '', systemContent: '' }];
+            promptState.prompts = [{ id: 'default-prose', title: '正文续写：均衡扩写', category: 'prose', content: '', systemContent: '' }];
         }
         renderNativeGeneration();
     }
@@ -5055,7 +5055,7 @@
         if (elements.insertMode) elements.insertMode.disabled = generation.inProgress || !generation.text;
         if (elements.promptTemplate) {
             elements.promptTemplate.replaceChildren();
-            const prompts = promptState.prompts.length ? promptState.prompts : [{ id: 'default-prose', title: '默认正文扩写' }];
+            const prompts = promptState.prompts.length ? promptState.prompts : [{ id: 'default-prose', title: '正文续写：均衡扩写' }];
             prompts.forEach((prompt) => {
                 const option = document.createElement('option');
                 option.value = prompt.id;
