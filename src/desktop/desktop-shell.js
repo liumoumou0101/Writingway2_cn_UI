@@ -4421,6 +4421,11 @@
             || { id: 'default-prose', title: '默认正文扩写', category: 'prose', content: '', systemContent: '' };
     }
 
+    function isNativeDefaultPrompt(prompt) {
+        if (!prompt) return false;
+        return !!prompt.isDefault || String(prompt.id || '').indexOf('default-') === 0;
+    }
+
     async function loadPrompts() {
         const projectId = currentProjectId();
         if (!projectId) {
@@ -4437,7 +4442,7 @@
             if (!promptState.prompts.some((prompt) => prompt.id === promptState.selectedId)) {
                 promptState.selectedId = promptState.prompts[0] ? promptState.prompts[0].id : 'default-prose';
             }
-            if (nativeEditorState.snapshot) nativeEditorState.snapshot.prompts = promptState.prompts.filter((prompt) => prompt.id !== 'default-prose');
+            if (nativeEditorState.snapshot) nativeEditorState.snapshot.prompts = promptState.prompts.filter((prompt) => !isNativeDefaultPrompt(prompt));
         } catch (error) {
             console.warn('Failed to load prompts:', error);
             promptState.prompts = [{ id: 'default-prose', title: '默认正文扩写', category: 'prose', content: '', systemContent: '' }];
@@ -4452,7 +4457,7 @@
         if (elements.promptManagerCategory) elements.promptManagerCategory.value = prompt.category || 'prose';
         if (elements.promptManagerSystem) elements.promptManagerSystem.value = prompt.systemContent || '';
         if (elements.promptManagerContent) elements.promptManagerContent.value = prompt.content || '';
-        if (elements.promptManagerDelete) elements.promptManagerDelete.disabled = !prompt || prompt.id === 'default-prose';
+        if (elements.promptManagerDelete) elements.promptManagerDelete.disabled = !prompt || isNativeDefaultPrompt(prompt);
     }
 
     async function savePromptTemplate(event) {
@@ -4462,7 +4467,7 @@
         const elements = nativeEditorElements();
         const current = selectedPromptTemplate();
         const prompt = {
-            id: current && current.id !== 'default-prose' ? current.id : undefined,
+            id: current && !isNativeDefaultPrompt(current) ? current.id : undefined,
             category: elements.promptManagerCategory ? elements.promptManagerCategory.value : 'prose',
             title: elements.promptManagerTitle ? elements.promptManagerTitle.value : '新提示词',
             systemContent: elements.promptManagerSystem ? elements.promptManagerSystem.value : '',
@@ -4488,7 +4493,7 @@
     async function deletePromptTemplate() {
         const projectId = currentProjectId();
         const prompt = selectedPromptTemplate();
-        if (!projectId || !prompt || prompt.id === 'default-prose') return;
+        if (!projectId || !prompt || isNativeDefaultPrompt(prompt)) return;
         if (!window.confirm(`删除提示词“${prompt.title || '未命名'}”？`)) return;
         const response = await fetch('/api/delete-prompt', {
             method: 'POST',

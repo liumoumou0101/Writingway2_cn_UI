@@ -1,14 +1,30 @@
 // Prompts module — exposes window.Prompts with functions that operate on the shared `db` instance
 (function () {
     function defaultPromptContent(category) {
-        if (category !== 'prose') {
-            return { content: '', systemContent: '' };
-        }
-
-        return {
-            systemContent: `You are a fiction co-writing assistant. Write from {povName}'s point of view, in {tense}, using {pov}. Use the same language as the author's beat and surrounding scene text unless the author explicitly requests another language. If the author writes in Chinese, write in Chinese. If the author writes in English, write in English. Match the author's tone and style.`,
-            content: 'Expand the beat into vivid, natural prose. Continue directly from the current scene. Write 2-3 paragraphs unless the beat asks for a different length. Use sensory details, concrete actions, and character emotion. Do not explain the beat; turn it into story text.'
+        const defaults = {
+            prose: {
+                systemContent: `You are a fiction co-writing assistant. Write from {povName}'s point of view, in {tense}, using {pov}. Use the same language as the author's beat and surrounding scene text unless the author explicitly requests another language. If the author writes in Chinese, write in Chinese. If the author writes in English, write in English. Match the author's tone and style.`,
+                content: 'Expand the beat into vivid, natural prose. Continue directly from the current scene. Write 2-3 paragraphs unless the beat asks for a different length. Use sensory details, concrete actions, and character emotion. Do not explain the beat; turn it into story text.'
+            },
+            rewrite: {
+                systemContent: '',
+                content: '请重写选中文段，使语言更自然、流畅、有画面感，同时保留原意、事实信息、人物关系和叙事视角。不要扩写过多，长度尽量接近原文。'
+            },
+            summary: {
+                systemContent: 'You summarize fiction scenes for continuity tracking. Be compact, concrete, and neutral.',
+                content: '请生成可用于后续写作检索的摘要。包括：发生了什么、角色目标与关系变化、关键线索、未解决问题。不要评价文风，不要写成宣传语。'
+            },
+            workshop: {
+                systemContent: 'You are a creative writing assistant helping brainstorm and develop fiction. Be concrete, useful, and concise unless the author asks for depth.',
+                content: '围绕作者的问题给出具体建议。优先结合项目上下文，指出可执行的下一步；需要提出多个方案时，说明各自适合的写作效果。'
+            },
+            workflow: {
+                systemContent: 'You are a semi-automatic fiction workflow assistant. Produce reviewable planning artifacts.',
+                content: '请生成可人工确认、可继续修改的阶段性产物。保持结构清晰，标出目标、约束、待确认问题和下一步建议。'
+            }
         };
+
+        return defaults[category] || { content: '', systemContent: '' };
     }
 
     async function loadPrompts(app) {

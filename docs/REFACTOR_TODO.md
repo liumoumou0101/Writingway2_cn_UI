@@ -327,4 +327,5 @@
 - [x] OpenCode 任务 `phase25_native_rewrite_workbench`：恢复旧增强版改写体验，包括原文预览、保存的 rewrite Prompt 选择、preset description、最终 Prompt 预览、结果预览后接受、重试、放弃、选区重生成上下文开关。
 - [x] Codex 验收修复：OpenCode 超时但留下实现；Codex 停止残留进程，补充保存/删除 rewrite Prompt 后刷新下拉、内置预设覆盖旧自定义指令两个细节。
 - [x] 验收：`npm run writer-audit` 覆盖保存的 rewrite Prompt、结果接受前不改正文、接受后替换选区、重试不污染正文、上下文开关影响 Prompt。
+- [x] Codex 直接补齐默认提示词模板：`prose`、`rewrite`、`summary`、`workshop`、`workflow` 分类均有只读默认模板；rewrite 默认模板会出现在原生改写面板的“已保存 Prompt”下拉中，默认模板不可删除，编辑保存时会另存为用户副本。
 - [x] 验证：`npm run writer-audit`、`npm run desktop-mainline-test`、`npm run unit` 均通过。

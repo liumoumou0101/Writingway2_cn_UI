@@ -20,28 +20,46 @@ function filterPrompts(prompts, options = {}) {
   });
 }
 
+function defaultPromptsForOptions(projectId, options = {}) {
+  const category = String(options.category || '').trim();
+  return PromptTemplateSchema.defaultPromptTemplates(category, projectId);
+}
+
+function withDefaultPrompts(prompts, projectId, options = {}) {
+  const defaults = defaultPromptsForOptions(projectId, options);
+  const existingIds = new Set((prompts || []).map((prompt) => prompt.id));
+  return [
+    ...(prompts || []),
+    ...defaults.filter((prompt) => !existingIds.has(prompt.id))
+  ];
+}
+
 async function listPrompts(dataRoot, projectId, options = {}) {
   await ensureProject(dataRoot, projectId);
   const prompts = await promptStore.listPrompts(dataRoot, projectId);
-  const visible = filterPrompts(prompts, options);
+  const visible = filterPrompts(withDefaultPrompts(prompts, projectId, options), options);
   return {
     ok: true,
-    prompts: visible.length ? visible : (options.category === 'prose' ? [PromptTemplateSchema.defaultProsePrompt(projectId)] : visible)
+    prompts: visible
   };
 }
 
 async function savePrompt(dataRoot, projectId, promptInput = {}) {
   await ensureProject(dataRoot, projectId);
+  const nextPrompt = { ...promptInput };
+  if (PromptTemplateSchema.isDefaultPromptId(nextPrompt.id)) {
+    delete nextPrompt.id;
+  }
   return {
     ok: true,
-    prompt: await promptStore.savePrompt(dataRoot, projectId, promptInput)
+    prompt: await promptStore.savePrompt(dataRoot, projectId, nextPrompt)
   };
 }
 
 async function deletePrompt(dataRoot, projectId, promptId) {
   await ensureProject(dataRoot, projectId);
   if (!promptId) throw new Error('promptId is required');
-  if (promptId === 'default-prose') return { ok: true, deleted: 0 };
+  if (PromptTemplateSchema.isDefaultPromptId(promptId)) return { ok: true, deleted: 0 };
   return {
     ok: true,
     ...await promptStore.deletePrompt(dataRoot, projectId, promptId)
