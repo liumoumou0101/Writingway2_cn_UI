@@ -2191,6 +2191,448 @@ textarea {
     }
 }
 
+/* Phase 25 writer polish: keep the dense feature set, but make writing the visual center. */
+.desktop-app[data-view="writer"] .desktop-topbar {
+    min-height: 64px;
+    padding: 10px 24px;
+    background: rgba(14, 16, 20, 0.86);
+}
+
+.desktop-app[data-view="writer"] .desktop-eyebrow {
+    margin-bottom: 2px;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+}
+
+.desktop-app[data-view="writer"] .desktop-topbar h1 {
+    font-size: 22px;
+}
+
+.desktop-app[data-view="writer"] .desktop-topbar-actions .desktop-secondary-action {
+    min-height: 34px;
+    padding: 6px 12px;
+}
+
+.desktop-view-writer {
+    padding: 10px 14px 14px;
+    background: linear-gradient(180deg, #101319 0%, #0d1015 100%);
+}
+
+.desktop-native-writer {
+    grid-template-columns: clamp(238px, 17vw, 320px) minmax(0, 1fr) clamp(340px, 24vw, 460px);
+    height: 100%;
+    border-color: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: #101319;
+    box-shadow: 0 18px 46px rgba(0, 0, 0, 0.24);
+}
+
+.desktop-native-writer.is-outline-collapsed {
+    grid-template-columns: minmax(0, 1fr) clamp(340px, 24vw, 460px);
+}
+
+.desktop-native-writer.is-assistant-collapsed {
+    grid-template-columns: clamp(238px, 17vw, 320px) minmax(0, 1fr);
+}
+
+.desktop-native-outline {
+    background: #151820;
+}
+
+.desktop-native-project {
+    padding: 16px 18px;
+    background: #171b23;
+}
+
+.desktop-native-project h2 {
+    margin-top: 2px;
+    font-size: 19px;
+}
+
+.desktop-native-project p:last-child {
+    color: #a5afbd;
+}
+
+.desktop-native-outline-actions {
+    padding: 10px 12px;
+    background: #151820;
+}
+
+.desktop-native-scene-list {
+    padding: 10px 12px 16px;
+}
+
+.desktop-native-chapter {
+    margin: 12px 0 7px;
+    color: #8ea0b5;
+    letter-spacing: 0.02em;
+}
+
+.desktop-native-scene {
+    min-height: 42px;
+    margin-bottom: 5px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    color: #b5bfcc;
+}
+
+.desktop-native-scene:hover,
+.desktop-native-scene.is-active {
+    border-color: rgba(88, 184, 170, 0.36);
+    background: rgba(88, 184, 170, 0.1);
+}
+
+.desktop-native-editor {
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.025), transparent 34px, transparent calc(100% - 34px), rgba(255, 255, 255, 0.018)),
+        #13171e;
+}
+
+.desktop-native-editor-header {
+    min-height: 64px;
+    padding: 10px 20px;
+    align-items: center;
+    background: rgba(20, 24, 31, 0.92);
+}
+
+.desktop-native-editor-header h2 {
+    max-width: min(48vw, 720px);
+    margin-top: 2px;
+    font-size: 19px;
+    line-height: 1.25;
+}
+
+.desktop-native-editor-actions {
+    justify-content: flex-end;
+    gap: 6px;
+    max-width: min(620px, 48vw);
+}
+
+.desktop-native-editor-actions .desktop-secondary-action,
+.desktop-native-editor-actions .desktop-primary-action {
+    min-height: 30px;
+    padding: 5px 9px;
+    border-radius: 7px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.desktop-native-editor-actions [data-native-read-aloud],
+.desktop-native-editor-actions [data-native-stop-reading],
+.desktop-native-editor-actions [data-native-save-scene] {
+    font-size: 13px;
+}
+
+.desktop-native-editor-actions [data-native-save-status] {
+    flex-basis: 100%;
+    min-height: 16px;
+    order: 20;
+    text-align: right;
+}
+
+.desktop-native-editor-stats {
+    min-width: 64px;
+    color: #98a8bb;
+}
+
+.desktop-native-editor-body {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 120px),
+        #11151c;
+}
+
+.desktop-native-editor-body > textarea {
+    padding-block: calc(34px + var(--native-editor-paragraph-spacing, 0em));
+    padding-inline: max(34px, calc((100% - var(--native-editor-text-width, 780px)) / 2));
+    background:
+        linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.018) 12%, rgba(255, 255, 255, 0.018) 88%, transparent),
+        #131820;
+    color: #edf1f7;
+    caret-color: #64c6b8;
+}
+
+.desktop-native-editor-body > textarea::placeholder {
+    color: rgba(180, 190, 204, 0.56);
+}
+
+.desktop-native-specials,
+.desktop-native-typography,
+.desktop-native-editor-body .desktop-native-generation-output {
+    border-color: rgba(120, 137, 158, 0.22);
+    background: rgba(21, 25, 33, 0.98);
+    box-shadow: 0 18px 38px rgba(0, 0, 0, 0.32);
+}
+
+.desktop-native-editor-body .desktop-native-generation-output {
+    left: max(28px, calc((100% - min(var(--native-editor-text-width, 780px), calc(100% - 68px))) / 2));
+    right: max(28px, calc((100% - min(var(--native-editor-text-width, 780px), calc(100% - 68px))) / 2));
+    bottom: 18px;
+}
+
+.desktop-native-assistant {
+    border-left-color: rgba(255, 255, 255, 0.1);
+    background: #171a22;
+}
+
+.desktop-native-assistant-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    background: #151820;
+}
+
+.desktop-native-assistant-tabs button {
+    flex: 0 0 auto;
+    min-width: 58px;
+    min-height: 34px;
+    padding: 6px 10px;
+    border-radius: 7px;
+    color: #aeb9c8;
+    white-space: nowrap;
+}
+
+.desktop-native-assistant-tabs button.is-active {
+    border-color: rgba(88, 184, 170, 0.54);
+    background: rgba(88, 184, 170, 0.14);
+    color: #ecfffb;
+}
+
+.desktop-native-assistant-panel {
+    padding: 14px 16px 18px;
+}
+
+.desktop-native-task-group {
+    gap: 7px;
+}
+
+.desktop-native-task-group button {
+    min-height: 30px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.desktop-native-task-group button.is-active {
+    border-color: rgba(88, 184, 170, 0.5);
+    background: rgba(88, 184, 170, 0.16);
+}
+
+.desktop-native-prompt-toolbar select,
+.desktop-native-insert-options select,
+.desktop-native-rewrite select,
+.desktop-native-metadata input,
+.desktop-native-metadata select,
+.desktop-native-metadata textarea,
+.desktop-native-rewrite textarea,
+.desktop-native-generation-input textarea,
+.desktop-native-outline-tools input {
+    border-color: rgba(120, 137, 158, 0.2);
+    background: rgba(255, 255, 255, 0.055);
+}
+
+.desktop-native-generation-input textarea,
+.desktop-native-rewrite textarea {
+    min-height: 132px;
+}
+
+.desktop-native-generation-actions .desktop-primary-action,
+.desktop-native-generation-actions .desktop-secondary-action {
+    min-height: 34px;
+    padding: 6px 12px;
+    white-space: nowrap;
+}
+
+.desktop-native-insert-options {
+    grid-template-columns: minmax(58px, auto) minmax(0, 1fr);
+}
+
+.desktop-native-structure-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.desktop-native-structure-tools .desktop-native-export-option,
+.desktop-native-structure-tools [data-native-export-package],
+.desktop-native-structure-tools [data-native-open-legacy] {
+    grid-column: 1 / -1;
+}
+
+.desktop-native-history-item,
+.desktop-native-character-card,
+.desktop-native-context-summary,
+.desktop-native-context-row {
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.desktop-native-writer.is-assistant-bottom {
+    grid-template-columns: clamp(238px, 17vw, 320px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(230px, 30vh);
+}
+
+.desktop-native-writer.is-assistant-bottom .desktop-native-assistant {
+    background: #171a22;
+}
+
+.desktop-native-writer.is-assistant-bottom .desktop-native-assistant-tabs {
+    padding-block: 8px;
+}
+
+.desktop-native-writer.is-focus-mode .desktop-native-editor-body > textarea {
+    padding-left: max(72px, calc((100vw - 940px) / 2));
+    padding-right: max(72px, calc((100vw - 940px) / 2));
+}
+
+@media (min-width: 1800px) {
+    .desktop-native-writer {
+        grid-template-columns: 320px minmax(0, 1fr) 440px;
+    }
+
+    .desktop-native-editor-actions {
+        max-width: 720px;
+    }
+}
+
+@media (max-width: 1440px) {
+    .desktop-app {
+        grid-template-columns: 78px minmax(0, 1fr);
+    }
+
+    .desktop-rail {
+        padding-inline: 8px;
+    }
+
+    .desktop-nav-item {
+        min-height: 58px;
+        padding: 7px 4px;
+    }
+
+    .desktop-native-writer {
+        grid-template-columns: 240px minmax(0, 1fr) 330px;
+    }
+
+    .desktop-native-editor-actions {
+        max-width: 520px;
+    }
+
+    .desktop-native-editor-actions .desktop-secondary-action,
+    .desktop-native-editor-actions .desktop-primary-action {
+        padding-inline: 8px;
+    }
+}
+
+@media (max-width: 1220px) {
+    .desktop-app[data-view="writer"] .desktop-topbar {
+        min-height: 56px;
+        padding: 8px 16px;
+    }
+
+    .desktop-app[data-view="writer"] .desktop-eyebrow {
+        display: none;
+    }
+
+    .desktop-native-writer {
+        grid-template-columns: 238px minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) minmax(240px, 34vh);
+    }
+
+    .desktop-native-assistant {
+        grid-column: 2;
+        grid-row: 2;
+        border-top: 1px solid var(--desktop-line);
+        border-left: 0;
+    }
+
+    .desktop-native-outline {
+        grid-row: 1 / 3;
+    }
+
+    .desktop-native-editor-header {
+        align-items: flex-start;
+    }
+
+    .desktop-native-editor-actions {
+        max-width: 420px;
+    }
+
+    .desktop-native-assistant-panel {
+        padding: 10px 12px;
+    }
+
+    .desktop-native-generation-input textarea,
+    .desktop-native-rewrite textarea {
+        min-height: 90px;
+        max-height: 150px;
+    }
+
+    .desktop-native-writer.is-outline-collapsed {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .desktop-native-writer.is-outline-collapsed .desktop-native-assistant {
+        grid-column: 1;
+    }
+
+    .desktop-native-writer.is-assistant-collapsed {
+        grid-template-columns: 238px minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 980px) {
+    .desktop-view-writer {
+        padding: 8px;
+    }
+
+    .desktop-native-writer {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(420px, 1fr) minmax(240px, 34vh);
+        overflow: auto;
+    }
+
+    .desktop-native-outline,
+    .desktop-native-editor,
+    .desktop-native-assistant {
+        grid-column: 1;
+    }
+
+    .desktop-native-outline {
+        grid-row: 1;
+        max-height: 220px;
+        border-right: 0;
+        border-bottom: 1px solid var(--desktop-line);
+    }
+
+    .desktop-native-editor {
+        grid-row: 2;
+        min-height: 420px;
+    }
+
+    .desktop-native-assistant {
+        grid-row: 3;
+        border-left: 0;
+    }
+
+    .desktop-native-editor-header {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .desktop-native-editor-actions {
+        justify-content: flex-start;
+        max-width: 100%;
+    }
+
+    .desktop-native-editor-actions [data-native-save-status] {
+        text-align: left;
+    }
+
+    .desktop-native-typography {
+        grid-template-columns: 1fr;
+    }
+}
+
 .desktop-panel-placeholder {
     max-width: 760px;
     margin: 28px;
