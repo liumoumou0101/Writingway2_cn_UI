@@ -73,3 +73,11 @@ This file records Codex orchestration events, OpenCode task dispatches, executio
 - Codex review accepted `phase24_native_tts_settings` as `success_after_codex_takeover`. The phase 24 native TTS settings slice is now accepted.
 - Performed final feature gap audit against session handoff, writer feature audit, legacy boundary, refactor TODO, release checklist, and user acceptance checklist.
 - Added `docs/FINAL_FEATURE_GAP_AUDIT.md`, updated `docs/WRITER_FEATURE_AUDIT.md`, refreshed `docs/USER_ACCEPTANCE_CHECKLIST.md`, and marked the final gap audit complete in `docs/REFACTOR_TODO.md`.
+- Re-ran a focused parity review against post-upstream enhancements added in this fork, especially `Add DeepSeek V4 support and Chinese UI`, `Improve DeepSeek writing workflow`, and `Add rewrite presets and tag context resolution`.
+- Revised the final gap judgment: native rewrite has functional entry points, but it does not yet match the old enhanced rewrite modal/workbench experience. Updated docs and TODO to create phase 25 focused on native rewrite workbench parity.
+- Updated OpenCode task `phase25_native_rewrite_workbench` to require that the native implementation may be stronger but must not be weaker than the old enhanced rewrite workflow.
+- Dispatched OpenCode task `phase25_native_rewrite_workbench` through the CLI bridge using `deepseek/deepseek-v4-pro`. The wrapper timed out after 600 seconds and left OpenCode processes running.
+- Codex stopped the residual OpenCode processes and reviewed the partial implementation. OpenCode had added original-text preview, saved rewrite Prompt selection, preset description, context toggle, and delayed accept semantics for rewrite/regenerate results.
+- Codex fixed two acceptance gaps: saving/deleting rewrite prompts now refreshes the rewrite prompt dropdown, and selecting a built-in preset after a saved/custom prompt now clears the old custom instruction before applying the preset text.
+- Codex expanded `tests/writer-button-audit.js` to cover saved rewrite Prompt selection, preset override behavior, rewrite result preview-before-accept, and context-disabled regeneration Prompt behavior.
+- Verification: `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit` all passed sequentially.

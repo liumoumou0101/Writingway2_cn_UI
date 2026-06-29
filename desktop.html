@@ -270,6 +270,12 @@
                         </section>
                         <section class="desktop-native-assistant-panel" data-native-panel="rewrite">
                             <div class="desktop-native-rewrite">
+                                <div class="desktop-native-rewrite-original">
+                                    <label>
+                                        <span>选中原文</span>
+                                        <textarea readonly data-native-rewrite-original-text placeholder="在正文中选中文本后，原文会显示在这里。"></textarea>
+                                    </label>
+                                </div>
                                 <div class="desktop-native-task-group" data-native-rewrite-task-group>
                                     <button type="button" class="is-active" data-native-rewrite-task="polish">润色</button>
                                     <button type="button" data-native-rewrite-task="expand">扩写</button>
@@ -301,11 +307,25 @@
                                         <option value="same-meaning-alt">换一种写法</option>
                                         <option value="custom">自定义</option>
                                     </select>
+                                    <small data-native-rewrite-preset-description></small>
+                                </label>
+                                <label>
+                                    <span>已保存的改写 Prompt</span>
+                                    <select data-native-rewrite-saved-prompt>
+                                        <option value="">不使用已保存的 Prompt...</option>
+                                    </select>
                                 </label>
                                 <label>
                                     <span>改写要求</span>
-                                    <textarea data-native-rewrite-instruction placeholder="先在正文中选中文本，再写下改写要求。"></textarea>
+                                    <textarea data-native-rewrite-instruction placeholder="选择一个预设模板或已保存的 Prompt，也可以直接手写改写要求。"></textarea>
                                 </label>
+                                <div class="desktop-native-rewrite-context-option">
+                                    <label class="desktop-native-writer-check">
+                                        <input type="checkbox" data-native-regenerate-use-context checked>
+                                        <span>重生成选区时包含前后文（约 8000 字符）</span>
+                                    </label>
+                                    <small>勾选后将发送选区前后各约 8000 字符作为上下文，提升重生成的连贯性。</small>
+                                </div>
                                 <div class="desktop-native-generation-actions">
                                     <button class="desktop-secondary-action" type="button" data-native-preview-rewrite>预览</button>
                                     <button class="desktop-primary-action" type="button" data-native-start-rewrite>改写选中文本</button>

@@ -315,3 +315,16 @@
 - [x] 验证：Codex 在 OpenCode 超时后接管测试加固，并顺序运行 `npm run writer-audit`、`npm run desktop-mainline-test`、`npm run unit`，均通过。
 - [x] 最终功能缺口复核：见 `docs/FINAL_FEATURE_GAP_AUDIT.md`；暂未发现发布前必须补齐的新功能阻断项。
 - [ ] 下一步候选：进入发布前自动验证和人工验收清单。
+
+## 阶段 25 - 后续增强功能复核与改写工作台补强
+
+目标：复核“我们在旧开源项目上后续增加的功能”是否在新桌面主线中达到旧增强版效果，而不是只看是否存在入口。
+
+- [x] 复核旧增强提交：`Add DeepSeek V4 support and Chinese UI`、`Improve DeepSeek writing workflow`、`Add rewrite presets and tag context resolution`。
+- [x] 确认 DeepSeek/OpenAI-compatible provider、中文 UI、prompt/context core、资料/标签上下文、历史、导出等能力已经达到或超过旧增强版主线效果。
+- [x] 修正改写结论：原生写作页已有改写路径，但没有完全达到旧增强版改写弹窗和选区重生成工作台效果。
+- [x] 更新 `docs/FINAL_FEATURE_GAP_AUDIT.md` 和 `docs/WRITER_FEATURE_AUDIT.md`，将改写标为“功能路径已迁移，体验和控制粒度待补强”。
+- [x] OpenCode 任务 `phase25_native_rewrite_workbench`：恢复旧增强版改写体验，包括原文预览、保存的 rewrite Prompt 选择、preset description、最终 Prompt 预览、结果预览后接受、重试、放弃、选区重生成上下文开关。
+- [x] Codex 验收修复：OpenCode 超时但留下实现；Codex 停止残留进程，补充保存/删除 rewrite Prompt 后刷新下拉、内置预设覆盖旧自定义指令两个细节。
+- [x] 验收：`npm run writer-audit` 覆盖保存的 rewrite Prompt、结果接受前不改正文、接受后替换选区、重试不污染正文、上下文开关影响 Prompt。
+- [x] 验证：`npm run writer-audit`、`npm run desktop-mainline-test`、`npm run unit` 均通过。

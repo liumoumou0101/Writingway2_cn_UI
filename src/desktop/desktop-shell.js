@@ -80,7 +80,12 @@
         rewrite: {
             preset: 'balanced-polish',
             instruction: '',
-            rewriteTask: 'polish'
+            rewriteTask: 'polish',
+            savedPromptId: '',
+            originalText: '',
+            selectionStart: 0,
+            selectionEnd: 0,
+            regenerateUseContext: true
         },
         context: {
             compendiumIds: [],
@@ -97,6 +102,10 @@
     const promptState = {
         prompts: [],
         selectedId: 'default-prose'
+    };
+    const rewritePromptState = {
+        prompts: [],
+        selectedId: ''
     };
     const workshopState = {
         sessions: [],
@@ -1965,12 +1974,16 @@
             acceptGeneration: document.querySelector('[data-native-accept-generation]'),
             retryGeneration: document.querySelector('[data-native-retry-generation]'),
             discardGeneration: document.querySelector('[data-native-discard-generation]'),
+            rewriteOriginalText: document.querySelector('[data-native-rewrite-original-text]'),
             rewritePreset: document.querySelector('[data-native-rewrite-preset]'),
+            rewritePresetDescription: document.querySelector('[data-native-rewrite-preset-description]'),
+            rewriteSavedPrompt: document.querySelector('[data-native-rewrite-saved-prompt]'),
             rewriteInstruction: document.querySelector('[data-native-rewrite-instruction]'),
             previewRewrite: document.querySelector('[data-native-preview-rewrite]'),
             startRewrite: document.querySelector('[data-native-start-rewrite]'),
             regenerateSelection: document.querySelector('[data-native-regenerate-selection]'),
             rewriteTaskButtons: Array.from(document.querySelectorAll('[data-native-rewrite-task]')),
+            regenerateUseContext: document.querySelector('[data-native-regenerate-use-context]'),
             newCharacter: document.querySelector('[data-native-new-character]'),
             openCompendium: document.querySelector('[data-native-open-compendium]'),
             characterList: document.querySelector('[data-native-character-list]'),
@@ -4467,6 +4480,7 @@
         }
         promptState.selectedId = result.prompt.id;
         await loadPrompts();
+        await loadRewritePrompts();
         renderPromptManager();
         setNativeSaveStatus('提示词已保存', 'ok');
     }
@@ -4488,6 +4502,7 @@
         }
         promptState.selectedId = 'default-prose';
         await loadPrompts();
+        await loadRewritePrompts();
         renderPromptManager();
         setNativeSaveStatus('提示词已删除', 'ok');
     }
@@ -4517,7 +4532,22 @@
         if (elements.rewriteInstruction && elements.rewriteInstruction.value !== nativeEditorState.rewrite.instruction) {
             elements.rewriteInstruction.value = nativeEditorState.rewrite.instruction;
         }
-        const hasSelection = !!(elements.editor && elements.editor.selectionStart !== elements.editor.selectionEnd);
+        if (elements.regenerateUseContext) {
+            if (elements.regenerateUseContext.checked !== nativeEditorState.rewrite.regenerateUseContext) {
+                elements.regenerateUseContext.checked = nativeEditorState.rewrite.regenerateUseContext;
+            }
+        }
+        var hasSelection = !!(elements.editor && elements.editor.selectionStart !== elements.editor.selectionEnd);
+        if (elements.rewriteOriginalText && hasSelection && elements.editor) {
+            var originalText = elements.editor.value.slice(elements.editor.selectionStart, elements.editor.selectionEnd);
+            if (elements.rewriteOriginalText.value !== originalText) {
+                elements.rewriteOriginalText.value = originalText;
+            }
+        } else if (elements.rewriteOriginalText && !hasSelection) {
+            if (elements.rewriteOriginalText.value) elements.rewriteOriginalText.value = '';
+        }
+        updateRewritePresetDescription();
+        renderRewriteSavedPrompts();
         if (elements.previewRewrite) elements.previewRewrite.disabled = !scene || !hasSelection || nativeEditorState.generation.inProgress;
         if (elements.startRewrite) elements.startRewrite.disabled = !scene || !hasSelection || nativeEditorState.generation.inProgress;
         if (elements.regenerateSelection) elements.regenerateSelection.disabled = !scene || !hasSelection || nativeEditorState.generation.inProgress;
@@ -4782,6 +4812,36 @@
         elements.contextSummary.textContent = parts.join(' | ');
     }
 
+    function updateRewritePresetDescription() {
+        var elements = nativeEditorElements();
+        if (!elements.rewritePresetDescription) return;
+        var preset = nativeEditorState.rewrite.preset || 'balanced-polish';
+        var descriptions = {
+            'balanced-polish': '使语言更自然、流畅、有画面感，保留原意。长度接近原文。',
+            tighten: '压缩并精炼，删去重复拖沓，表达更干净有力。长度约原文 60%-80%。',
+            expand: '适度扩写，补足动作、心理和环境细节。长度约原文 1.3-1.8 倍。',
+            'show-dont-tell': '把直白说明改写为具体动作、感官细节和场景表现。',
+            sensory: '增强感官描写和空间感，优先使用视觉、声音、触感等细节。',
+            tension: '提高紧张感和压迫感，加强动作节奏和未知感。',
+            'pace-fast': '让节奏更快利落，减少解释，使用更短句子和直接冲突。',
+            'pace-slow': '放慢节奏，增加停顿、细微动作和情绪层次。',
+            'dialogue-natural': '对白更自然有角色感，减少书面腔，加入动作承载潜台词。',
+            subtext: '增加潜台词，把真实想法藏在措辞、停顿和反应里。',
+            'emotion-deeper': '通过身体反应、记忆闪回、细微动作表现情绪，避免堆砌标签。',
+            'character-voice': '贴合当前视角人物的性格、年龄和情绪，使角色声音更鲜明。',
+            literary: '语言更凝练，意象更准确，节奏有余韵，避免华丽堆砌。',
+            webnovel: '适合中文网文连载，节奏明确，情绪外放，冲突清楚。',
+            cinematic: '增强电影镜头感，用清晰画面调度和动作顺序呈现。',
+            clarity: '理清句子逻辑、人物指代和因果关系，让读者更容易理解。',
+            continuity: '更自然衔接上下文，注意代词、时间和叙述视角一致性。',
+            'remove-cliche': '去掉陈词滥调和套路化表达，换成更具体的表达。',
+            'grammar-copyedit': '只做校对级修改：错别字、病句、标点，尽量保留原句结构。',
+            'same-meaning-alt': '不改变原意，换一种更自然、更有可读性的写法。长度接近原文。',
+            custom: '手动输入改写要求。'
+        };
+        elements.rewritePresetDescription.textContent = descriptions[preset] || '';
+    }
+
     function rewriteInstructionText() {
         const preset = nativeEditorState.rewrite.preset || 'polish';
         const custom = (nativeEditorState.rewrite.instruction || '').trim();
@@ -4810,6 +4870,50 @@
         return custom || presets[preset] || presets['balanced-polish'];
     }
 
+    async function loadRewritePrompts() {
+        const projectId = currentProjectId();
+        if (!projectId) {
+            rewritePromptState.prompts = [];
+            rewritePromptState.selectedId = '';
+            renderRewriteSavedPrompts();
+            return;
+        }
+        try {
+            const response = await fetch(`/api/prompts?${new URLSearchParams({ projectId, category: 'rewrite' }).toString()}`, { cache: 'no-store' });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            rewritePromptState.prompts = result.prompts || [];
+            if (rewritePromptState.selectedId && !rewritePromptState.prompts.some(function (p) { return p.id === rewritePromptState.selectedId; })) {
+                rewritePromptState.selectedId = '';
+                nativeEditorState.rewrite.savedPromptId = '';
+            }
+        } catch (error) {
+            console.warn('Failed to load rewrite prompts:', error);
+            rewritePromptState.prompts = [];
+        }
+        renderRewriteSavedPrompts();
+    }
+
+    function renderRewriteSavedPrompts() {
+        var elements = nativeEditorElements();
+        if (!elements.rewriteSavedPrompt) return;
+        elements.rewriteSavedPrompt.replaceChildren();
+        var defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '不使用已保存的 Prompt...';
+        elements.rewriteSavedPrompt.appendChild(defaultOption);
+        rewritePromptState.prompts.forEach(function (prompt) {
+            var option = document.createElement('option');
+            option.value = prompt.id;
+            option.textContent = prompt.title || '未命名 Prompt';
+            if (prompt.id === nativeEditorState.rewrite.savedPromptId) option.selected = true;
+            elements.rewriteSavedPrompt.appendChild(option);
+        });
+        if (elements.rewriteSavedPrompt.value !== (nativeEditorState.rewrite.savedPromptId || '')) {
+            elements.rewriteSavedPrompt.value = nativeEditorState.rewrite.savedPromptId || '';
+        }
+    }
+
     function buildNativeRewritePrompt() {
         const elements = nativeEditorElements();
         const scene = currentNativeScene();
@@ -4818,6 +4922,9 @@
         const end = elements.editor.selectionEnd || 0;
         if (start === end) return null;
         const selectedText = elements.editor.value.slice(start, end);
+        nativeEditorState.rewrite.originalText = selectedText;
+        nativeEditorState.rewrite.selectionStart = start;
+        nativeEditorState.rewrite.selectionEnd = end;
         const instruction = rewriteInstructionText();
         return {
             messages: [
@@ -4855,9 +4962,16 @@
         if (start === end) return null;
         const value = elements.editor.value || '';
         const selectedText = value.slice(start, end);
+        nativeEditorState.rewrite.originalText = selectedText;
+        nativeEditorState.rewrite.selectionStart = start;
+        nativeEditorState.rewrite.selectionEnd = end;
+        var useContext = nativeEditorState.rewrite.regenerateUseContext !== false;
         const instruction = (nativeEditorState.rewrite.instruction || '').trim() || '重新生成选中文段，使它自然衔接前后文，并保留当前剧情意图。';
-        const contextBefore = value.slice(Math.max(0, start - 8000), start);
-        const contextAfter = value.slice(end, Math.min(value.length, end + 8000));
+        const contextBefore = useContext ? value.slice(Math.max(0, start - 8000), start) : '[用户选择不发送上下文]';
+        const contextAfter = useContext ? value.slice(end, Math.min(value.length, end + 8000)) : '[用户选择不发送上下文]';
+        const contextInstruction = useContext
+            ? '必须使用前后文保持连续性，替换文本要能自然插回原位置。'
+            : '请根据用户要求重新生成选中文段。';
         return {
             messages: [
                 {
@@ -4868,16 +4982,16 @@
                     role: 'user',
                     content: [
                         '请重新生成选中文段。',
-                        '必须使用前后文保持连续性，替换文本要能自然插回原位置。',
+                        contextInstruction,
                         '不要输出前文、后文、标签、分析或说明。',
                         '',
                         `用户要求：${instruction}`,
                         '',
-                        `前文：\n${contextBefore || '[场景开头]'}`,
+                        `前文：\n${contextBefore}`,
                         '',
                         `需要替换的选中文段：\n${selectedText}`,
                         '',
-                        `后文：\n${contextAfter || '[场景结尾]'}`,
+                        `后文：\n${contextAfter}`,
                         '',
                         '替换后的正文：'
                     ].join('\n')
@@ -5469,35 +5583,36 @@
         } else if (!settingsState.runtimeProvider) {
             await loadSettings();
         }
-        const prompt = buildNativeRewritePrompt();
-        const scene = currentNativeScene();
+        var prompt = buildNativeRewritePrompt();
+        var scene = currentNativeScene();
         if (!prompt || !scene) {
             setNativeSaveStatus('请先在正文中选中文本', 'error');
             return { ok: false, reason: 'no-selection' };
         }
-        const generation = nativeEditorState.generation;
+        var generation = nativeEditorState.generation;
         if (generation.inProgress) return { ok: false, reason: 'in-progress' };
         if (generation.text && generation.inlineBaseText) restorePendingInlineGeneration();
+        generation.task = 'rewrite';
         generation.beat = prompt.instruction;
         generation.text = '';
         generation.reasoning = '';
         generation.prompt = prompt;
         generation.record = null;
-        if (!prepareInlineGeneration('rewrite', prompt)) return { ok: false, reason: 'no-editor' };
+        generation.inlineBaseText = '';
+        generation.pendingSceneId = '';
         generation.inProgress = true;
         generation.abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
         renderNativeGeneration();
         setNativeSaveStatus('改写中...', 'info');
-        const startedAt = new Date().toISOString();
-        let failureMessage = '';
+        var startedAt = new Date().toISOString();
+        var failureMessage = '';
         try {
-            await window.WritingwayProviderStream.streamGeneration(prompt, (token) => {
+            await window.WritingwayProviderStream.streamGeneration(prompt, function (token) {
                 generation.text += token;
-                syncInlineGenerationToEditor();
                 renderNativeGeneration();
             }, nativeGenerationConfig(generation.abortController && generation.abortController.signal));
             if (!generation.text.trim()) throw new Error('AI provider returned an empty response.');
-            const record = window.WritingwayGenerationHistory
+            var record = window.WritingwayGenerationHistory
                 ? window.WritingwayGenerationHistory.createGenerationRecord({
                     projectId: nativeEditorState.snapshot.project && nativeEditorState.snapshot.project.id,
                     sceneId: scene.id,
@@ -5506,24 +5621,23 @@
                     messages: prompt.messages || [],
                     promptText: prompt.asString(),
                     resultText: generation.text,
-                    startedAt,
+                    startedAt: startedAt,
                     finishedAt: new Date().toISOString()
                 })
-                : { id: `rewrite-${Date.now()}`, task: 'rewrite', beat: prompt.instruction, resultText: generation.text, createdAt: new Date().toISOString() };
+                : { id: 'rewrite-' + Date.now(), task: 'rewrite', beat: prompt.instruction, resultText: generation.text, createdAt: new Date().toISOString() };
             nativeEditorState.snapshot.promptHistory = nativeEditorState.snapshot.promptHistory || [];
             nativeEditorState.snapshot.promptHistory.push(record);
             generation.record = record;
-            flushNativeEditorFields();
-            markNativeDirty('改写已写入正文，未保存');
-            setNativeSaveStatus('改写完成', 'ok');
-            return { ok: true, record };
+            generation.lastAcceptedSceneId = scene.id;
+            setNativeSaveStatus('改写完成 - 预览结果后点击"保留"替代原文', 'ok');
+            return { ok: true, record: record };
         } catch (error) {
             console.error('Native rewrite failed:', error);
-            const normalized = window.WritingwayGenerationResult
+            var normalized = window.WritingwayGenerationResult
                 ? window.WritingwayGenerationResult.normalizeGenerationError(error)
                 : { message: error && error.message ? error.message : String(error) };
             failureMessage = normalized.message;
-            setNativeSaveStatus(`改写失败：${normalized.message}`, 'error');
+            setNativeSaveStatus('改写失败：' + normalized.message, 'error');
         } finally {
             generation.inProgress = false;
             generation.abortController = null;
@@ -5533,42 +5647,46 @@
     }
 
     async function startNativeRegenerateSelection() {
-        const elements = nativeEditorElements();
+        var elements = nativeEditorElements();
         if (elements.rewriteInstruction) nativeEditorState.rewrite.instruction = elements.rewriteInstruction.value || '';
+        if (elements.regenerateUseContext) {
+            nativeEditorState.rewrite.regenerateUseContext = elements.regenerateUseContext.checked !== false;
+        }
         if (settingsState.loading && settingsState.loadPromise) {
-            await settingsState.loadPromise.catch(() => null);
+            await settingsState.loadPromise.catch(function () { return null; });
         } else if (!settingsState.runtimeProvider) {
             await loadSettings();
         }
-        const prompt = buildNativeRegenerateSelectionPrompt();
-        const scene = currentNativeScene();
+        var prompt = buildNativeRegenerateSelectionPrompt();
+        var scene = currentNativeScene();
         if (!prompt || !scene) {
             setNativeSaveStatus('请先在正文中选中要重生成的文本', 'error');
             return { ok: false, reason: 'no-selection' };
         }
-        const generation = nativeEditorState.generation;
+        var generation = nativeEditorState.generation;
         if (generation.inProgress) return { ok: false, reason: 'in-progress' };
         if (generation.text && generation.inlineBaseText) restorePendingInlineGeneration();
+        generation.task = 'regenerate-selection';
         generation.beat = prompt.instruction;
         generation.text = '';
         generation.reasoning = '';
         generation.prompt = prompt;
         generation.record = null;
-        if (!prepareInlineGeneration('regenerate-selection', prompt)) return { ok: false, reason: 'no-editor' };
+        generation.inlineBaseText = '';
+        generation.pendingSceneId = '';
         generation.inProgress = true;
         generation.abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
         renderNativeGeneration();
         setNativeSaveStatus('正在重生成选区...', 'info');
-        const startedAt = new Date().toISOString();
-        let failureMessage = '';
+        var startedAt = new Date().toISOString();
+        var failureMessage = '';
         try {
-            await window.WritingwayProviderStream.streamGeneration(prompt, (token) => {
+            await window.WritingwayProviderStream.streamGeneration(prompt, function (token) {
                 generation.text += token;
-                syncInlineGenerationToEditor();
                 renderNativeGeneration();
             }, nativeGenerationConfig(generation.abortController && generation.abortController.signal));
             if (!generation.text.trim()) throw new Error('AI provider returned an empty response.');
-            const record = window.WritingwayGenerationHistory
+            var record = window.WritingwayGenerationHistory
                 ? window.WritingwayGenerationHistory.createGenerationRecord({
                     projectId: nativeEditorState.snapshot.project && nativeEditorState.snapshot.project.id,
                     sceneId: scene.id,
@@ -5577,24 +5695,23 @@
                     messages: prompt.messages || [],
                     promptText: prompt.asString(),
                     resultText: generation.text,
-                    startedAt,
+                    startedAt: startedAt,
                     finishedAt: new Date().toISOString()
                 })
-                : { id: `regenerate-selection-${Date.now()}`, task: 'regenerate-selection', beat: prompt.instruction, resultText: generation.text, createdAt: new Date().toISOString() };
+                : { id: 'regenerate-selection-' + Date.now(), task: 'regenerate-selection', beat: prompt.instruction, resultText: generation.text, createdAt: new Date().toISOString() };
             nativeEditorState.snapshot.promptHistory = nativeEditorState.snapshot.promptHistory || [];
             nativeEditorState.snapshot.promptHistory.push(record);
             generation.record = record;
-            flushNativeEditorFields();
-            markNativeDirty('选区已重生成，未保存');
-            setNativeSaveStatus('选区重生成完成', 'ok');
-            return { ok: true, record };
+            generation.lastAcceptedSceneId = scene.id;
+            setNativeSaveStatus('选区重生成完成 - 预览结果后点击"保留"替代原文', 'ok');
+            return { ok: true, record: record };
         } catch (error) {
             console.error('Native selection regeneration failed:', error);
-            const normalized = window.WritingwayGenerationResult
+            var normalized = window.WritingwayGenerationResult
                 ? window.WritingwayGenerationResult.normalizeGenerationError(error)
                 : { message: error && error.message ? error.message : String(error) };
             failureMessage = normalized.message;
-            setNativeSaveStatus(`选区重生成失败：${normalized.message}`, 'error');
+            setNativeSaveStatus('选区重生成失败：' + normalized.message, 'error');
         } finally {
             generation.inProgress = false;
             generation.abortController = null;
@@ -5708,8 +5825,54 @@
         generation.reasoning = '';
         generation.inlineBaseText = '';
         generation.pendingSceneId = '';
+        generation.task = '';
+        nativeEditorState.rewrite.originalText = '';
+        nativeEditorState.rewrite.selectionStart = 0;
+        nativeEditorState.rewrite.selectionEnd = 0;
         renderNativeGeneration();
         setNativeSaveStatus('已撤回生成内容', 'info');
+    }
+
+    function acceptNativeRewrite() {
+        var elements = nativeEditorElements();
+        var scene = currentNativeScene();
+        var generation = nativeEditorState.generation;
+        if (!scene || !generation.text || !elements.editor) return;
+        if (generation.lastAcceptedSceneId && generation.lastAcceptedSceneId !== scene.id) {
+            setNativeSaveStatus('已切换场景，改写结果已失效。请回到原场景或重新执行改写。', 'error');
+            return;
+        }
+        var origStart = nativeEditorState.rewrite.selectionStart;
+        var origEnd = nativeEditorState.rewrite.selectionEnd;
+        var origText = nativeEditorState.rewrite.originalText || '';
+        var currentSelection = elements.editor.value.slice(origStart, origEnd);
+        if (origText && currentSelection !== origText) {
+            setNativeSaveStatus('原文已发生变化，无法安全替换。请重新选中并执行改写。', 'error');
+            return;
+        }
+        if (origStart < origEnd) {
+            var before = elements.editor.value.slice(0, origStart);
+            var after = elements.editor.value.slice(origEnd);
+            var replacement = generation.text || '';
+            elements.editor.value = before + replacement + after;
+            elements.editor.selectionStart = origStart;
+            elements.editor.selectionEnd = origStart + replacement.length;
+            elements.editor.focus();
+            flushNativeEditorFields();
+            markNativeDirty('已接受改写结果，未保存');
+        }
+        generation.lastAcceptedSceneId = scene.id;
+        generation.text = '';
+        generation.reasoning = '';
+        generation.inlineBaseText = '';
+        generation.pendingSceneId = '';
+        generation.task = '';
+        nativeEditorState.rewrite.originalText = '';
+        nativeEditorState.rewrite.selectionStart = 0;
+        nativeEditorState.rewrite.selectionEnd = 0;
+        renderNativeEditor();
+        renderNativeGeneration();
+        setNativeSaveStatus('已接受改写结果', 'ok');
     }
 
     function cancelNativeGeneration() {
@@ -5801,6 +5964,7 @@
         loadReaderFromProjectSnapshot(snapshot);
         await loadCompendium();
         await loadPrompts();
+        await loadRewritePrompts();
         await loadWorkshopSessions();
         await loadWorkflowRuns();
 
@@ -6050,12 +6214,41 @@
         if (elements.rewritePreset) {
             elements.rewritePreset.addEventListener('change', () => {
                 nativeEditorState.rewrite.preset = elements.rewritePreset.value || 'polish';
+                nativeEditorState.rewrite.savedPromptId = '';
+                nativeEditorState.rewrite.instruction = '';
+                nativeEditorState.rewrite.instruction = rewriteInstructionText();
+                if (elements.rewriteInstruction) elements.rewriteInstruction.value = nativeEditorState.rewrite.instruction;
+                renderNativeRewrite();
+            });
+        }
+        if (elements.rewriteSavedPrompt) {
+            elements.rewriteSavedPrompt.addEventListener('change', function () {
+                var selectedId = elements.rewriteSavedPrompt.value || '';
+                nativeEditorState.rewrite.savedPromptId = selectedId;
+                if (selectedId) {
+                    var selected = rewritePromptState.prompts.find(function (p) { return p.id === selectedId; });
+                    if (selected && selected.content) {
+                        nativeEditorState.rewrite.preset = 'custom';
+                        nativeEditorState.rewrite.instruction = selected.content;
+                        if (elements.rewritePreset) elements.rewritePreset.value = 'custom';
+                        if (elements.rewriteInstruction) elements.rewriteInstruction.value = selected.content;
+                    }
+                }
                 renderNativeRewrite();
             });
         }
         if (elements.rewriteInstruction) {
             elements.rewriteInstruction.addEventListener('input', () => {
                 nativeEditorState.rewrite.instruction = elements.rewriteInstruction.value || '';
+                nativeEditorState.rewrite.savedPromptId = '';
+                nativeEditorState.rewrite.preset = 'custom';
+                if (elements.rewritePreset) elements.rewritePreset.value = 'custom';
+                renderNativeRewrite();
+            });
+        }
+        if (elements.regenerateUseContext) {
+            elements.regenerateUseContext.addEventListener('change', function () {
+                nativeEditorState.rewrite.regenerateUseContext = elements.regenerateUseContext.checked !== false;
             });
         }
         if (elements.previewRewrite) elements.previewRewrite.addEventListener('click', showNativeRewritePreview);
@@ -6081,6 +6274,10 @@
                     const task = btn.getAttribute('data-native-rewrite-task') || 'polish';
                     nativeEditorState.rewrite.rewriteTask = task;
                     nativeEditorState.rewrite.preset = rewriteTaskPresetMap[task] || 'balanced-polish';
+                    nativeEditorState.rewrite.savedPromptId = '';
+                    nativeEditorState.rewrite.instruction = '';
+                    nativeEditorState.rewrite.instruction = rewriteInstructionText();
+                    if (elements.rewriteInstruction) elements.rewriteInstruction.value = nativeEditorState.rewrite.instruction;
                     renderNativeRewrite();
                 });
             });
@@ -6114,9 +6311,19 @@
             }
             if (target.dataset.nativePreviewPrompt !== undefined) showNativePromptPreview();
             if (target.dataset.nativeCancelGeneration !== undefined) cancelNativeGeneration();
-            if (target.dataset.nativeAcceptGeneration !== undefined) acceptNativeGeneration();
+            if (target.dataset.nativeAcceptGeneration !== undefined) {
+                if (nativeEditorState.generation.task === 'rewrite' || nativeEditorState.generation.task === 'regenerate-selection') {
+                    acceptNativeRewrite();
+                } else {
+                    acceptNativeGeneration();
+                }
+            }
             if (target.dataset.nativeRetryGeneration !== undefined) {
-                if (nativeEditorState.generation.genTask === 'summary') {
+                if (nativeEditorState.generation.task === 'rewrite') {
+                    startNativeRewrite();
+                } else if (nativeEditorState.generation.task === 'regenerate-selection') {
+                    startNativeRegenerateSelection();
+                } else if (nativeEditorState.generation.genTask === 'summary') {
                     generateNativeSummary('scene');
                 } else {
                     startNativeGeneration();

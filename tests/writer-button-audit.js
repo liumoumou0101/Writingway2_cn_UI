@@ -446,13 +446,34 @@ async function submitNativeName(page, value) {
     await page.click('[data-native-gen-task="continue"]');
     await page.waitForFunction(() => document.querySelector('[data-native-gen-task="continue"]').classList.contains('is-active'));
 
+    await page.click('[data-native-manage-prompts]');
+    await page.waitForFunction(() => document.querySelector('[data-prompt-manager-dialog]').open);
+    await page.fill('[data-prompt-manager-title]', 'Audit Rewrite Prompt');
+    await page.selectOption('[data-prompt-manager-category]', 'rewrite');
+    await page.fill('[data-prompt-manager-content]', '请把选中文本改得更冷峻克制。');
+    await page.locator('[data-prompt-manager-form] button[type="submit"]').click();
+    await page.waitForFunction(() => {
+      const select = document.querySelector('[data-native-rewrite-saved-prompt]');
+      return select && Array.from(select.options).some((option) => option.textContent.includes('Audit Rewrite Prompt'));
+    });
+    await page.click('[data-prompt-manager-close]');
+    await page.waitForFunction(() => !document.querySelector('[data-prompt-manager-dialog]').open);
     await page.click('[data-native-panel-tab="rewrite"]');
+    await page.selectOption('[data-native-rewrite-saved-prompt]', { label: 'Audit Rewrite Prompt' });
+    await page.waitForFunction(() => document.querySelector('[data-native-rewrite-instruction]').value.includes('冷峻克制'));
+    await page.selectOption('[data-native-rewrite-preset]', 'tension');
+    await page.waitForFunction(() => {
+      return document.querySelector('[data-native-rewrite-saved-prompt]').value === ''
+        && document.querySelector('[data-native-rewrite-instruction]').value.includes('紧张感')
+        && document.querySelector('[data-native-rewrite-preset-description]').textContent.includes('紧张感');
+    });
     await page.fill('[data-native-scene-editor]', 'Rewrite this audit sentence.');
     await page.evaluate(() => {
       const editor = document.querySelector('[data-native-scene-editor]');
       editor.focus();
       editor.setSelectionRange(0, 12);
       editor.dispatchEvent(new Event('select', { bubbles: true }));
+      editor.dispatchEvent(new Event('mouseup', { bubbles: true }));
       window.__writingwayNativeGenerationStub = async (prompt, onToken) => {
         for (const token of ['Rewritten', ' audit']) {
           await new Promise((resolve) => setTimeout(resolve, 2));
@@ -464,27 +485,49 @@ async function submitNativeName(page, value) {
     await page.waitForFunction(() => document.querySelector('[data-native-prompt-dialog]').open);
     await page.click('[data-native-close-prompt]');
     await page.click('[data-native-start-rewrite]');
-    await page.waitForFunction(() => document.querySelector('[data-native-scene-editor]').value.includes('Rewritten audit audit sentence.'));
+    await page.waitForFunction(() => {
+      const result = document.querySelector('[data-native-generation-result]');
+      return result && result.textContent.includes('Rewritten audit');
+    });
+    await page.waitForFunction(() => document.querySelector('[data-native-scene-editor]').value === 'Rewrite this audit sentence.');
+    await page.waitForFunction(() => !document.querySelector('[data-native-generation-output]').hidden);
     await page.click('[data-native-accept-generation]');
+    await page.waitForFunction(() => document.querySelector('[data-native-scene-editor]').value.includes('Rewritten audit'), null, { timeout: 5000 }).catch(async (error) => {
+      const value = await page.locator('[data-native-scene-editor]').inputValue();
+      throw new Error(`${error.message}\nEditor value after rewrite accept: ${value}\nBrowser messages:\n${browserMessages.join('\n')}`);
+    });
     await page.fill('[data-native-scene-editor]', 'Replace this passage with context.');
     await page.evaluate(() => {
       const editor = document.querySelector('[data-native-scene-editor]');
       editor.focus();
       editor.setSelectionRange(0, 12);
       editor.dispatchEvent(new Event('select', { bubbles: true }));
+      editor.dispatchEvent(new Event('mouseup', { bubbles: true }));
       window.__writingwayNativeGenerationStub = async (prompt, onToken) => {
+        window.__lastNativeGenerationPrompt = prompt && typeof prompt.asString === 'function'
+          ? prompt.asString()
+          : JSON.stringify(prompt);
         for (const token of ['Regenerated', ' passage']) {
           await new Promise((resolve) => setTimeout(resolve, 2));
           onToken(token);
         }
       };
     });
+    await page.locator('[data-native-regenerate-use-context]').uncheck();
     await page.click('[data-native-regenerate-selection]');
+    await page.waitForFunction(() => {
+      const result = document.querySelector('[data-native-generation-result]');
+      return result && result.textContent.includes('Regenerated passage');
+    }, null, { timeout: 5000 }).catch(async (error) => {
+      const outputText = await page.locator('[data-native-generation-result]').textContent();
+      throw new Error(`${error.message}\nOutput text after regeneration click: ${outputText}\nBrowser messages:\n${browserMessages.join('\n')}`);
+    });
+    await page.waitForFunction(() => window.__lastNativeGenerationPrompt && window.__lastNativeGenerationPrompt.includes('用户选择不发送上下文'));
+    await page.click('[data-native-accept-generation]');
     await page.waitForFunction(() => document.querySelector('[data-native-scene-editor]').value.includes('Regenerated passage'), null, { timeout: 5000 }).catch(async (error) => {
       const value = await page.locator('[data-native-scene-editor]').inputValue();
-      throw new Error(`${error.message}\nEditor value after regeneration click: ${value}\nBrowser messages:\n${browserMessages.join('\n')}`);
+      throw new Error(`${error.message}\nEditor value after regenerate accept: ${value}\nBrowser messages:\n${browserMessages.join('\n')}`);
     });
-    await page.click('[data-native-accept-generation]');
 
     await page.fill('[data-native-scene-editor]', 'Task button rewrite test text here.');
     await page.evaluate(() => {

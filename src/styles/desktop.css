@@ -2075,6 +2075,69 @@ textarea {
     resize: vertical;
 }
 
+.desktop-native-rewrite-original {
+    margin-bottom: 4px;
+}
+
+.desktop-native-rewrite-original label {
+    display: grid;
+    gap: 7px;
+    color: var(--desktop-muted);
+    font-size: 12px;
+}
+
+.desktop-native-rewrite-original textarea {
+    width: 100%;
+    min-height: 88px;
+    max-height: 140px;
+    padding: 10px 12px;
+    border: 1px solid var(--desktop-line);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.025);
+    color: var(--desktop-muted);
+    outline: none;
+    resize: vertical;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+[data-native-rewrite-preset-description] {
+    color: var(--desktop-faint);
+    font-size: 11px;
+    line-height: 1.5;
+    margin-top: -2px;
+}
+
+.desktop-native-rewrite-context-option {
+    display: grid;
+    gap: 5px;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--desktop-line);
+    border-radius: 7px;
+}
+
+.desktop-native-rewrite-context-option small {
+    color: var(--desktop-faint);
+    font-size: 11px;
+    line-height: 1.45;
+    display: block;
+}
+
+.desktop-native-writer-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--desktop-muted);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.desktop-native-writer-check input[type="checkbox"] {
+    margin: 0;
+    accent-color: var(--desktop-accent);
+}
+
 .desktop-native-character-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
