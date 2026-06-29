@@ -4,6 +4,14 @@
 // - streamGeneration(prompt, onToken(token)) => Promise<void>
 (function () {
     function buildPrompt(beat, sceneContext, options = {}) {
+        if (window.WritingwayPromptBuilder && typeof window.WritingwayPromptBuilder.buildFictionPrompt === 'function') {
+            return window.WritingwayPromptBuilder.buildFictionPrompt({
+                beat,
+                sceneContext,
+                options
+            });
+        }
+
         try {
             console.debug('[buildPrompt] received prosePrompt:', JSON.stringify(options.prosePrompt));
             console.debug('[buildPrompt] received systemPrompt:', JSON.stringify(options.systemPrompt));
@@ -583,13 +591,31 @@
             let prompt = buildPrompt(app.beatInput, app.currentScene?.content || '', genOpts);
 
             try {
+                const messages = prompt && Array.isArray(prompt.messages) ? prompt.messages : [];
+                const promptText = typeof prompt === 'object' && prompt.asString ? prompt.asString() : String(prompt);
+                const historyRecord = window.WritingwayGenerationHistory && typeof window.WritingwayGenerationHistory.createGenerationRecord === 'function'
+                    ? window.WritingwayGenerationHistory.createGenerationRecord({
+                        projectId: app.currentProject?.id,
+                        sceneId: app.currentScene?.id,
+                        task: 'fiction-prose',
+                        beat: app.beatInput,
+                        provider: app.aiProvider || '',
+                        model: app.aiModel || '',
+                        messages,
+                        promptText
+                    })
+                    : null;
                 await db.promptHistory.add({
-                    id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 9),
+                    id: historyRecord?.id || Date.now().toString() + '-' + Math.random().toString(36).slice(2, 9),
                     projectId: app.currentProject?.id,
                     sceneId: app.currentScene?.id,
                     timestamp: new Date(),
                     beat: app.beatInput,
-                    prompt: typeof prompt === 'object' && prompt.asString ? prompt.asString() : String(prompt)
+                    prompt: promptText,
+                    messages,
+                    provider: app.aiProvider || '',
+                    model: app.aiModel || '',
+                    generationRecord: historyRecord
                 });
             } catch (e) {
                 console.warn('Failed to save prompt history:', e);
@@ -603,7 +629,13 @@
             app.showReasoningModal = false;
             app.showGenActions = false;
 
-            await streamGeneration(prompt, (token) => {
+            const activeStreamGeneration = window.Generation
+                && typeof window.Generation.streamGeneration === 'function'
+                && window.Generation.streamGeneration !== streamGeneration
+                ? window.Generation.streamGeneration
+                : streamGeneration;
+
+            await activeStreamGeneration(prompt, (token) => {
                 app.currentScene.content += token;
                 app.lastGenText += token;
             }, app);

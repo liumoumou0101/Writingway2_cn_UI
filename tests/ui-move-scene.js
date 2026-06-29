@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
 const path = require('path');
+const { openLatestLegacyProject } = require('./helpers/legacy-app');
+const { installLegacyCdnRoutes } = require('./helpers/legacy-cdn-routes');
 
 (async () => {
     const projectRoot = path.resolve(__dirname, '..');
@@ -9,6 +11,7 @@ const path = require('path');
 
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
+    await installLegacyCdnRoutes(context);
     const page = await context.newPage();
     // attach diagnostics
     page.on('console', msg => {
@@ -18,7 +21,7 @@ const path = require('path');
     page.on('requestfailed', req => { const f = req.failure() || {}; console.log('REQUEST FAILED', req.url(), f.errorText || f); });
 
     try {
-        await page.goto(fileUrl, { waitUntil: 'load', timeout: 15000 });
+        await page.goto(fileUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
         await page.waitForSelector('.app-container, .welcome-screen', { timeout: 10000 });
 
         // Seed a project with two chapters and one scene if necessary
@@ -57,7 +60,8 @@ const path = require('path');
         });
 
         // Reload so app picks up seeded data
-        await page.reload({ waitUntil: 'load' });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await openLatestLegacyProject(page);
 
         // Ensure app has selected the seeded project; if not, select it directly
         await page.evaluate(async () => {
@@ -66,8 +70,12 @@ const path = require('path');
                 if (proj) {
                     try { localStorage.setItem('writingway:lastProject', proj.id); } catch (e) { }
                     const el = document.querySelector('[x-data="app"]');
-                    if (el && el.__x && el.__x.$data && typeof el.__x.$data.selectProject === 'function') {
-                        await el.__x.$data.selectProject(proj.id);
+                    const app = window.Alpine && typeof window.Alpine.$data === 'function'
+                        ? window.Alpine.$data(el)
+                        : (el && el.__x && el.__x.$data ? el.__x.$data : null);
+                    if (app && typeof app.selectProject === 'function') {
+                        app.showProjectsView = false;
+                        await app.selectProject(proj.id);
                     }
                 }
             } catch (e) { }

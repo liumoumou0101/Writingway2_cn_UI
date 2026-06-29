@@ -7,6 +7,7 @@ const rootDir = path.resolve(__dirname, '..');
 const appUrl = 'http://127.0.0.1:8000/desktop.html';
 const appId = 'com.writingway.app';
 const iconPath = path.join(__dirname, 'icon.ico');
+const dataRootOverride = process.env.WRITINGWAY_DATA_ROOT ? path.resolve(process.env.WRITINGWAY_DATA_ROOT) : '';
 
 let managedServers = null;
 
@@ -47,7 +48,7 @@ async function startServices() {
 
   managedServers = await startDesktopServers({
     appRoot: rootDir,
-    dataRoot: app.isPackaged ? app.getPath('userData') : rootDir,
+    dataRoot: dataRootOverride || (app.isPackaged ? app.getPath('userData') : rootDir),
     chooseBackupFolder: async (currentPath) => {
       const result = await dialog.showOpenDialog({
         title: 'Choose backup folder',

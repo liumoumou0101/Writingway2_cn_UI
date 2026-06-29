@@ -7,6 +7,16 @@ const https = require('https');
 const os = require('os');
 const path = require('path');
 const { URL } = require('url');
+const projectService = require('./services/project-service');
+const settingsService = require('./services/settings-service');
+const compendiumService = require('./services/compendium-service');
+const promptService = require('./services/prompt-service');
+const workshopService = require('./services/workshop-service');
+const projectMigrationService = require('./services/project-migration-service');
+const workflowService = require('./services/workflow-service');
+const projectFileStore = require('./storage/project-file-store');
+const { projectDir, projectsRoot } = require('./storage/library-paths');
+const { legacySnapshotToProject, projectToLegacySnapshot, projectToLibrarySummary } = require('./services/project-snapshot-adapter');
 
 const HOST = '127.0.0.1';
 const APP_PORT = 8000;
@@ -59,30 +69,22 @@ function backupFilename(project, exportedAt) {
   return `${timestamp}--${sanitizeFilename(project.name || 'project')}--${sanitizeFilename(projectId)}.json`;
 }
 
-function settingsPath(dataRoot) {
-  return path.join(dataRoot, '.writingway-settings.json');
-}
-
 async function readSettings(dataRoot) {
-  try {
-    return JSON.parse(await fsp.readFile(settingsPath(dataRoot), 'utf8'));
-  } catch {
-    return {};
-  }
+  return settingsService.readSettings(dataRoot);
 }
 
 async function writeSettings(dataRoot, settings) {
-  await writeJsonAtomic(settingsPath(dataRoot), settings);
+  return settingsService.writeSettings(dataRoot, settings);
 }
 
 async function backupRoot(dataRoot) {
   const settings = await readSettings(dataRoot);
-  return settings.backupLocation || path.join(await projectSaveRoot(dataRoot), 'backups');
+  return settingsService.backupRoot(dataRoot, settings);
 }
 
 async function projectSaveRoot(dataRoot) {
   const settings = await readSettings(dataRoot);
-  return settings.projectSaveLocation || path.join(dataRoot, 'projects');
+  return settingsService.projectSaveRoot(dataRoot, settings);
 }
 
 async function backupDir(dataRoot, projectId) {
@@ -183,6 +185,20 @@ function snapshotStats(payload) {
   };
 }
 
+function fileResponse(response, statusCode, payload, cors = false) {
+  const body = Buffer.isBuffer(payload.body) ? payload.body : Buffer.from(String(payload.body || ''), 'utf8');
+  const filename = String(payload.filename || 'download').replace(/[\r\n"]/g, '');
+  const asciiFilename = sanitizeFilename(filename.replace(/[^\x20-\x7E]+/g, '_')) || 'download';
+  const encodedFilename = encodeURIComponent(filename);
+  response.writeHead(statusCode, {
+    'Content-Type': payload.mimeType || 'application/octet-stream',
+    'Content-Length': body.length,
+    'Content-Disposition': `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`,
+    ...(cors ? corsHeaders() : {})
+  });
+  response.end(body);
+}
+
 async function readProjectSummary(dataRoot, file) {
   let payload = {};
   let parseError = '';
@@ -280,6 +296,74 @@ async function findProjectFile(dataRoot, projectId, filename) {
   return null;
 }
 
+async function readDirectoryProject(dataRoot, projectId) {
+  const requestedProjectId = String(projectId || '').trim();
+  if (!requestedProjectId) return null;
+  try {
+    return await projectFileStore.openProject(dataRoot, requestedProjectId);
+  } catch {
+    return null;
+  }
+}
+
+async function listDirectoryProjectSummaries(dataRoot) {
+  const summaries = [];
+  for (const summary of await projectFileStore.listProjects(dataRoot)) {
+    if (summary.health !== 'ok') {
+      summaries.push({
+        id: summary.id,
+        name: summary.title,
+        description: summary.description || '',
+        status: summary.status || '',
+        tags: summary.tags || [],
+        coverImage: '',
+        created: '',
+        modified: summary.updatedAt || '',
+        timestamp: summary.updatedAt || '',
+        absolutePath: summary.projectPath,
+        path: summary.projectPath,
+        filename: '',
+        source: 'project-directory',
+        size: 0,
+        chapterCount: 0,
+        sceneCount: 0,
+        wordCount: 0,
+        health: summary.health,
+        healthMessage: summary.healthMessage || ''
+      });
+      continue;
+    }
+
+    try {
+      const project = await projectFileStore.openProject(dataRoot, summary.id);
+      summaries.push(projectToLibrarySummary(project, summary.projectPath, projectsRoot(dataRoot)));
+    } catch (error) {
+      summaries.push({
+        id: summary.id,
+        name: summary.title || summary.id,
+        description: '',
+        status: '',
+        tags: [],
+        coverImage: '',
+        created: '',
+        modified: summary.updatedAt || '',
+        timestamp: summary.updatedAt || '',
+        absolutePath: summary.projectPath,
+        path: summary.projectPath,
+        filename: '',
+        source: 'project-directory',
+        size: 0,
+        chapterCount: 0,
+        sceneCount: 0,
+        wordCount: 0,
+        health: 'invalid',
+        healthMessage: error.message || String(error)
+      });
+    }
+  }
+  return summaries;
+}
+
 function createProjectSnapshot(metadata) {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
@@ -345,6 +429,144 @@ async function uniqueFilePath(dir, filename) {
     index += 1;
   }
   return target;
+}
+
+async function uniqueRestoredProjectId(dataRoot, baseId) {
+  const cleanBase = sanitizeFilename(baseId || `recovered-${Date.now()}`) || `recovered-${Date.now()}`;
+  let id = `${cleanBase}-recovered`;
+  let index = 2;
+  while (await pathExists(projectDir(dataRoot, id))) {
+    id = `${cleanBase}-recovered-${index}`;
+    index += 1;
+  }
+  return id;
+}
+
+function cloneBackupAsNewProjectSnapshot(backup, nextId) {
+  const now = new Date().toISOString();
+  const sourceProject = backup.project || {};
+  const oldId = String(sourceProject.id || nextId);
+  const chapterIdMap = new Map();
+  const sceneIdMap = new Map();
+
+  const chapters = (backup.chapters || []).map((chapter, index) => {
+    const id = `chapter-${nextId}-${index + 1}`;
+    chapterIdMap.set(chapter.id, id);
+    return {
+      ...chapter,
+      id,
+      projectId: nextId,
+      created: chapter.created || now,
+      modified: now,
+      updatedAt: Date.now()
+    };
+  });
+
+  const fallbackChapterId = chapters[0] ? chapters[0].id : `chapter-${nextId}-1`;
+  const scenes = (backup.scenes || []).map((scene, index) => {
+    const id = `scene-${nextId}-${index + 1}`;
+    sceneIdMap.set(scene.id, id);
+    return {
+      ...scene,
+      id,
+      projectId: nextId,
+      chapterId: chapterIdMap.get(scene.chapterId) || fallbackChapterId,
+      created: scene.created || now,
+      modified: now,
+      updatedAt: Date.now()
+    };
+  });
+
+  const sceneContents = {};
+  for (const [oldSceneId, text] of Object.entries(backup.sceneContents || {})) {
+    sceneContents[sceneIdMap.get(oldSceneId) || oldSceneId] = text;
+  }
+
+  return {
+    ...backup,
+    version: '3.0-restored-project',
+    exportedAt: now,
+    filesystemSavedAt: now,
+    project: {
+      ...sourceProject,
+      id: nextId,
+      name: `${sourceProject.name || sourceProject.title || oldId} (Recovered)`,
+      title: `${sourceProject.title || sourceProject.name || oldId} (Recovered)`,
+      created: now,
+      modified: now,
+      updatedAt: Date.now()
+    },
+    chapters,
+    scenes,
+    sceneContents,
+    currentSceneId: scenes[0] ? scenes[0].id : '',
+    backupRequest: undefined,
+    backupMeta: undefined
+  };
+}
+
+function backupDiffSummary(currentSnapshot, backup) {
+  const currentContents = currentSnapshot && currentSnapshot.sceneContents ? currentSnapshot.sceneContents : {};
+  const backupContents = backup && backup.sceneContents ? backup.sceneContents : {};
+  const ids = new Set([...Object.keys(currentContents), ...Object.keys(backupContents)]);
+  let added = 0;
+  let removed = 0;
+  let changed = 0;
+  let unchanged = 0;
+  const scenes = [];
+  for (const id of ids) {
+    const currentText = currentContents[id];
+    const backupText = backupContents[id];
+    let status = 'unchanged';
+    if (currentText === undefined) status = 'added';
+    else if (backupText === undefined) status = 'removed';
+    else if (String(currentText) !== String(backupText)) status = 'changed';
+    if (status === 'added') added += 1;
+    else if (status === 'removed') removed += 1;
+    else if (status === 'changed') changed += 1;
+    else unchanged += 1;
+    scenes.push({
+      id,
+      status,
+      currentLength: String(currentText || '').length,
+      backupLength: String(backupText || '').length
+    });
+  }
+  return { added, removed, changed, unchanged, scenes };
+}
+
+async function createPreRestoreBackup(dataRoot, projectId, note, reason = 'before-restore') {
+  const currentProject = await projectService.openProject(dataRoot, projectId);
+  const requestPayload = {
+    ...projectToLegacySnapshot(currentProject.project),
+    backupRequest: {
+      reason,
+      note,
+      retention: { mode: 'count', count: 100 }
+    }
+  };
+  const dir = await backupDir(dataRoot, projectId);
+  await fsp.mkdir(dir, { recursive: true });
+  const filename = `${backupFilename(requestPayload.project, requestPayload.exportedAt).slice(0, -5)}--${sanitizeFilename(reason)}.json`;
+  const target = await uniqueFilePath(dir, filename);
+  const stats = snapshotStats(requestPayload);
+  requestPayload.localBackupSavedAt = new Date().toISOString();
+  requestPayload.localBackupVersion = 1;
+  requestPayload.backupMeta = {
+    reason,
+    note,
+    hash: snapshotHash(requestPayload),
+    createdAt: requestPayload.localBackupSavedAt,
+    ...stats
+  };
+  await writeJsonAtomic(target, requestPayload);
+  return {
+    currentProject: currentProject.project,
+    backup: {
+      backupId: path.basename(target),
+      path: path.relative(await backupRoot(dataRoot), target).replace(/\\/g, '/')
+    }
+  };
 }
 
 async function listBackupFiles(dataRoot, projectId = '') {
@@ -741,11 +963,50 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
     return true;
   }
 
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/settings') {
+    const settings = await readSettings(dataRoot);
+    jsonResponse(response, 200, {
+      ok: true,
+      settings: settingsService.publicSettings(settings),
+      runtimeProvider: settingsService.runtimeProviderConfig(settings)
+    });
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/settings') {
+    try {
+      const payload = await readJsonPayload(request);
+      const settings = await settingsService.updateSettings(dataRoot, payload.settings || payload);
+      jsonResponse(response, 200, {
+        ok: true,
+        settings: settingsService.publicSettings(settings),
+        runtimeProvider: settingsService.runtimeProviderConfig(settings)
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/settings/test-provider') {
+    try {
+      const payload = await readJsonPayload(request).catch(() => ({}));
+      const settings = payload.settings || await readSettings(dataRoot);
+      const result = await settingsService.testProvider(settings, { live: !!payload.live });
+      jsonResponse(response, 200, { ok: result.ok, result });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
   if (request.method === 'GET' && parsedUrl.pathname === '/api/list-projects') {
     const projects = [];
     for (const file of await listProjectFiles(dataRoot)) {
       projects.push(await readProjectSummary(dataRoot, file));
     }
+    projects.push(...await listDirectoryProjectSummaries(dataRoot));
+    projects.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
     jsonResponse(response, 200, { ok: true, projects, projectSaveLocation: await projectSaveRoot(dataRoot) });
     return true;
   }
@@ -755,6 +1016,16 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
     const filename = String(parsedUrl.searchParams.get('filename') || '').trim();
     const file = await findProjectFile(dataRoot, projectId, filename);
     if (!file) {
+      const directoryProject = await readDirectoryProject(dataRoot, projectId);
+      if (directoryProject) {
+        jsonResponse(response, 200, {
+          ok: true,
+          project: projectToLegacySnapshot(directoryProject),
+          summary: projectToLibrarySummary(directoryProject, projectDir(dataRoot, directoryProject.id), projectsRoot(dataRoot)),
+          projectSaveLocation: await projectSaveRoot(dataRoot)
+        });
+        return true;
+      }
       jsonResponse(response, 404, { ok: false, error: 'Project not found' });
       return true;
     }
@@ -773,6 +1044,347 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
     return true;
   }
 
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/export-project-document') {
+    try {
+      const projectId = String(parsedUrl.searchParams.get('projectId') || '').trim();
+      const format = String(parsedUrl.searchParams.get('format') || 'markdown').trim();
+      const includeSceneTitles = parsedUrl.searchParams.get('includeSceneTitles');
+      if (!projectId) throw new Error('Missing projectId');
+      const exportOptions = includeSceneTitles !== null ? { includeSceneTitles: includeSceneTitles !== 'false' } : {};
+      const exported = await projectMigrationService.exportProjectDocument(dataRoot, projectId, format, exportOptions);
+      fileResponse(response, 200, {
+        filename: exported.filename,
+        mimeType: exported.mimeType,
+        body: exported.body || exported.text
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message || 'Could not export project document' });
+    }
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/export-project-package') {
+    try {
+      const projectId = String(parsedUrl.searchParams.get('projectId') || '').trim();
+      if (!projectId) throw new Error('Missing projectId');
+      const exported = await projectMigrationService.exportProjectPackage(dataRoot, projectId);
+      fileResponse(response, 200, {
+        filename: exported.filename,
+        mimeType: exported.mimeType,
+        body: exported.buffer
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message || 'Could not export project package' });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/import-project-snapshot') {
+    try {
+      const payload = await readJsonPayload(request);
+      const imported = await projectMigrationService.importLegacySnapshot(dataRoot, payload.snapshot || payload, { keepId: !!payload.keepId });
+      jsonResponse(response, 200, {
+        ok: true,
+        importedFrom: imported.importedFrom,
+        project: projectToLegacySnapshot(imported.project),
+        summary: projectToLibrarySummary(imported.project, imported.projectPath, projectsRoot(dataRoot)),
+        projectSaveLocation: await projectSaveRoot(dataRoot)
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message || 'Could not import project snapshot' });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/import-project-package') {
+    try {
+      const body = await readBody(request);
+      if (!body.length) throw new Error('Package body is required');
+      const imported = await projectMigrationService.importProjectPackage(dataRoot, body, {
+        keepId: parsedUrl.searchParams.get('keepId') === '1'
+      });
+      jsonResponse(response, 200, {
+        ok: true,
+        importedFrom: imported.importedFrom,
+        project: projectToLegacySnapshot(imported.project),
+        summary: projectToLibrarySummary(imported.project, imported.projectPath, projectsRoot(dataRoot)),
+        projectSaveLocation: await projectSaveRoot(dataRoot)
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message || 'Could not import project package' });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/import-writingway1') {
+    try {
+      const payload = await readJsonPayload(request);
+      const imported = await projectMigrationService.importWritingway1Files(dataRoot, payload.files || [], { name: payload.name });
+      jsonResponse(response, 200, {
+        ok: true,
+        importedFrom: imported.importedFrom,
+        chapterCount: imported.chapterCount,
+        sceneCount: imported.sceneCount,
+        project: projectToLegacySnapshot(imported.project),
+        summary: projectToLibrarySummary(imported.project, imported.projectPath, projectsRoot(dataRoot)),
+        projectSaveLocation: await projectSaveRoot(dataRoot)
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message || 'Could not import Writingway 1 project' });
+    }
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/compendium') {
+    try {
+      const projectId = String(parsedUrl.searchParams.get('projectId') || '').trim();
+      const query = String(parsedUrl.searchParams.get('query') || '').trim();
+      const type = String(parsedUrl.searchParams.get('type') || '').trim();
+      jsonResponse(response, 200, await compendiumService.listEntries(dataRoot, projectId, { query, type }));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/compendium') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      jsonResponse(response, 200, await compendiumService.saveEntry(dataRoot, projectId, payload.entry || payload));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/delete-compendium-entry') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const entryId = String(payload.entryId || '').trim();
+      jsonResponse(response, 200, await compendiumService.deleteEntry(dataRoot, projectId, entryId));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/prompts') {
+    try {
+      const projectId = String(parsedUrl.searchParams.get('projectId') || '').trim();
+      const category = String(parsedUrl.searchParams.get('category') || '').trim();
+      const query = String(parsedUrl.searchParams.get('query') || '').trim();
+      jsonResponse(response, 200, await promptService.listPrompts(dataRoot, projectId, { category, query }));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/prompts') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      jsonResponse(response, 200, await promptService.savePrompt(dataRoot, projectId, payload.prompt || payload));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/delete-prompt') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const promptId = String(payload.promptId || '').trim();
+      jsonResponse(response, 200, await promptService.deletePrompt(dataRoot, projectId, promptId));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/workshop-sessions') {
+    try {
+      const projectId = String(parsedUrl.searchParams.get('projectId') || '').trim();
+      jsonResponse(response, 200, await workshopService.listSessions(dataRoot, projectId));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/workshop-sessions') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      jsonResponse(response, 200, await workshopService.saveSession(dataRoot, projectId, payload.session || payload));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/workshop-message') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const sessionId = String(payload.sessionId || '').trim();
+      jsonResponse(response, 200, await workshopService.appendMessage(dataRoot, projectId, sessionId, payload.message || {}));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/delete-workshop-session') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const sessionId = String(payload.sessionId || '').trim();
+      jsonResponse(response, 200, await workshopService.deleteSession(dataRoot, projectId, sessionId));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/workflows') {
+    try {
+      const projectId = String(parsedUrl.searchParams.get('projectId') || '').trim();
+      jsonResponse(response, 200, await workflowService.listRuns(dataRoot, projectId));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/workflow-events') {
+    try {
+      const projectId = String(parsedUrl.searchParams.get('projectId') || '').trim();
+      const runId = String(parsedUrl.searchParams.get('runId') || '').trim();
+      jsonResponse(response, 200, await workflowService.listEvents(dataRoot, projectId, runId));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/workflows/start') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      if (!projectId) throw new Error('Missing projectId');
+      const preRun = await createPreRestoreBackup(dataRoot, projectId, 'Before starting semi-automatic workflow', 'before-workflow');
+      jsonResponse(response, 200, await workflowService.startNovelWorkflow(dataRoot, projectId, {
+        title: payload.title,
+        brief: payload.brief,
+        preRunSnapshot: {
+          backupId: preRun.backup.backupId,
+          path: preRun.backup.path,
+          reason: 'before-workflow',
+          createdAt: new Date().toISOString()
+        }
+      }));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/workflows/prepare-step') {
+    try {
+      const payload = await readJsonPayload(request);
+      jsonResponse(response, 200, await workflowService.prepareStep(
+        dataRoot,
+        String(payload.projectId || '').trim(),
+        String(payload.runId || '').trim(),
+        String(payload.stepId || '').trim()
+      ));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/workflows/complete-generation') {
+    try {
+      const payload = await readJsonPayload(request);
+      jsonResponse(response, 200, await workflowService.completeGenerationStep(
+        dataRoot,
+        String(payload.projectId || '').trim(),
+        String(payload.runId || '').trim(),
+        String(payload.stepId || '').trim(),
+        payload.result || payload
+      ));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/workflows/approve-step') {
+    try {
+      const payload = await readJsonPayload(request);
+      jsonResponse(response, 200, await workflowService.approveStep(
+        dataRoot,
+        String(payload.projectId || '').trim(),
+        String(payload.runId || '').trim(),
+        String(payload.stepId || '').trim()
+      ));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/workflows/reject-step') {
+    try {
+      const payload = await readJsonPayload(request);
+      jsonResponse(response, 200, await workflowService.rejectStep(
+        dataRoot,
+        String(payload.projectId || '').trim(),
+        String(payload.runId || '').trim(),
+        String(payload.stepId || '').trim(),
+        String(payload.reason || '').trim()
+      ));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/workflows/apply-artifact') {
+    try {
+      const payload = await readJsonPayload(request);
+      jsonResponse(response, 200, await workflowService.applyArtifact(
+        dataRoot,
+        String(payload.projectId || '').trim(),
+        String(payload.runId || '').trim(),
+        String(payload.artifactId || '').trim()
+      ));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/workflows/cancel') {
+    try {
+      const payload = await readJsonPayload(request);
+      jsonResponse(response, 200, await workflowService.cancelRun(
+        dataRoot,
+        String(payload.projectId || '').trim(),
+        String(payload.runId || '').trim(),
+        String(payload.reason || '').trim()
+      ));
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
   if (request.method === 'POST' && parsedUrl.pathname === '/api/update-project-metadata') {
     try {
       const payload = await readJsonPayload(request);
@@ -780,6 +1392,19 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       const filename = String(payload.filename || '').trim();
       const file = await findProjectFile(dataRoot, projectId, filename);
       if (!file) {
+        const directoryProject = await readDirectoryProject(dataRoot, projectId);
+        if (directoryProject) {
+          const metadata = normalizeProjectMetadata(payload.metadata || {});
+          const updated = await projectService.updateProjectMetadata(dataRoot, projectId, metadata);
+          const projectPath = projectDir(dataRoot, updated.project.id);
+          jsonResponse(response, 200, {
+            ok: true,
+            project: projectToLegacySnapshot(updated.project),
+            summary: projectToLibrarySummary(updated.project, projectPath, projectsRoot(dataRoot)),
+            projectSaveLocation: await projectSaveRoot(dataRoot)
+          });
+          return true;
+        }
         jsonResponse(response, 404, { ok: false, error: 'Project not found' });
         return true;
       }
@@ -828,22 +1453,20 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
     try {
       const payload = await readJsonPayload(request);
       const metadata = normalizeProjectMetadata(payload.metadata || {});
-      const snapshot = createProjectSnapshot(metadata);
-      const projectsDir = await projectSaveRoot(dataRoot);
-      await fsp.mkdir(projectsDir, { recursive: true });
-      const target = path.join(projectsDir, projectFilename(snapshot.project));
-      await writeJsonAtomic(target, snapshot);
-
-      const file = {
-        filePath: target,
-        name: path.basename(target),
-        stats: await fsp.stat(target)
-      };
+      const created = await projectService.createProject(dataRoot, {
+        title: metadata.name,
+        description: metadata.description,
+        status: metadata.status,
+        tags: metadata.tags,
+        coverImage: metadata.coverImage
+      });
+      const snapshot = projectToLegacySnapshot(created.project);
+      const projectPath = projectDir(dataRoot, created.project.id);
       jsonResponse(response, 200, {
         ok: true,
         project: snapshot,
-        summary: await readProjectSummary(dataRoot, file),
-        projectSaveLocation: projectsDir
+        summary: projectToLibrarySummary(created.project, projectPath, projectsRoot(dataRoot)),
+        projectSaveLocation: await projectSaveRoot(dataRoot)
       });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message || 'Could not create project' });
@@ -858,6 +1481,12 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       const filename = String(payload.filename || '').trim();
       const file = await findProjectFile(dataRoot, projectId, filename);
       if (!file) {
+        const directoryProject = await readDirectoryProject(dataRoot, projectId);
+        if (directoryProject) {
+          const removed = await projectService.removeProjectFromLibrary(dataRoot, projectId);
+          jsonResponse(response, 200, { ok: true, removedPath: removed.removedPath });
+          return true;
+        }
         jsonResponse(response, 404, { ok: false, error: 'Project not found' });
         return true;
       }
@@ -884,6 +1513,17 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       const filename = String(payload.filename || '').trim();
       const file = await findProjectFile(dataRoot, projectId, filename);
       if (!file) {
+        const directoryProject = await readDirectoryProject(dataRoot, projectId);
+        if (directoryProject) {
+          const target = await projectService.projectLocation(dataRoot, projectId);
+          if (integrations.revealPath) {
+            await integrations.revealPath(target);
+            jsonResponse(response, 200, { ok: true, path: target });
+          } else {
+            jsonResponse(response, 501, { ok: false, error: 'Reveal is not available in this runtime' });
+          }
+          return true;
+        }
         jsonResponse(response, 404, { ok: false, error: 'Project not found' });
         return true;
       }
@@ -948,6 +1588,135 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
     return true;
   }
 
+  if (request.method === 'GET' && parsedUrl.pathname === '/api/backup-diff') {
+    try {
+      const projectId = String(parsedUrl.searchParams.get('projectId') || '').trim();
+      const backupId = String(parsedUrl.searchParams.get('backupId') || '').trim();
+      if (!projectId || !backupId) throw new Error('Missing projectId or backupId');
+      if (path.basename(backupId) !== backupId) throw new Error('Invalid backupId');
+      const file = await findBackupFile(dataRoot, projectId, backupId);
+      if (!file) throw new Error('Backup not found');
+      const backup = JSON.parse(await fsp.readFile(file.filePath, 'utf8'));
+      let currentSnapshot = null;
+      try {
+        const currentProject = await projectService.openProject(dataRoot, projectId);
+        currentSnapshot = projectToLegacySnapshot(currentProject.project);
+      } catch {
+        currentSnapshot = null;
+      }
+      jsonResponse(response, 200, {
+        ok: true,
+        diff: backupDiffSummary(currentSnapshot, backup),
+        hasCurrentProject: !!currentSnapshot
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/restore-backup') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const backupId = String(payload.backupId || '').trim();
+      const mode = payload.mode === 'new-project' ? 'new-project' : 'replace';
+      if (!projectId || !backupId) throw new Error('Missing projectId or backupId');
+      if (path.basename(backupId) !== backupId) throw new Error('Invalid backupId');
+      const file = await findBackupFile(dataRoot, projectId, backupId);
+      if (!file) throw new Error('Backup not found');
+      const backup = JSON.parse(await fsp.readFile(file.filePath, 'utf8'));
+      let restoreSnapshot = backup;
+      let preRestoreBackup = null;
+
+      if (mode === 'new-project') {
+        const nextId = await uniqueRestoredProjectId(dataRoot, backup.project && backup.project.id);
+        restoreSnapshot = cloneBackupAsNewProjectSnapshot(backup, nextId);
+      } else {
+        try {
+          preRestoreBackup = (await createPreRestoreBackup(dataRoot, projectId, `Before restoring ${backupId}`)).backup;
+        } catch {
+          preRestoreBackup = null;
+        }
+      }
+
+      restoreSnapshot.filesystemSavedAt = new Date().toISOString();
+      const normalizedProject = legacySnapshotToProject(restoreSnapshot);
+      const saved = await projectService.saveProject(dataRoot, normalizedProject);
+      jsonResponse(response, 200, {
+        ok: true,
+        mode,
+        projectId: saved.project.id,
+        projectPath: saved.projectPath,
+        preRestoreBackup
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/restore-backup-scene') {
+    try {
+      const payload = await readJsonPayload(request);
+      const projectId = String(payload.projectId || '').trim();
+      const backupId = String(payload.backupId || '').trim();
+      const sceneId = String(payload.sceneId || '').trim();
+      if (!projectId || !backupId || !sceneId) throw new Error('Missing projectId, backupId, or sceneId');
+      if (path.basename(backupId) !== backupId) throw new Error('Invalid backupId');
+      const file = await findBackupFile(dataRoot, projectId, backupId);
+      if (!file) throw new Error('Backup not found');
+      const backup = JSON.parse(await fsp.readFile(file.filePath, 'utf8'));
+      const backupScene = (backup.scenes || []).find((scene) => scene.id === sceneId);
+      if (!backupScene) throw new Error('Scene not found in backup');
+      const backupText = backup.sceneContents && backup.sceneContents[sceneId] !== undefined
+        ? String(backup.sceneContents[sceneId] || '')
+        : '';
+      const preRestore = await createPreRestoreBackup(dataRoot, projectId, `Before restoring scene ${sceneId} from ${backupId}`);
+      const project = preRestore.currentProject;
+      let targetScene = (project.scenes || []).find((scene) => scene.id === sceneId);
+      if (targetScene) {
+        targetScene.title = backupScene.title || targetScene.title;
+        targetScene.summary = backupScene.summary || targetScene.summary || '';
+        targetScene.tags = Array.isArray(backupScene.tags) ? backupScene.tags : targetScene.tags || [];
+        targetScene.povCharacter = backupScene.povCharacter || targetScene.povCharacter || '';
+        targetScene.tense = backupScene.tense || targetScene.tense || '';
+        targetScene.content = backupText;
+        targetScene.updatedAt = new Date().toISOString();
+      } else {
+        const chapterId = (project.chapters || []).some((chapter) => chapter.id === backupScene.chapterId)
+          ? backupScene.chapterId
+          : (project.chapters && project.chapters[0] ? project.chapters[0].id : '');
+        targetScene = {
+          id: `${sceneId}-recovered-${Date.now()}`,
+          chapterId,
+          title: `${backupScene.title || 'Recovered Scene'} (Recovered)`,
+          summary: backupScene.summary || '',
+          content: backupText,
+          order: (project.scenes || []).filter((scene) => scene.chapterId === chapterId).length,
+          tags: Array.isArray(backupScene.tags) ? backupScene.tags : [],
+          povCharacter: backupScene.povCharacter || '',
+          tense: backupScene.tense || '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        project.scenes = project.scenes || [];
+        project.scenes.push(targetScene);
+      }
+      project.updatedAt = new Date().toISOString();
+      const saved = await projectService.saveProject(dataRoot, project);
+      jsonResponse(response, 200, {
+        ok: true,
+        projectId: saved.project.id,
+        sceneId: targetScene.id,
+        preRestoreBackup: preRestore.backup
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
   if (request.method === 'POST' && parsedUrl.pathname === '/api/save-project') {
     try {
       const payload = await readJsonPayload(request);
@@ -956,21 +1725,33 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
         jsonResponse(response, 400, { ok: false, error: 'Missing project payload' });
         return true;
       }
+      const projectId = String(project.id || '').trim();
+      if (!projectId) {
+        jsonResponse(response, 400, { ok: false, error: 'Project id is required' });
+        return true;
+      }
+
       const projectsDir = await projectSaveRoot(dataRoot);
       await fsp.mkdir(projectsDir, { recursive: true });
-      const filename = projectFilename(project);
-      const target = path.join(projectsDir, filename);
-      const projectId = String(project.id);
       for (const entry of await fsp.readdir(projectsDir, { withFileTypes: true })) {
         const existingPath = path.join(projectsDir, entry.name);
-        if (entry.isFile() && entry.name.endsWith(`--${projectId}.json`) && existingPath !== target) {
+        if (entry.isFile() && entry.name.endsWith(`--${projectId}.json`)) {
           await fsp.unlink(existingPath);
         }
       }
       payload.filesystemSavedAt = new Date().toISOString();
       payload.filesystemSaveVersion = 1;
-      await writeJsonAtomic(target, payload);
-      jsonResponse(response, 200, { ok: true, path: path.relative(projectsDir, target).replace(/\\/g, '/'), filename, projectSaveLocation: projectsDir });
+      const normalizedProject = legacySnapshotToProject(payload);
+      const saved = await projectService.saveProject(dataRoot, normalizedProject);
+      const relativePath = path.relative(projectsRoot(dataRoot), saved.projectPath).replace(/\\/g, '/');
+      jsonResponse(response, 200, {
+        ok: true,
+        path: relativePath,
+        filename: '',
+        source: 'project-directory',
+        projectPath: saved.projectPath,
+        projectSaveLocation: projectsDir
+      });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message });
     }

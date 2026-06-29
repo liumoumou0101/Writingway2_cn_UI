@@ -128,10 +128,23 @@ Run backup integration checks:
 npm run backup-test
 ```
 
+Run desktop mainline checks:
+
+```bash
+npm run desktop-mainline-test
+```
+
+After creating an unpacked build, run packaged smoke checks:
+
+```bash
+npm run pack
+npm run packaged-smoke
+```
+
 Run the older browser-oriented UI checks:
 
 ```bash
-npm run ui
+npm run legacy-ui-test
 ```
 
 Run the historical full test command:
@@ -140,7 +153,7 @@ Run the historical full test command:
 npm test
 ```
 
-Note: some older tests still target `main.html` directly because the editor is currently hosted there. As desktop work progresses, tests should move toward the Electron/local desktop entry.
+Note: older tests under `legacy-ui-test` still target `main.html` directly because the iframe writer is retained as a compatibility runtime. New product checks should be added to `desktop-mainline-test`.
 
 ## Current Status
 
@@ -156,14 +169,17 @@ Working today:
 - Local GGUF flow where configured
 - Manual local saves
 - Local versioned backups and recovery
-- GitHub Gist backup
+- Import/export for Markdown, TXT, project packages, legacy JSON snapshots, and Writingway 1 files
+- Native local reader
+- Minimal semi-automatic workflow: brief -> outline -> scene draft -> approval -> project write
 - Desktop packaging
 
 In transition:
 
-- Desktop-first app shell
-- Commercial-grade bookshelf/home screen
-- Book metadata and covers
-- Local reader/import workflows
+- More polished desktop dialogs and empty states
+- Cover management and richer book metadata editing
+- Advanced workflow automation, branching, retries, and visual step editing
 - Replacing browser-style dialogs and alerts with desktop UI
 - Reducing dependency on legacy web launch paths
+
+For manual packaged-app testing, see `docs/USER_ACCEPTANCE_CHECKLIST.md`.

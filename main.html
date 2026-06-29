@@ -5,6 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Writingway 2.0</title>
+    <!--
+        Legacy writer runtime.
+        The desktop product mainline starts at desktop.html. Keep this entry for
+        iframe compatibility, migration reference, and legacy UI tests only.
+        New business logic should live in src/core or desktop/services.
+    -->
     <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script defer src="src/db.js"></script>
@@ -14,6 +20,10 @@
     <script defer src="src/state/watchers.js"></script>
     <script defer src="src/modules/editor.js"></script>
     <script defer src="src/modules/context-panel.js"></script>
+    <script defer src="src/core/generation/prompt-builder.js"></script>
+    <script defer src="src/core/generation/generation-result.js"></script>
+    <script defer src="src/core/generation/ai-provider-client.js"></script>
+    <script defer src="src/core/generation/generation-history.js"></script>
     <script defer src="src/generation.js"></script>
     <script defer src="src/prompts.js"></script>
     <script defer src="src/ai.js"></script>
@@ -822,7 +832,7 @@
                                     👁️
                                 </button>
 
-                                <button class="btn btn-secondary" @click="generateFromBeat"
+                                <button class="btn btn-secondary" data-legacy-generate @click="generateFromBeat"
                                     :disabled="!beatInput || isGenerating || aiStatus !== 'ready'"
                                     :title="t('beat.generate')">
                                     ✨
@@ -853,9 +863,9 @@
                                     <span x-show="reasoningInProgress" x-text="t('beat.thinking')">Thinking...</span>
                                     <span x-show="!reasoningInProgress" x-text="t('beat.viewThinking')">View Thinking</span>
                                 </button>
-                                <button class="btn btn-primary" @click="acceptGeneration" x-text="t('common.accept')">Accept</button>
-                                <button class="btn btn-secondary" @click="retryGeneration" x-text="t('common.retry')">Retry</button>
-                                <button class="btn btn-secondary" @click="discardGeneration" x-text="t('common.discard')">Discard</button>
+                                <button class="btn btn-primary" data-legacy-accept-generation @click="acceptGeneration" x-text="t('common.accept')">Accept</button>
+                                <button class="btn btn-secondary" data-legacy-retry-generation @click="retryGeneration" x-text="t('common.retry')">Retry</button>
+                                <button class="btn btn-secondary" data-legacy-discard-generation @click="discardGeneration" x-text="t('common.discard')">Discard</button>
                             </div>
                         </div>
                     </div>

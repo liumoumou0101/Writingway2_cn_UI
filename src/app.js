@@ -2,6 +2,12 @@
  * Main Application
  * Database and test helpers have been moved to separate modules (db.js, test-helpers.js)
  * See REFACTORING.md for the complete refactoring plan
+ *
+ * Legacy boundary:
+ * This file is the Alpine state center for the old writer runtime loaded by
+ * main.html. New desktop product work should start from desktop.html,
+ * src/desktop, desktop/services, and src/core. Keep changes here focused on
+ * compatibility, bug fixes, or delegating old behavior to core modules.
  */
 
 // Alpine.js App
@@ -2334,7 +2340,7 @@ document.addEventListener('alpine:init', () => {
                 if (window.Editor) window.Editor.handleAutoReplace(this, event);
             },
 
-            // AI Generation (delegates to src/modules/generation.js)
+            // AI Generation (legacy UI adapter loaded from src/generation.js)
             async loadPromptHistory() {
                 if (window.Generation && typeof window.Generation.loadPromptHistory === 'function') {
                     return window.Generation.loadPromptHistory(this);

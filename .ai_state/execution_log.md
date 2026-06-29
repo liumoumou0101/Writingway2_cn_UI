@@ -1,0 +1,75 @@
+# Execution Log
+
+This file records Codex orchestration events, OpenCode task dispatches, execution reports, reviews, and acceptance decisions.
+
+## 2026-06-29
+
+- Initialized `.ai_state` for the Codex x OpenCode x DeepSeek closed-loop development system.
+- Read `docs/SESSION_HANDOFF.md`, `docs/WRITER_FEATURE_AUDIT.md`, `docs/WRITER_REDESIGN_PLAN.md`, and rewrite planning docs.
+- Updated `docs/REFACTOR_TODO.md` to reflect that functional rewrite is mostly complete and the current priority is native writer UX polish.
+- Continued phase 23 W2 native writer polish: added inline scene title editing and local typography preferences for font size, line height, and text width.
+- Verification: `npm run writer-audit`, `npm run desktop-mainline-test`, and a standalone `npm run unit` passed. One parallel `unit` attempt failed with the known `127.0.0.1:8000` port conflict while `desktop-mainline-test` was running.
+- Process correction: the phase 23 W2 implementation above was performed directly by Codex instead of being delegated to OpenCode first. This violated the intended Codex x OpenCode x DeepSeek workflow. Root cause: Codex treated the lack of a callable OpenCode tool as permission to execute directly instead of producing an OpenCode task spec and waiting for execution output.
+- Updated orchestration rules to require an OpenCode task spec before any future product-code implementation. Codex direct edits are limited to planning/state docs unless explicitly authorized or after repeated OpenCode failure.
+- Tested OpenCode bridge feasibility. `opencode` CLI is installed, reports version `1.17.11`, has DeepSeek credentials, lists `deepseek/deepseek-v4-pro` and `deepseek/deepseek-reasoner`, and successfully ran fixed-response probes.
+- Verified task-file bridge: `opencode run -m deepseek/deepseek-v4-pro --file .ai_state\opencode_tasks\phase23_w2_save_status_paragraph_spacing.md -- "<message>"` successfully read the task spec and returned `task_id=phase23_w2_save_status_paragraph_spacing, status=ready_for_opencode, can_execute=yes`.
+- Tested direct `codex.exe` CLI and it failed with `Access is denied`; current bridge should use OpenCode CLI, not Codex CLI.
+- Dispatched OpenCode task `phase23_w2_save_status_paragraph_spacing` through the CLI bridge using `deepseek/deepseek-v4-pro`.
+- OpenCode reported `completed` and reported sequential test passes for `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`.
+- Codex review marked the result `partial`: paragraph-spacing CSS used invalid `calc()` multiplication and test coverage checked the slider display rather than applied spacing. Created follow-up task `phase23_w2_fix_paragraph_spacing_css`.
+- Dispatched follow-up OpenCode task `phase23_w2_fix_paragraph_spacing_css` through the CLI bridge using `deepseek/deepseek-reasoner`.
+- OpenCode corrected the invalid CSS and updated `writer-button-audit` to assert computed `paddingTop`; it reported sequential passes for `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`.
+- Codex review accepted `phase23_w2_fix_paragraph_spacing_css` as `success`. The phase 23 W2 paragraph-spacing/save-status slice is now accepted.
+- Created OpenCode task `phase23_w3_generation_rewrite_task_entries` to make native writer generation/rewrite controls more task-oriented while preserving existing generation architecture.
+- Dispatched OpenCode task `phase23_w3_generation_rewrite_task_entries` through the CLI bridge using `deepseek/deepseek-v4-pro`.
+- OpenCode reported `completed` and reported sequential passes for `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`.
+- Codex review marked the result `partial`: summary task was visible but still disabled without beat text, and generation task selection mostly changed active visual state only. Created follow-up task `phase23_w3_fix_generation_task_behavior`.
+- Dispatched follow-up OpenCode task `phase23_w3_fix_generation_task_behavior` through the CLI bridge using `deepseek/deepseek-reasoner`.
+- OpenCode made summary task usable without beat text, added task-specific placeholder guidance, and expanded writer audit coverage for the actual summary generation path.
+- Codex review accepted `phase23_w3_fix_generation_task_behavior` as `success`. The phase 23 W3 generation/rewrite task-entry slice is now accepted.
+- Created OpenCode task `phase23_w4_scene_context_light_link` to improve lightweight current-scene/context visibility in the native writer context panel.
+- Dispatched OpenCode task `phase23_w4_scene_context_light_link` through the CLI bridge using `deepseek/deepseek-v4-pro`.
+- OpenCode added a compact context summary to the native writer context panel and expanded writer audit coverage; it reported sequential passes for `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`.
+- Codex review accepted `phase23_w4_scene_context_light_link` as `success`. The phase 23 lightweight scene/context linkage slice is now accepted.
+- Created OpenCode task `phase24_search_replace_navigation` to add native writer search match count and previous/next navigation.
+- Dispatched OpenCode task `phase24_search_replace_navigation` through the CLI bridge using `deepseek/deepseek-v4-pro`.
+- OpenCode added search match count/status, previous/next navigation, selected-match replacement behavior, styles, and writer audit coverage. It reported sequential passes for `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`.
+- Codex review accepted `phase24_search_replace_navigation` as `success`, with residual notes for future selection assertion and post-replace navigation polish.
+- Created OpenCode task `phase24_editor_font_and_word_goal` to add native editor font-family preference and current-scene word target/progress.
+- Dispatched OpenCode task `phase24_editor_font_and_word_goal` through the CLI bridge using `deepseek/deepseek-v4-pro`.
+- OpenCode added font-family and word-goal controls, then a follow-up reporting run confirmed sequential passes for `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`.
+- Codex review marked `phase24_editor_font_and_word_goal` as `partial`: behavior exists and tests pass, but editor stats render the `字` unit as mojibake and writer audit accepts the mojibake. Created follow-up task `phase24_fix_word_goal_mojibake`.
+- Dispatched OpenCode follow-up task `phase24_fix_word_goal_mojibake` through the CLI bridge using `deepseek-reasoner`; the first invocation timed out at the wrapper level after applying the fix, so Codex waited for the background OpenCode process to exit and then requested a report-only verification run.
+- OpenCode report-only verification for `phase24_fix_word_goal_mojibake` confirmed `src/desktop/desktop-shell.js` and `tests/writer-button-audit.js` use the correct `字` unit and reported sequential passes for `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`.
+- Codex review accepted `phase24_fix_word_goal_mojibake` as `success`. The phase 24 editor font-family and word-goal slice is now accepted.
+- Created OpenCode task `phase24_generation_history_actions` to improve native writer generation history filtering, readable summaries, copy/insert/retry/delete actions, and test coverage.
+- Dispatched OpenCode task `phase24_generation_history_actions` through the CLI bridge using `deepseek-v4-pro`, but the wrapper timed out after 240 seconds and the spawned OpenCode processes remained active for another 180 seconds without a report. Codex terminated the stuck processes and marked the task failed.
+- Replanned without expanding scope: created smaller OpenCode task `phase24_generation_history_filter_copy` for current-scene filtering and copy action only.
+- Dispatched OpenCode task `phase24_generation_history_filter_copy` through the CLI bridge using `deepseek-v4-pro`.
+- OpenCode reported `completed` and sequential passes for `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`.
+- Codex review marked `phase24_generation_history_filter_copy` as `partial`: filter/copy behavior exists, but generation-history panel labels still contain mojibake and writer audit targets mojibake text. Created follow-up task `phase24_fix_history_panel_mojibake_tests`.
+- Dispatched OpenCode task `phase24_fix_history_panel_mojibake_tests` through the CLI bridge using `deepseek-reasoner`; OpenCode reported sequential test passes.
+- Codex UTF-8 verification corrected the earlier mojibake assessment for source files: history-panel labels are readable Chinese in the file bytes, while PowerShell `Get-Content` output was mis-decoded. Review remains `partial` because writer audit still uses visible button text instead of stable history action data selectors.
+- Created OpenCode task `phase24_history_audit_data_selectors` to harden the writer audit without changing product code.
+- Dispatched OpenCode task `phase24_history_audit_data_selectors` through the CLI bridge using `deepseek-v4-pro`.
+- OpenCode updated `tests/writer-button-audit.js` to use stable `data-native-history-*` selectors and reported sequential passes for `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`.
+- Codex review accepted `phase24_history_audit_data_selectors` as `success`. The phase 24 generation-history filter/copy slice is now accepted after follow-up.
+- Created OpenCode task `phase24_generation_history_retry_summary` to improve generation-history summaries and verify retry behavior without changing provider contracts or storage schemas.
+- Dispatched OpenCode task `phase24_generation_history_retry_summary` through the CLI bridge using `deepseek-v4-pro`, but the wrapper timed out after 240 seconds and the spawned OpenCode processes remained active for another 90 seconds without a report. Codex terminated the stuck processes and marked the task failed.
+- Replanned without expanding scope: created smaller OpenCode task `phase24_history_retry_audit` focused only on testing/fixing history retry behavior.
+- Dispatched OpenCode task `phase24_history_retry_audit` through the CLI bridge using `deepseek-v4-pro`, but it also timed out and the spawned OpenCode processes remained active after an additional wait. Codex terminated the stuck processes.
+- Because this was the second consecutive failure in the same narrowed retry/summary direction, Codex took over the small test-fix slice. OpenCode had already written scoped history task-label/meta and retry cleanup changes; Codex corrected the writer audit so retry uses a distinct fresh generation stub and verifies stale history text is not inserted again.
+- Codex ran `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit` sequentially; all passed.
+- Codex review accepted `phase24_history_retry_audit` as `success_after_codex_takeover`. The phase 24 generation-history polish slice is now accepted.
+- Created OpenCode task `phase24_export_options_dialog` to expose the existing `includeSceneTitles` document export option in the native writer UI and forward it through the local export endpoint.
+- Dispatched OpenCode task `phase24_export_options_dialog` through the CLI bridge using `deepseek-v4-pro`, but the wrapper timed out after 240 seconds and the spawned OpenCode processes remained active after an additional wait. Codex terminated the stuck processes.
+- Codex reviewed the partial implementation, fixed undefined `elements` references in export option helpers and `downloadNativeExport()`, and hardened writer audit export-option assertions.
+- Codex ran `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit` sequentially; all passed.
+- Codex review accepted `phase24_export_options_dialog` as `success_after_codex_takeover`. The phase 24 native export option slice is now accepted.
+- Created OpenCode task `phase24_native_tts_settings` to add native TTS voice/rate controls and wire read-aloud to those local preferences.
+- Dispatched OpenCode task `phase24_native_tts_settings` through the CLI bridge using `deepseek-v4-pro`, but the wrapper timed out after 240 seconds and the spawned OpenCode processes remained active after an additional wait. Codex terminated the stuck processes.
+- Codex reviewed the partial implementation and hardened the writer audit speech synthesis stubs so selected TTS voice/rate assertions are reliable in Playwright.
+- Codex ran `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit` sequentially; all passed.
+- Codex review accepted `phase24_native_tts_settings` as `success_after_codex_takeover`. The phase 24 native TTS settings slice is now accepted.
+- Performed final feature gap audit against session handoff, writer feature audit, legacy boundary, refactor TODO, release checklist, and user acceptance checklist.
+- Added `docs/FINAL_FEATURE_GAP_AUDIT.md`, updated `docs/WRITER_FEATURE_AUDIT.md`, refreshed `docs/USER_ACCEPTANCE_CHECKLIST.md`, and marked the final gap audit complete in `docs/REFACTOR_TODO.md`.

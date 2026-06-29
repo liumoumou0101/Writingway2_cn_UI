@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
 const path = require('path');
+const { openLatestLegacyProject } = require('./helpers/legacy-app');
+const { installLegacyCdnRoutes } = require('./helpers/legacy-cdn-routes');
 
 (async () => {
     const projectRoot = path.resolve(__dirname, '..');
@@ -9,10 +11,11 @@ const path = require('path');
 
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
+    await installLegacyCdnRoutes(context);
     const page = await context.newPage();
 
     try {
-        await page.goto(fileUrl, { waitUntil: 'load', timeout: 15000 });
+        await page.goto(fileUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
         await page.waitForSelector('.app-container, .welcome-screen', { timeout: 10000 });
 
         // Ensure there's a scene; seed if necessary
@@ -30,15 +33,19 @@ const path = require('path');
                     try { localStorage.setItem('writingway:lastProject', proj.id); } catch (e) { }
                 } catch (e) { }
             });
-            await page.reload({ waitUntil: 'load' });
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await openLatestLegacyProject(page);
             await page.waitForSelector('.scene-item', { timeout: 8000 });
         }
 
         // Make app think AI is ready and stub the generation streamer
         await page.evaluate(() => {
             const el = document.querySelector('[x-data="app"]');
-            if (el && el.__x && el.__x.$data) {
-                el.__x.$data.aiStatus = 'ready';
+            const app = window.Alpine && typeof window.Alpine.$data === 'function'
+                ? window.Alpine.$data(el)
+                : (el && el.__x && el.__x.$data ? el.__x.$data : null);
+            if (app) {
+                app.aiStatus = 'ready';
             }
 
             // Stub streamGeneration to emit a few tokens with a tiny delay
@@ -63,10 +70,10 @@ const path = require('path');
 
         // Fill beat input and trigger generation
         await page.fill('.beat-input', "She opens the door and steps into the rain.");
-        await page.click('.generate-btn');
+        await page.click('[data-legacy-generate]');
 
         // Wait for Accept button to appear which indicates generation completed
-        await page.waitForSelector('text=Accept', { timeout: 5000 });
+        await page.waitForSelector('[data-legacy-accept-generation]', { state: 'visible', timeout: 5000 });
 
         // Verify that generated tokens appear in the editor textarea
         const ta = await page.$('.editor-textarea');
@@ -78,11 +85,11 @@ const path = require('path');
         }
 
         // Click Accept and verify actions disappear (wait until hidden)
-        await page.click('text=Accept');
+        await page.click('[data-legacy-accept-generation]');
         try {
-            await page.waitForSelector('text=Accept', { state: 'hidden', timeout: 3000 });
+            await page.waitForSelector('[data-legacy-accept-generation]', { state: 'hidden', timeout: 3000 });
         } catch (e) {
-            const isVis = await page.isVisible('text=Accept').catch(() => false);
+            const isVis = await page.isVisible('[data-legacy-accept-generation]').catch(() => false);
             if (isVis) {
                 console.error('Accept button still visible after accepting');
                 await browser.close();

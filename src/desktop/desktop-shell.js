@@ -3,6 +3,9 @@
         bookshelf: '书库',
         writer: '写作',
         reader: '阅读',
+        compendium: '资料',
+        workshop: '讨论',
+        workflow: '工作流',
         recovery: '恢复中心',
         settings: '设置'
     };
@@ -15,6 +18,10 @@
         editingCoverImage: ''
     };
     const READER_STORAGE_KEY = 'writingway:desktop:reader';
+    const NATIVE_EDITOR_PREFS_STORAGE_KEY = 'writingway:desktop:nativeEditorPrefs';
+    const EXPORT_OPTIONS_STORAGE_KEY = 'writingway:desktop:nativeExportOptions';
+    const TTS_VOICE_KEY = 'writingway:ttsVoice';
+    const TTS_SPEED_KEY = 'writingway:ttsSpeed';
     const readerState = {
         document: null,
         chapterIndex: 0,
@@ -26,6 +33,110 @@
         paragraphSpacing: 1.05,
         indent: true,
         scrollPositions: {}
+    };
+    const nativeEditorState = {
+        snapshot: null,
+        activeSceneId: '',
+        activeChapterId: '',
+        projectSource: '',
+        searchQuery: '',
+        searchMatchIndex: -1,
+        searchMatchPositions: [],
+        assistantPanel: 'generate',
+        assistantPlacement: 'right',
+        typographyOpen: false,
+        editorPrefs: {
+            fontSize: 18,
+            lineHeight: 1.9,
+            textWidth: 760,
+            paragraphSpacing: 0,
+            fontFamily: 'system',
+            wordGoal: 0
+        },
+        titleEditing: false,
+        titleEditingOriginal: '',
+        focusMode: false,
+        outlineCollapsed: false,
+        assistantCollapsed: false,
+        dirty: false,
+        autosaveTimer: null,
+        isSaving: false,
+        generation: {
+            beat: '',
+            text: '',
+            reasoning: '',
+            prompt: null,
+            record: null,
+            inProgress: false,
+            abortController: null,
+            lastAcceptedSceneId: '',
+            inlineBaseText: '',
+            insertionStart: 0,
+            insertionEnd: 0,
+            pendingSceneId: '',
+            task: 'fiction-prose',
+            genTask: 'continue'
+        },
+        rewrite: {
+            preset: 'balanced-polish',
+            instruction: '',
+            rewriteTask: 'polish'
+        },
+        context: {
+            compendiumIds: [],
+            compendiumTags: [],
+            chapterModes: {},
+            sceneModes: {}
+        },
+        tts: {
+            reading: false,
+            rate: 1
+        },
+        historySceneFilter: false
+    };
+    const promptState = {
+        prompts: [],
+        selectedId: 'default-prose'
+    };
+    const workshopState = {
+        sessions: [],
+        selectedId: '',
+        input: '',
+        generating: false,
+        selectedAssistantMessageId: ''
+    };
+    const workflowState = {
+        runs: [],
+        selectedId: '',
+        events: [],
+        generating: false,
+        generatedText: ''
+    };
+    const recoveryState = {
+        backups: [],
+        query: '',
+        filter: 'all',
+        selected: null,
+        selectedBackup: null,
+        selectedDiff: null
+    };
+    const compendiumState = {
+        entries: [],
+        selectedId: '',
+        query: '',
+        type: '',
+        loading: false,
+        dirty: false
+    };
+    const settingsState = {
+        settings: null,
+        runtimeProvider: null,
+        loading: false,
+        loadPromise: null,
+        saving: false
+    };
+    const shellUiState = {
+        railCollapsed: false
     };
 
     function getState() {
@@ -39,6 +150,7 @@
         if (!root) return;
 
         root.dataset.view = nextView;
+        root.classList.toggle('is-rail-collapsed', shellUiState.railCollapsed);
 
         document.querySelectorAll('[data-view-target]').forEach((button) => {
             button.classList.toggle('is-active', button.dataset.viewTarget === nextView);
@@ -50,6 +162,8 @@
 
         const title = document.getElementById('desktop-view-title');
         if (title) title.textContent = viewTitles[nextView] || 'Writingway';
+        const railToggle = document.querySelector('[data-toggle-rail]');
+        if (railToggle) railToggle.textContent = shellUiState.railCollapsed ? '显示导航' : '隐藏导航';
 
         if (state) state.saveView(nextView);
     }
@@ -94,6 +208,7 @@
         card.className = 'desktop-project-card';
         card.dataset.projectId = project.id || '';
         card.dataset.projectFilename = project.filename || '';
+        card.dataset.projectSource = project.source || 'legacy-snapshot';
         card.title = project.name || '未命名项目';
         card.tabIndex = 0;
         card.setAttribute('role', 'button');
@@ -117,6 +232,11 @@
 
         const badges = document.createElement('div');
         badges.className = 'desktop-project-badges';
+        const sourceBadge = document.createElement('span');
+        sourceBadge.className = 'desktop-project-badge desktop-project-source-badge';
+        sourceBadge.dataset.projectSourceBadge = project.source || 'legacy-snapshot';
+        sourceBadge.textContent = project.source === 'project-directory' ? '项目目录' : '旧快照';
+        badges.appendChild(sourceBadge);
         if (project.status) {
             const status = document.createElement('span');
             status.className = 'desktop-project-badge';
@@ -173,6 +293,15 @@
             await copyProjectPath(project);
         });
 
+        const exportPackageButton = document.createElement('button');
+        exportPackageButton.type = 'button';
+        exportPackageButton.className = 'desktop-mini-action';
+        exportPackageButton.textContent = '导出包';
+        exportPackageButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            exportProjectPackage(project);
+        });
+
         const backupButton = document.createElement('button');
         backupButton.type = 'button';
         backupButton.className = 'desktop-mini-action';
@@ -191,7 +320,7 @@
             await removeProjectFromLibrary(project);
         });
 
-        actions.append(editButton, revealButton, copyPathButton, backupButton, removeButton);
+        actions.append(editButton, revealButton, copyPathButton, exportPackageButton, backupButton, removeButton);
 
         body.append(name, badges, description, stats, time, path, actions);
         card.append(cover, body);
@@ -369,13 +498,109 @@
         }
     }
 
+    function triggerDownload(url) {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = '';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    }
+
+    function exportProjectPackage(project) {
+        if (!project || !project.id) {
+            setProjectLibraryStatus('没有可导出的项目。', 'error');
+            return;
+        }
+        triggerDownload(`/api/export-project-package?${new URLSearchParams({ projectId: project.id }).toString()}`);
+        setProjectLibraryStatus('项目包导出已开始。', 'ok');
+    }
+
+    function readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('读取文件失败'));
+            reader.readAsText(file);
+        });
+    }
+
+    async function importProjectSnapshotFile(file) {
+        if (!file) return;
+        setProjectLibraryStatus('正在导入旧 JSON...', 'info');
+        try {
+            const snapshot = JSON.parse(await readFileAsText(file));
+            const response = await fetch('/api/import-project-snapshot', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ snapshot })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            await loadProjectLibrary();
+            setProjectLibraryStatus(`已导入：${result.summary && result.summary.name ? result.summary.name : '旧项目'}`, 'ok');
+        } catch (error) {
+            console.warn('Failed to import project snapshot:', error);
+            setProjectLibraryStatus(`导入旧 JSON 失败：${error.message || error}`, 'error');
+        }
+    }
+
+    async function importProjectPackageFile(file) {
+        if (!file) return;
+        setProjectLibraryStatus('正在导入项目包...', 'info');
+        try {
+            const response = await fetch('/api/import-project-package', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/zip' },
+                body: await file.arrayBuffer()
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            await loadProjectLibrary();
+            setProjectLibraryStatus(`已导入：${result.summary && result.summary.name ? result.summary.name : '项目包'}`, 'ok');
+        } catch (error) {
+            console.warn('Failed to import project package:', error);
+            setProjectLibraryStatus(`导入项目包失败：${error.message || error}`, 'error');
+        }
+    }
+
+    async function importWritingway1Files(fileList) {
+        const files = Array.from(fileList || []);
+        if (!files.length) return;
+        setProjectLibraryStatus('正在读取 Writingway 1 文件夹...', 'info');
+        try {
+            const payloadFiles = [];
+            for (const file of files) {
+                if (!/\.(json|html|txt)$/i.test(file.name)) continue;
+                payloadFiles.push({
+                    path: file.webkitRelativePath || file.name,
+                    text: await readFileAsText(file)
+                });
+            }
+            const response = await fetch('/api/import-writingway1', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ files: payloadFiles })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            await loadProjectLibrary();
+            setProjectLibraryStatus(`已导入 W1 项目：${result.chapterCount || 0} 章 / ${result.sceneCount || 0} 场`, 'ok');
+        } catch (error) {
+            console.warn('Failed to import Writingway 1 project:', error);
+            setProjectLibraryStatus(`导入 W1 项目失败：${error.message || error}`, 'error');
+        }
+    }
+
     async function openProjectBackupSettings(project) {
         try {
-            await openDesktopProject(project);
-            await runLegacyAction('backup-settings');
+            if (project) recoveryState.query = project.name || project.id || '';
+            setView('recovery');
+            await loadRecoveryList();
+            setProjectLibraryStatus('已打开原生恢复中心。', 'ok');
         } catch (error) {
             console.warn('Failed to open project backup settings:', error);
-            setProjectLibraryStatus(`打开备份设置失败：${error.message || error}`, 'error');
+            setProjectLibraryStatus(`打开恢复中心失败：${error.message || error}`, 'error');
         }
     }
 
@@ -669,6 +894,42 @@
         const sceneContents = snapshot.sceneContents && typeof snapshot.sceneContents === 'object'
             ? snapshot.sceneContents
             : {};
+
+        if (window.WritingwayReaderDocument && typeof window.WritingwayReaderDocument.projectToReaderDocument === 'function') {
+            try {
+                const coreProject = {
+                    id: String(project.id),
+                    title: project.name || project.title || '当前作品',
+                    chapters: chapters.map((chapter) => ({
+                        id: chapter.id,
+                        title: chapter.title,
+                        order: chapter.order || 0
+                    })),
+                    scenes: scenes.map((scene) => ({
+                        id: scene.id,
+                        chapterId: scene.chapterId,
+                        title: scene.title,
+                        order: scene.order || 0,
+                        content: String(sceneContents[scene.id] || '')
+                    }))
+                };
+                const documentData = window.WritingwayReaderDocument.projectToReaderDocument(coreProject);
+                return {
+                    source: 'project',
+                    projectId: String(project.id),
+                    title: documentData.title,
+                    fileName: `${documentData.title || 'project'}.writingway`,
+                    importedAt: snapshot.filesystemSavedAt || snapshot.exportedAt || new Date().toISOString(),
+                    chapters: (documentData.chapters || []).map((chapter) => ({
+                        id: chapter.id,
+                        title: chapter.title,
+                        content: (chapter.paragraphs || []).map((paragraph) => paragraph.text || '').filter(Boolean).join('\n\n')
+                    }))
+                };
+            } catch (error) {
+                console.warn('Core reader document conversion failed, falling back:', error);
+            }
+        }
 
         const sortedChapters = chapters.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
         const sortedScenes = scenes.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
@@ -966,6 +1227,250 @@
         renderReader();
     }
 
+    function recoveryElements() {
+        return {
+            status: document.querySelector('[data-recovery-status]'),
+            search: document.querySelector('[data-recovery-search]'),
+            filter: document.querySelector('[data-recovery-filter]'),
+            list: document.querySelector('[data-recovery-list]'),
+            previewTitle: document.querySelector('[data-recovery-preview-title]'),
+            previewMeta: document.querySelector('[data-recovery-preview-meta]'),
+            diff: document.querySelector('[data-recovery-diff]'),
+            previewText: document.querySelector('[data-recovery-preview-text]'),
+            restoreScene: document.querySelector('[data-recovery-restore-scene]'),
+            restoreNew: document.querySelector('[data-recovery-restore-new]'),
+            restoreReplace: document.querySelector('[data-recovery-restore-replace]')
+        };
+    }
+
+    function filteredRecoveryBackups() {
+        const query = recoveryState.query.trim().toLowerCase();
+        return recoveryState.backups.filter((backup) => {
+            if (recoveryState.filter === 'ok' && backup.health !== 'ok') return false;
+            if (recoveryState.filter === 'invalid' && backup.health === 'ok') return false;
+            if (recoveryState.filter === 'pinned' && !backup.pinned) return false;
+            if (!query) return true;
+            return [
+                backup.projectName,
+                backup.projectId,
+                backup.id,
+                backup.reason,
+                backup.note,
+                backup.health
+            ].some((value) => String(value || '').toLowerCase().includes(query));
+        });
+    }
+
+    function renderRecoveryList() {
+        const elements = recoveryElements();
+        const backups = filteredRecoveryBackups();
+        if (elements.status) {
+            const invalidCount = recoveryState.backups.filter((backup) => backup.health !== 'ok').length;
+            elements.status.textContent = `${backups.length} / ${recoveryState.backups.length} 个备份${invalidCount ? `，${invalidCount} 个异常` : ''}`;
+        }
+        if (!elements.list) return;
+        elements.list.replaceChildren();
+        let lastGroup = '';
+        backups
+            .sort((a, b) => {
+                const groupCompare = String(a.projectName || a.projectId || '').localeCompare(String(b.projectName || b.projectId || ''), 'zh-CN');
+                if (groupCompare) return groupCompare;
+                return new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime();
+            })
+            .forEach((backup) => {
+            const group = backup.projectName || backup.projectId || '未命名项目';
+            if (group !== lastGroup) {
+                lastGroup = group;
+                const heading = document.createElement('div');
+                heading.className = 'desktop-native-chapter';
+                heading.textContent = group;
+                elements.list.appendChild(heading);
+            }
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'desktop-recovery-item';
+            item.classList.toggle('is-active', recoveryState.selected && recoveryState.selected.id === backup.id && recoveryState.selected.projectId === backup.projectId);
+            const title = document.createElement('strong');
+            title.textContent = backup.projectName || backup.projectId || backup.id || '未命名备份';
+            const meta = document.createElement('span');
+            const created = backup.timestamp ? formatDate(backup.timestamp) : '未知时间';
+            const pin = backup.pinned ? ' / fixed' : '';
+            meta.textContent = `${created} / ${backup.reason || 'backup'} / ${backup.health || 'ok'}${pin}`;
+            const note = document.createElement('span');
+            note.textContent = backup.note || backup.id || '';
+            item.append(title, meta, note);
+            item.addEventListener('click', () => selectRecoveryBackup(backup));
+            elements.list.appendChild(item);
+        });
+    }
+
+    function firstBackupPreviewText(backup) {
+        const entries = Object.entries(backup.sceneContents || {});
+        if (!entries.length) return '这个备份没有正文内容。';
+        const [sceneId, text] = entries[0];
+        const scene = (backup.scenes || []).find((item) => item.id === sceneId);
+        return `${scene && scene.title ? scene.title : sceneId}\n\n${String(text || '').slice(0, 2400)}`;
+    }
+
+    function firstBackupSceneId(backup) {
+        return Object.keys((backup && backup.sceneContents) || {})[0] || '';
+    }
+
+    function renderRecoveryPreview() {
+        const elements = recoveryElements();
+        const summary = recoveryState.selected;
+        const backup = recoveryState.selectedBackup;
+        const diff = recoveryState.selectedDiff;
+        if (!summary || !backup) {
+            if (elements.previewTitle) elements.previewTitle.textContent = '选择一个备份';
+            if (elements.previewMeta) elements.previewMeta.textContent = '从左侧备份列表选择后查看内容和恢复选项。';
+            if (elements.diff) elements.diff.replaceChildren();
+        if (elements.previewText) elements.previewText.textContent = '';
+            if (elements.restoreScene) elements.restoreScene.disabled = true;
+            if (elements.restoreNew) elements.restoreNew.disabled = true;
+            if (elements.restoreReplace) elements.restoreReplace.disabled = true;
+            return;
+        }
+        if (elements.previewTitle) elements.previewTitle.textContent = summary.projectName || summary.projectId || summary.id;
+        if (elements.previewMeta) {
+            elements.previewMeta.textContent = `${summary.sceneCount || 0} 场 / ${formatNumber(summary.wordCount || 0)} 字 / ${summary.reason || 'backup'} / ${summary.id}`;
+        }
+        if (elements.diff) {
+            elements.diff.replaceChildren();
+            const values = diff ? [
+                `变更 ${diff.changed || 0}`,
+                `新增 ${diff.added || 0}`,
+                `移除 ${diff.removed || 0}`,
+                `不变 ${diff.unchanged || 0}`
+            ] : ['没有当前项目可比较'];
+            values.forEach((text) => {
+                const item = document.createElement('span');
+                item.textContent = text;
+                elements.diff.appendChild(item);
+            });
+        }
+        if (elements.previewText) elements.previewText.textContent = firstBackupPreviewText(backup);
+        if (elements.restoreScene) elements.restoreScene.disabled = summary.health !== 'ok' || !Object.keys(backup.sceneContents || {}).length;
+        if (elements.restoreNew) elements.restoreNew.disabled = summary.health !== 'ok';
+        if (elements.restoreReplace) elements.restoreReplace.disabled = summary.health !== 'ok';
+    }
+
+    async function loadRecoveryList() {
+        const elements = recoveryElements();
+        if (elements.status) elements.status.textContent = '正在读取本地备份...';
+        if (elements.list) elements.list.replaceChildren();
+        try {
+            const response = await fetch('/api/list-all-backups', { cache: 'no-store' });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            recoveryState.backups = result.backups || [];
+            renderRecoveryList();
+            renderRecoveryPreview();
+        } catch (error) {
+            if (elements.status) elements.status.textContent = `读取备份失败：${error.message || error}`;
+        }
+    }
+
+    async function selectRecoveryBackup(summary) {
+        recoveryState.selected = summary;
+        recoveryState.selectedBackup = null;
+        recoveryState.selectedDiff = null;
+        renderRecoveryList();
+        renderRecoveryPreview();
+        try {
+            const params = new URLSearchParams({ projectId: summary.projectId, backupId: summary.id });
+            const response = await fetch(`/api/get-backup?${params.toString()}`, { cache: 'no-store' });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            recoveryState.selectedBackup = result.backup;
+            if (summary.health === 'ok') {
+                const diffResponse = await fetch(`/api/backup-diff?${params.toString()}`, { cache: 'no-store' });
+                const diffResult = await diffResponse.json().catch(() => ({}));
+                if (diffResponse.ok && diffResult.ok) recoveryState.selectedDiff = diffResult.diff;
+            }
+            renderRecoveryPreview();
+        } catch (error) {
+            const elements = recoveryElements();
+            if (elements.previewMeta) elements.previewMeta.textContent = `读取备份失败：${error.message || error}`;
+        }
+    }
+
+    async function restoreSelectedBackup(mode) {
+        const selected = recoveryState.selected;
+        if (!selected) return;
+        const message = mode === 'new-project'
+            ? `将“${selected.projectName || selected.projectId}”恢复为一个新项目？`
+            : `用该备份替换“${selected.projectName || selected.projectId}”？恢复前会自动创建快照。`;
+        if (!window.confirm(message)) return;
+        const elements = recoveryElements();
+        if (elements.status) elements.status.textContent = '正在恢复备份...';
+        try {
+            const response = await fetch('/api/restore-backup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: selected.projectId, backupId: selected.id, mode })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            const successMessage = mode === 'new-project'
+                ? '已恢复为新项目'
+                : `已替换原项目${result.preRestoreBackup ? '，恢复前快照已创建' : ''}`;
+            await loadProjectLibrary();
+            await loadRecoveryList();
+            if (elements.status) {
+                elements.status.textContent = successMessage;
+            }
+        } catch (error) {
+            if (elements.status) elements.status.textContent = `恢复失败：${error.message || error}`;
+        }
+    }
+
+    async function restoreSelectedBackupScene() {
+        const selected = recoveryState.selected;
+        const backup = recoveryState.selectedBackup;
+        const sceneId = firstBackupSceneId(backup);
+        if (!selected || !sceneId) return;
+        if (!window.confirm(`只恢复当前预览场景？恢复前会自动创建快照。`)) return;
+        const elements = recoveryElements();
+        if (elements.status) elements.status.textContent = '正在恢复场景...';
+        try {
+            const response = await fetch('/api/restore-backup-scene', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: selected.projectId, backupId: selected.id, sceneId })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            await loadProjectLibrary();
+            await loadRecoveryList();
+            if (elements.status) elements.status.textContent = '已恢复预览场景，恢复前快照已创建';
+        } catch (error) {
+            if (elements.status) elements.status.textContent = `恢复场景失败：${error.message || error}`;
+        }
+    }
+
+    function bindRecovery() {
+        document.querySelectorAll('[data-refresh-recovery]').forEach((button) => {
+            button.addEventListener('click', loadRecoveryList);
+        });
+        const elements = recoveryElements();
+        if (elements.search) {
+            elements.search.addEventListener('input', () => {
+                recoveryState.query = elements.search.value || '';
+                renderRecoveryList();
+            });
+        }
+        if (elements.filter) {
+            elements.filter.addEventListener('change', () => {
+                recoveryState.filter = elements.filter.value || 'all';
+                renderRecoveryList();
+            });
+        }
+        if (elements.restoreScene) elements.restoreScene.addEventListener('click', restoreSelectedBackupScene);
+        if (elements.restoreNew) elements.restoreNew.addEventListener('click', () => restoreSelectedBackup('new-project'));
+        if (elements.restoreReplace) elements.restoreReplace.addEventListener('click', () => restoreSelectedBackup('replace'));
+    }
+
     function bindReader() {
         loadReaderState();
         renderReader();
@@ -1125,6 +1630,13 @@
                 setView(button.dataset.viewTarget);
             });
         });
+        document.querySelectorAll('[data-toggle-rail]').forEach((button) => {
+            button.addEventListener('click', () => {
+                shellUiState.railCollapsed = !shellUiState.railCollapsed;
+                const root = document.getElementById('desktop-root');
+                setView((root && root.dataset.view) || 'bookshelf');
+            });
+        });
     }
 
     function bindLegacyProjectUpdates() {
@@ -1158,6 +1670,49 @@
                 openProjectFolder();
             });
         });
+
+        const snapshotInput = document.querySelector('[data-import-project-snapshot-file]');
+        const packageInput = document.querySelector('[data-import-project-package-file]');
+        const w1Input = document.querySelector('[data-import-writingway1-files]');
+
+        document.querySelectorAll('[data-import-project-snapshot]').forEach((button) => {
+            button.addEventListener('click', () => {
+                if (snapshotInput) snapshotInput.click();
+            });
+        });
+
+        document.querySelectorAll('[data-import-project-package]').forEach((button) => {
+            button.addEventListener('click', () => {
+                if (packageInput) packageInput.click();
+            });
+        });
+
+        document.querySelectorAll('[data-import-writingway1]').forEach((button) => {
+            button.addEventListener('click', () => {
+                if (w1Input) w1Input.click();
+            });
+        });
+
+        if (snapshotInput) {
+            snapshotInput.addEventListener('change', async () => {
+                await importProjectSnapshotFile(snapshotInput.files && snapshotInput.files[0]);
+                snapshotInput.value = '';
+            });
+        }
+
+        if (packageInput) {
+            packageInput.addEventListener('change', async () => {
+                await importProjectPackageFile(packageInput.files && packageInput.files[0]);
+                packageInput.value = '';
+            });
+        }
+
+        if (w1Input) {
+            w1Input.addEventListener('change', async () => {
+                await importWritingway1Files(w1Input.files);
+                w1Input.value = '';
+            });
+        }
 
         const search = document.querySelector('[data-project-search]');
         if (search) {
@@ -1261,6 +1816,16 @@
         return document.getElementById('legacy-writer-frame');
     }
 
+    function ensureLegacyWriterLoaded() {
+        const frame = getWriterFrame();
+        if (!frame) throw new Error('Legacy writer iframe is not available.');
+        frame.hidden = false;
+        if (!frame.getAttribute('src')) {
+            frame.setAttribute('src', frame.dataset.legacySrc || 'main.html?runtime=desktop&embedded=writer');
+        }
+        return frame;
+    }
+
     function getLegacyAppData() {
         const frame = getWriterFrame();
         const writerWindow = frame ? frame.contentWindow : null;
@@ -1319,6 +1884,3837 @@
             throw new Error(result.error || `HTTP ${response.status}`);
         }
         return result.project;
+    }
+
+    function nativeEditorElements() {
+        return {
+            root: document.querySelector('[data-native-writer]'),
+            projectSource: document.querySelector('[data-native-project-source]'),
+            projectTitle: document.querySelector('[data-native-project-title]'),
+            projectMeta: document.querySelector('[data-native-project-meta]'),
+            newProject: document.querySelector('[data-native-new-project]'),
+            showBookshelf: document.querySelector('[data-native-show-bookshelf]'),
+            search: document.querySelector('[data-native-search]'),
+            replace: document.querySelector('[data-native-replace]'),
+            replaceCurrent: document.querySelector('[data-native-replace-current]'),
+            replaceAll: document.querySelector('[data-native-replace-all]'),
+            searchStatus: document.querySelector('[data-native-search-status]'),
+            searchPrev: document.querySelector('[data-native-search-prev]'),
+            searchNext: document.querySelector('[data-native-search-next]'),
+            sceneList: document.querySelector('[data-native-scene-list]'),
+            chapterTitle: document.querySelector('[data-native-chapter-title]'),
+            sceneTitle: document.querySelector('[data-native-scene-title]'),
+            editor: document.querySelector('[data-native-scene-editor]'),
+            summary: document.querySelector('[data-native-scene-summary]'),
+            generateSceneSummary: document.querySelector('[data-native-generate-scene-summary]'),
+            generateChapterSummary: document.querySelector('[data-native-generate-chapter-summary]'),
+            tags: document.querySelector('[data-native-scene-tags]'),
+            pov: document.querySelector('[data-native-scene-pov]'),
+            tense: document.querySelector('[data-native-scene-tense]'),
+            stats: document.querySelector('[data-native-editor-stats]'),
+            saveStatus: document.querySelector('[data-native-save-status]'),
+            saveButton: document.querySelector('[data-native-save-scene]'),
+            readAloud: document.querySelector('[data-native-read-aloud]'),
+            stopReading: document.querySelector('[data-native-stop-reading]'),
+            toggleOutline: document.querySelector('[data-native-toggle-outline]'),
+            toggleAssistant: document.querySelector('[data-native-toggle-assistant]'),
+            assistantPlacement: document.querySelector('[data-native-assistant-placement]'),
+            toggleSpecials: document.querySelector('[data-native-toggle-specials]'),
+            specials: document.querySelector('[data-native-specials]'),
+            specialButtons: Array.from(document.querySelectorAll('[data-native-special-char]')),
+            toggleTypography: document.querySelector('[data-native-toggle-typography]'),
+            typography: document.querySelector('[data-native-typography]'),
+            editorFontSize: document.querySelector('[data-native-editor-font-size]'),
+            editorFontSizeValue: document.querySelector('[data-native-editor-font-size-value]'),
+            editorLineHeight: document.querySelector('[data-native-editor-line-height]'),
+            editorLineHeightValue: document.querySelector('[data-native-editor-line-height-value]'),
+            editorTextWidth: document.querySelector('[data-native-editor-text-width]'),
+            editorTextWidthValue: document.querySelector('[data-native-editor-text-width-value]'),
+            editorParagraphSpacing: document.querySelector('[data-native-editor-paragraph-spacing]'),
+            editorParagraphSpacingValue: document.querySelector('[data-native-editor-paragraph-spacing-value]'),
+            editorFontFamily: document.querySelector('[data-native-editor-font-family]'),
+            editorWordGoal: document.querySelector('[data-native-editor-word-goal]'),
+            focusMode: document.querySelector('[data-native-focus-mode]'),
+            legacyButton: document.querySelector('[data-native-open-legacy]'),
+            addChapter: document.querySelector('[data-native-add-chapter]'),
+            renameChapter: document.querySelector('[data-native-rename-chapter]'),
+            deleteChapter: document.querySelector('[data-native-delete-chapter]'),
+            addScene: document.querySelector('[data-native-add-scene]'),
+            renameScene: document.querySelector('[data-native-rename-scene]'),
+            deleteScene: document.querySelector('[data-native-delete-scene]'),
+            moveSceneUp: document.querySelector('[data-native-move-scene-up]'),
+            moveSceneDown: document.querySelector('[data-native-move-scene-down]'),
+            exportMarkdown: document.querySelector('[data-native-export-md]'),
+            exportText: document.querySelector('[data-native-export-txt]'),
+            exportHtml: document.querySelector('[data-native-export-html]'),
+            exportEpub: document.querySelector('[data-native-export-epub]'),
+            exportPackage: document.querySelector('[data-native-export-package]'),
+            exportIncludeSceneTitles: document.querySelector('[data-native-export-include-scene-titles]'),
+            promptTemplate: document.querySelector('[data-native-prompt-template]'),
+            managePrompts: document.querySelector('[data-native-manage-prompts]'),
+            genTaskButtons: Array.from(document.querySelectorAll('[data-native-gen-task]')),
+            beatInput: document.querySelector('[data-native-beat-input]'),
+            insertMode: document.querySelector('[data-native-generation-insert-mode]'),
+            previewPrompt: document.querySelector('[data-native-preview-prompt]'),
+            generate: document.querySelector('[data-native-generate]'),
+            cancelGeneration: document.querySelector('[data-native-cancel-generation]'),
+            generationOutput: document.querySelector('[data-native-generation-output]'),
+            generationResult: document.querySelector('[data-native-generation-result]'),
+            reasoning: document.querySelector('[data-native-reasoning]'),
+            reasoningText: document.querySelector('[data-native-reasoning-text]'),
+            acceptGeneration: document.querySelector('[data-native-accept-generation]'),
+            retryGeneration: document.querySelector('[data-native-retry-generation]'),
+            discardGeneration: document.querySelector('[data-native-discard-generation]'),
+            rewritePreset: document.querySelector('[data-native-rewrite-preset]'),
+            rewriteInstruction: document.querySelector('[data-native-rewrite-instruction]'),
+            previewRewrite: document.querySelector('[data-native-preview-rewrite]'),
+            startRewrite: document.querySelector('[data-native-start-rewrite]'),
+            regenerateSelection: document.querySelector('[data-native-regenerate-selection]'),
+            rewriteTaskButtons: Array.from(document.querySelectorAll('[data-native-rewrite-task]')),
+            newCharacter: document.querySelector('[data-native-new-character]'),
+            openCompendium: document.querySelector('[data-native-open-compendium]'),
+            characterList: document.querySelector('[data-native-character-list]'),
+            contextSummary: document.querySelector('[data-native-context-summary]'),
+            contextCompendium: document.querySelector('[data-native-context-compendium]'),
+            contextCompendiumTags: document.querySelector('[data-native-context-compendium-tags]'),
+            contextChapters: document.querySelector('[data-native-context-chapters]'),
+            contextScenes: document.querySelector('[data-native-context-scenes]'),
+            promptDialog: document.querySelector('[data-native-prompt-dialog]'),
+            promptPreview: document.querySelector('[data-native-prompt-preview]'),
+            closePrompt: document.querySelector('[data-native-close-prompt]'),
+            promptManagerDialog: document.querySelector('[data-prompt-manager-dialog]'),
+            promptManagerForm: document.querySelector('[data-prompt-manager-form]'),
+            promptManagerTitle: document.querySelector('[data-prompt-manager-title]'),
+            promptManagerCategory: document.querySelector('[data-prompt-manager-category]'),
+            promptManagerSystem: document.querySelector('[data-prompt-manager-system]'),
+            promptManagerContent: document.querySelector('[data-prompt-manager-content]'),
+            promptManagerNew: document.querySelector('[data-prompt-manager-new]'),
+            promptManagerDelete: document.querySelector('[data-prompt-manager-delete]'),
+            promptManagerClose: document.querySelector('[data-prompt-manager-close]'),
+            panelTabs: Array.from(document.querySelectorAll('[data-native-panel-tab]')),
+            panels: Array.from(document.querySelectorAll('[data-native-panel]')),
+            generationHistory: document.querySelector('[data-native-generation-history]'),
+            historyToolbar: document.querySelector('[data-native-history-toolbar]'),
+            nameModal: document.querySelector('[data-native-name-modal]'),
+            nameForm: document.querySelector('[data-native-name-form]'),
+            nameKicker: document.querySelector('[data-native-name-kicker]'),
+            nameTitle: document.querySelector('[data-native-name-title]'),
+            nameLabel: document.querySelector('[data-native-name-label]'),
+            nameInput: document.querySelector('[data-native-name-input]'),
+            nameStatus: document.querySelector('[data-native-name-status]'),
+            nameCancelButtons: Array.from(document.querySelectorAll('[data-native-name-cancel]'))
+        };
+    }
+
+    function nativeSceneContent(sceneId) {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot || !snapshot.sceneContents) return '';
+        return String(snapshot.sceneContents[sceneId] || '');
+    }
+
+    function settingsElements() {
+        return {
+            form: document.querySelector('[data-settings-form]'),
+            status: document.querySelector('[data-settings-status]'),
+            mode: document.querySelector('[data-settings-mode]'),
+            provider: document.querySelector('[data-settings-provider]'),
+            endpoint: document.querySelector('[data-settings-endpoint]'),
+            model: document.querySelector('[data-settings-model]'),
+            apiKey: document.querySelector('[data-settings-api-key]'),
+            temperature: document.querySelector('[data-settings-temperature]'),
+            maxTokens: document.querySelector('[data-settings-max-tokens]'),
+            providerDefaults: document.querySelector('[data-settings-provider-defaults]'),
+            test: document.querySelector('[data-settings-test]'),
+            refresh: document.querySelector('[data-settings-refresh]'),
+            ttsVoice: document.querySelector('[data-settings-tts-voice]'),
+            ttsRate: document.querySelector('[data-settings-tts-rate]'),
+            ttsRateValue: document.querySelector('[data-settings-tts-rate-value]'),
+            ttsRefreshVoices: document.querySelector('[data-settings-tts-refresh-voices]')
+        };
+    }
+
+    function normalizeDesktopSettings(settings) {
+        if (window.WritingwaySettingsSchema && typeof window.WritingwaySettingsSchema.normalizeDesktopSettings === 'function') {
+            return window.WritingwaySettingsSchema.normalizeDesktopSettings(settings || {});
+        }
+        return settings || {};
+    }
+
+    function runtimeProviderConfig(extras = {}) {
+        if (settingsState.runtimeProvider) {
+            return {
+                ...settingsState.runtimeProvider,
+                ...extras
+            };
+        }
+        if (window.WritingwaySettingsSchema && typeof window.WritingwaySettingsSchema.providerRuntimeConfig === 'function') {
+            return window.WritingwaySettingsSchema.providerRuntimeConfig(settingsState.settings || {}, extras);
+        }
+        return {
+            mode: 'local',
+            endpoint: 'http://localhost:8080',
+            temperature: 0.8,
+            maxTokens: 300,
+            ...extras
+        };
+    }
+
+    function setSettingsStatus(message, tone = 'info') {
+        const { status } = settingsElements();
+        if (!status) return;
+        status.textContent = message || '';
+        status.dataset.tone = tone;
+    }
+
+    function renderSettingsForm() {
+        const elements = settingsElements();
+        if (!elements.form) return;
+        const settings = normalizeDesktopSettings(settingsState.settings);
+        const provider = settings.providerSettings || {};
+        const defaults = settings.generationDefaults || {};
+        const local = settings.localModelSettings || {};
+
+        if (elements.mode) elements.mode.value = provider.mode || 'local';
+        if (elements.provider) elements.provider.value = provider.provider || (provider.mode === 'local' ? 'lmstudio' : 'openai-compatible');
+        if (elements.endpoint) elements.endpoint.value = provider.mode === 'local' ? (local.endpoint || provider.endpoint || '') : (provider.endpoint || '');
+        if (elements.model) elements.model.value = provider.model || local.model || '';
+        if (elements.apiKey) {
+            elements.apiKey.value = '';
+            elements.apiKey.placeholder = provider.hasApiKey ? '已保存密钥，留空表示保持不变' : 'API key';
+            elements.apiKey.disabled = provider.mode === 'local';
+        }
+        if (elements.temperature) elements.temperature.value = defaults.temperature === undefined ? 0.8 : defaults.temperature;
+        if (elements.maxTokens) elements.maxTokens.value = defaults.maxTokens || 300;
+        if (elements.providerDefaults) elements.providerDefaults.checked = !!defaults.useProviderDefaults;
+
+        const isBusy = settingsState.loading || settingsState.saving;
+        [elements.mode, elements.provider, elements.endpoint, elements.model, elements.apiKey, elements.temperature, elements.maxTokens, elements.providerDefaults, elements.test, elements.refresh].forEach((field) => {
+            if (field) field.disabled = isBusy || (field === elements.apiKey && provider.mode === 'local');
+        });
+    }
+
+    function getTtsVoices() {
+        if (window.speechSynthesis && typeof window.speechSynthesis.getVoices === 'function') {
+            return window.speechSynthesis.getVoices();
+        }
+        return [];
+    }
+
+    function populateTtsVoiceSelect() {
+        const elements = settingsElements();
+        if (!elements.ttsVoice) return;
+        const voices = getTtsVoices();
+        const savedVoice = (function () {
+            try { return window.localStorage.getItem(TTS_VOICE_KEY) || ''; } catch (e) { return ''; }
+        })();
+        elements.ttsVoice.replaceChildren();
+        voices.forEach(function (voice) {
+            var option = document.createElement('option');
+            option.value = voice.name;
+            option.textContent = voice.name + ' (' + (voice.lang || 'unknown') + ')';
+            if (voice.name === savedVoice) option.selected = true;
+            elements.ttsVoice.appendChild(option);
+        });
+        if (!voices.some(function (v) { return v.name === savedVoice; }) && savedVoice) {
+            var option = document.createElement('option');
+            option.value = savedVoice;
+            option.textContent = savedVoice + ' (不可用)';
+            option.selected = true;
+            option.disabled = true;
+            elements.ttsVoice.appendChild(option);
+        }
+    }
+
+    function loadTtsPrefs() {
+        var elements = settingsElements();
+        try {
+            var savedVoice = window.localStorage.getItem(TTS_VOICE_KEY) || '';
+            var savedRate = Number(window.localStorage.getItem(TTS_SPEED_KEY) || '1');
+            if (elements.ttsRate) {
+                elements.ttsRate.value = String(Number.isFinite(savedRate) ? Math.min(2, Math.max(0.5, savedRate)) : 1);
+            }
+            if (elements.ttsRateValue) {
+                elements.ttsRateValue.textContent = elements.ttsRate ? String(Number(elements.ttsRate.value).toFixed(1)) : '1.0';
+            }
+            populateTtsVoiceSelect();
+        } catch (e) { /* ignore */ }
+    }
+
+    function saveTtsVoicePref(name) {
+        try { window.localStorage.setItem(TTS_VOICE_KEY, String(name || '')); } catch (e) { /* ignore */ }
+    }
+
+    function saveTtsSpeedPref(rate) {
+        try { window.localStorage.setItem(TTS_SPEED_KEY, String(rate)); } catch (e) { /* ignore */ }
+    }
+
+    function collectSettingsForm() {
+        const elements = settingsElements();
+        const current = normalizeDesktopSettings(settingsState.settings);
+        const mode = elements.mode ? elements.mode.value : 'local';
+        const endpoint = elements.endpoint ? elements.endpoint.value.trim() : '';
+        const model = elements.model ? elements.model.value.trim() : '';
+        return {
+            providerSettings: {
+                mode,
+                provider: elements.provider ? elements.provider.value : (mode === 'local' ? 'lmstudio' : 'openai-compatible'),
+                endpoint,
+                model,
+                apiKey: elements.apiKey ? elements.apiKey.value.trim() : ''
+            },
+            generationDefaults: {
+                temperature: elements.temperature ? Number(elements.temperature.value) : 0.8,
+                maxTokens: elements.maxTokens ? Number(elements.maxTokens.value) : 300,
+                useProviderDefaults: !!(elements.providerDefaults && elements.providerDefaults.checked)
+            },
+            localModelSettings: {
+                ...(current.localModelSettings || {}),
+                endpoint: mode === 'local' ? (endpoint || 'http://localhost:8080') : ((current.localModelSettings && current.localModelSettings.endpoint) || 'http://localhost:8080'),
+                model: mode === 'local' ? model : ((current.localModelSettings && current.localModelSettings.model) || '')
+            }
+        };
+    }
+
+    function refreshSettingsProviderDefaults() {
+        const elements = settingsElements();
+        if (!elements.mode || !elements.provider || !elements.endpoint || !elements.model) return;
+        const mode = elements.mode.value;
+        const provider = elements.provider.value;
+        const endpoint = elements.endpoint.value.trim();
+        const endpointLooksLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(endpoint);
+        if (mode === 'api' && provider === 'deepseek' && (!endpoint || endpointLooksLocal)) {
+            elements.endpoint.value = 'https://api.deepseek.com/chat/completions';
+        }
+        if (mode === 'api' && provider === 'deepseek' && !elements.model.value.trim()) {
+            elements.model.value = 'deepseek-v4-pro';
+        }
+    }
+
+    async function loadSettings() {
+        if (settingsState.loading && settingsState.loadPromise) return settingsState.loadPromise;
+        settingsState.loading = true;
+        setSettingsStatus('正在读取设置...', 'info');
+        renderSettingsForm();
+        settingsState.loadPromise = (async () => {
+            const response = await fetch('/api/settings', { cache: 'no-store' });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            settingsState.settings = normalizeDesktopSettings(result.settings || {});
+            settingsState.runtimeProvider = result.runtimeProvider || runtimeProviderConfig();
+            setSettingsStatus('设置已读取', 'ok');
+            return settingsState.settings;
+        })();
+        try {
+            return await settingsState.loadPromise;
+        } catch (error) {
+            console.warn('Failed to load settings:', error);
+            settingsState.settings = normalizeDesktopSettings();
+            settingsState.runtimeProvider = runtimeProviderConfig();
+            setSettingsStatus(`读取设置失败：${error.message || error}`, 'error');
+            return settingsState.settings;
+        } finally {
+            settingsState.loading = false;
+            settingsState.loadPromise = null;
+            renderSettingsForm();
+            renderNativeGeneration();
+        }
+    }
+
+    async function saveSettings(event) {
+        if (event) event.preventDefault();
+        const nextSettings = collectSettingsForm();
+        settingsState.saving = true;
+        setSettingsStatus('正在保存设置...', 'info');
+        renderSettingsForm();
+        try {
+            const response = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ settings: nextSettings })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            settingsState.settings = normalizeDesktopSettings(result.settings || {});
+            settingsState.runtimeProvider = result.runtimeProvider || runtimeProviderConfig();
+            setSettingsStatus('设置已保存', 'ok');
+        } catch (error) {
+            console.warn('Failed to save settings:', error);
+            setSettingsStatus(`保存失败：${error.message || error}`, 'error');
+        } finally {
+            settingsState.saving = false;
+            renderSettingsForm();
+            renderNativeGeneration();
+        }
+    }
+
+    async function testSettingsProvider() {
+        setSettingsStatus('正在检查配置...', 'info');
+        try {
+            const response = await fetch('/api/settings/test-provider', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ settings: collectSettingsForm(), live: false })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            if (!result.ok) {
+                throw new Error(result.result && result.result.error ? result.result.error : '配置不可用');
+            }
+            const checked = result.result && result.result.checked === 'configuration' ? '配置格式可用' : '连接可用';
+            setSettingsStatus(checked, 'ok');
+        } catch (error) {
+            setSettingsStatus(`检查失败：${error.message || error}`, 'error');
+        }
+    }
+
+    function bindSettings() {
+        const elements = settingsElements();
+        if (elements.form) elements.form.addEventListener('submit', saveSettings);
+        if (elements.test) elements.test.addEventListener('click', testSettingsProvider);
+        if (elements.refresh) elements.refresh.addEventListener('click', loadSettings);
+        [elements.mode, elements.provider].forEach((field) => {
+            if (!field) return;
+            field.addEventListener('change', () => {
+                const current = normalizeDesktopSettings(settingsState.settings);
+                const patch = collectSettingsForm();
+                settingsState.settings = normalizeDesktopSettings({
+                    ...current,
+                    ...patch
+                });
+                renderSettingsForm();
+                refreshSettingsProviderDefaults();
+            });
+        });
+        if (elements.ttsVoice) {
+            elements.ttsVoice.addEventListener('change', function () {
+                saveTtsVoicePref(elements.ttsVoice.value);
+            });
+        }
+        if (elements.ttsRate) {
+            elements.ttsRate.addEventListener('input', function () {
+                var rate = Number(elements.ttsRate.value);
+                if (elements.ttsRateValue) elements.ttsRateValue.textContent = rate.toFixed(1);
+                saveTtsSpeedPref(rate);
+            });
+        }
+        if (elements.ttsRefreshVoices) {
+            elements.ttsRefreshVoices.addEventListener('click', function () {
+                populateTtsVoiceSelect();
+            });
+        }
+        if (window.speechSynthesis) {
+            window.speechSynthesis.addEventListener('voiceschanged', function () {
+                populateTtsVoiceSelect();
+            });
+        }
+        loadTtsPrefs();
+        renderSettingsForm();
+    }
+
+    function compendiumElements() {
+        return {
+            projectLabel: document.querySelector('[data-compendium-project-label]'),
+            status: document.querySelector('[data-compendium-status]'),
+            search: document.querySelector('[data-compendium-search]'),
+            typeFilter: document.querySelector('[data-compendium-type]'),
+            list: document.querySelector('[data-compendium-list]'),
+            newButton: document.querySelector('[data-compendium-new]'),
+            form: document.querySelector('[data-compendium-form]'),
+            editorTitle: document.querySelector('[data-compendium-editor-title]'),
+            entryType: document.querySelector('[data-compendium-entry-type]'),
+            title: document.querySelector('[data-compendium-title]'),
+            summary: document.querySelector('[data-compendium-summary]'),
+            tags: document.querySelector('[data-compendium-tags]'),
+            aliases: document.querySelector('[data-compendium-aliases]'),
+            always: document.querySelector('[data-compendium-always]'),
+            body: document.querySelector('[data-compendium-body]'),
+            save: document.querySelector('[data-compendium-save]'),
+            deleteButton: document.querySelector('[data-compendium-delete]')
+        };
+    }
+
+    function currentProjectId() {
+        return nativeEditorState.snapshot && nativeEditorState.snapshot.project
+            ? nativeEditorState.snapshot.project.id
+            : '';
+    }
+
+    function currentProjectName() {
+        return nativeEditorState.snapshot && nativeEditorState.snapshot.project
+            ? nativeEditorState.snapshot.project.name || nativeEditorState.snapshot.project.title || '未命名项目'
+            : '';
+    }
+
+    function selectedCompendiumEntry() {
+        return compendiumState.entries.find((entry) => entry.id === compendiumState.selectedId) || null;
+    }
+
+    function typeLabel(type) {
+        return {
+            character: '角色',
+            location: '地点',
+            organization: '组织',
+            item: '物品',
+            lore: '设定',
+            timeline: '时间线',
+            note: '笔记'
+        }[type] || '资料';
+    }
+
+    function setCompendiumStatus(message, tone = 'info') {
+        const { status } = compendiumElements();
+        if (!status) return;
+        status.textContent = message || '';
+        status.dataset.tone = tone;
+    }
+
+    function setCompendiumCountStatus() {
+        if (!currentProjectId()) {
+            setCompendiumStatus('未打开项目', 'info');
+            return;
+        }
+        setCompendiumStatus(`${filteredCompendiumEntries().length} / ${compendiumState.entries.length} 条资料`, 'ok');
+    }
+
+    function parseCommaList(value) {
+        return String(value || '').split(/[,，]/).map((item) => item.trim()).filter(Boolean);
+    }
+
+    function filteredCompendiumEntries() {
+        const query = compendiumState.query.trim().toLowerCase();
+        return compendiumState.entries.filter((entry) => {
+            if (compendiumState.type && entry.type !== compendiumState.type) return false;
+            if (!query) return true;
+            const haystack = [
+                entry.title,
+                entry.summary,
+                entry.body,
+                entry.category,
+                ...(entry.tags || []),
+                ...(entry.aliases || [])
+            ].join('\n').toLowerCase();
+            return haystack.includes(query);
+        });
+    }
+
+    function renderCompendium() {
+        const elements = compendiumElements();
+        const projectId = currentProjectId();
+        const projectName = currentProjectName();
+        const selected = selectedCompendiumEntry();
+        const hasProject = !!projectId;
+
+        if (elements.projectLabel) {
+            elements.projectLabel.textContent = hasProject ? `当前项目：${projectName}` : '从书库打开项目后编辑资料。';
+        }
+        if (elements.search && elements.search.value !== compendiumState.query) elements.search.value = compendiumState.query;
+        if (elements.typeFilter && elements.typeFilter.value !== compendiumState.type) elements.typeFilter.value = compendiumState.type;
+        if (elements.newButton) elements.newButton.disabled = !hasProject || compendiumState.loading;
+
+        if (elements.list) {
+            elements.list.replaceChildren();
+            const entries = filteredCompendiumEntries();
+            if (!hasProject) {
+                const empty = document.createElement('div');
+                empty.className = 'desktop-compendium-item';
+                empty.textContent = '先从书库打开一个项目。';
+                elements.list.appendChild(empty);
+            } else if (!entries.length) {
+                const empty = document.createElement('div');
+                empty.className = 'desktop-compendium-item';
+                empty.textContent = compendiumState.entries.length ? '没有匹配的资料。' : '这个项目还没有资料。';
+                elements.list.appendChild(empty);
+            } else {
+                entries.forEach((entry) => {
+                    const item = document.createElement('button');
+                    item.type = 'button';
+                    item.className = 'desktop-compendium-item';
+                    item.classList.toggle('is-active', entry.id === compendiumState.selectedId);
+                    const title = document.createElement('strong');
+                    title.textContent = entry.title || '未命名资料';
+                    const meta = document.createElement('span');
+                    meta.textContent = `${typeLabel(entry.type)}${entry.tags && entry.tags.length ? ` / ${entry.tags.slice(0, 3).join(', ')}` : ''}`;
+                    const summary = document.createElement('small');
+                    summary.textContent = entry.summary || String(entry.body || '').slice(0, 80) || '没有摘要';
+                    item.append(title, meta, summary);
+                    item.addEventListener('click', () => {
+                        compendiumState.selectedId = entry.id;
+                        compendiumState.dirty = false;
+                        renderCompendium();
+                    });
+                    elements.list.appendChild(item);
+                });
+            }
+        }
+
+        if (elements.editorTitle) elements.editorTitle.textContent = selected ? selected.title : '选择资料条目';
+        const fields = [elements.entryType, elements.title, elements.summary, elements.tags, elements.aliases, elements.always, elements.body];
+        fields.forEach((field) => {
+            if (field) field.disabled = !selected;
+        });
+        if (elements.save) elements.save.disabled = !selected;
+        if (elements.deleteButton) elements.deleteButton.disabled = !selected;
+        if (selected) {
+            if (elements.entryType) elements.entryType.value = selected.type || 'lore';
+            if (elements.title) elements.title.value = selected.title || '';
+            if (elements.summary) elements.summary.value = selected.summary || '';
+            if (elements.tags) elements.tags.value = (selected.tags || []).join(', ');
+            if (elements.aliases) elements.aliases.value = (selected.aliases || []).join(', ');
+            if (elements.always) elements.always.checked = !!selected.alwaysInContext;
+            if (elements.body) elements.body.value = selected.body || '';
+        } else {
+            fields.forEach((field) => {
+                if (!field) return;
+                if (field.type === 'checkbox') field.checked = false;
+                else field.value = '';
+            });
+        }
+    }
+
+    async function loadCompendium() {
+        const projectId = currentProjectId();
+        if (!projectId) {
+            compendiumState.entries = [];
+            compendiumState.selectedId = '';
+            setCompendiumStatus('未打开项目', 'info');
+            renderCompendium();
+            return;
+        }
+        compendiumState.loading = true;
+        setCompendiumStatus('正在读取资料...', 'info');
+        renderCompendium();
+        let failed = false;
+        try {
+            const params = new URLSearchParams({ projectId });
+            const response = await fetch(`/api/compendium?${params.toString()}`, { cache: 'no-store' });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            compendiumState.entries = result.entries || [];
+            if (!compendiumState.entries.some((entry) => entry.id === compendiumState.selectedId)) {
+                compendiumState.selectedId = compendiumState.entries[0] ? compendiumState.entries[0].id : '';
+            }
+            if (nativeEditorState.snapshot) nativeEditorState.snapshot.compendium = compendiumState.entries;
+        } catch (error) {
+            console.warn('Failed to load compendium:', error);
+            compendiumState.entries = [];
+            compendiumState.selectedId = '';
+            failed = true;
+            setCompendiumStatus(`读取资料失败：${error.message || error}`, 'error');
+        } finally {
+            compendiumState.loading = false;
+            renderCompendium();
+            if (!failed) setCompendiumCountStatus();
+        }
+    }
+
+    function collectCompendiumForm() {
+        const elements = compendiumElements();
+        const selected = selectedCompendiumEntry();
+        return {
+            id: selected && selected.id,
+            type: elements.entryType ? elements.entryType.value : 'lore',
+            category: elements.entryType ? elements.entryType.value : 'lore',
+            title: elements.title ? elements.title.value : '',
+            summary: elements.summary ? elements.summary.value : '',
+            tags: elements.tags ? parseCommaList(elements.tags.value) : [],
+            aliases: elements.aliases ? parseCommaList(elements.aliases.value) : [],
+            alwaysInContext: !!(elements.always && elements.always.checked),
+            body: elements.body ? elements.body.value : ''
+        };
+    }
+
+    async function saveCompendiumEntry(event) {
+        if (event) event.preventDefault();
+        const projectId = currentProjectId();
+        if (!projectId || !selectedCompendiumEntry()) return;
+        try {
+            const response = await fetch('/api/compendium', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId, entry: collectCompendiumForm() })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            await loadCompendium();
+            compendiumState.selectedId = result.entry.id;
+            renderCompendium();
+            setCompendiumStatus('资料已保存', 'ok');
+        } catch (error) {
+            setCompendiumStatus(`保存失败：${error.message || error}`, 'error');
+        }
+    }
+
+    async function createCompendiumEntry(typeOverride) {
+        const projectId = currentProjectId();
+        if (!projectId) return;
+        const entryType = typeOverride || compendiumState.type || 'lore';
+        try {
+            const response = await fetch('/api/compendium', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId,
+                    entry: {
+                        type: entryType,
+                        category: entryType,
+                        title: entryType === 'character' ? '新人物' : '新资料',
+                        body: ''
+                    }
+                })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            compendiumState.selectedId = result.entry.id;
+            await loadCompendium();
+            setCompendiumStatus(entryType === 'character' ? '已创建新人物卡' : '已创建新资料', 'ok');
+        } catch (error) {
+            setCompendiumStatus(`创建失败：${error.message || error}`, 'error');
+        }
+    }
+
+    async function deleteCompendiumEntry() {
+        const projectId = currentProjectId();
+        const selected = selectedCompendiumEntry();
+        if (!projectId || !selected) return;
+        if (!window.confirm(`删除资料“${selected.title || '未命名资料'}”？`)) return;
+        try {
+            const response = await fetch('/api/delete-compendium-entry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId, entryId: selected.id })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            compendiumState.selectedId = '';
+            await loadCompendium();
+            setCompendiumStatus('资料已删除', 'ok');
+        } catch (error) {
+            setCompendiumStatus(`删除失败：${error.message || error}`, 'error');
+        }
+    }
+
+    function bindCompendium() {
+        const elements = compendiumElements();
+        if (elements.search) {
+            elements.search.addEventListener('input', () => {
+            compendiumState.query = elements.search.value || '';
+            renderCompendium();
+            setCompendiumCountStatus();
+        });
+        }
+        if (elements.typeFilter) {
+            elements.typeFilter.addEventListener('change', () => {
+            compendiumState.type = elements.typeFilter.value || '';
+            renderCompendium();
+            setCompendiumCountStatus();
+        });
+        }
+        if (elements.newButton) elements.newButton.addEventListener('click', createCompendiumEntry);
+        if (elements.form) elements.form.addEventListener('submit', saveCompendiumEntry);
+        if (elements.deleteButton) elements.deleteButton.addEventListener('click', deleteCompendiumEntry);
+        [elements.entryType, elements.title, elements.summary, elements.tags, elements.aliases, elements.always, elements.body].forEach((field) => {
+            if (!field) return;
+            field.addEventListener('input', () => { compendiumState.dirty = true; });
+            field.addEventListener('change', () => { compendiumState.dirty = true; });
+        });
+        renderCompendium();
+    }
+
+    function workshopElements() {
+        return {
+            projectLabel: document.querySelector('[data-workshop-project-label]'),
+            status: document.querySelector('[data-workshop-status]'),
+            newButton: document.querySelector('[data-workshop-new]'),
+            list: document.querySelector('[data-workshop-session-list]'),
+            title: document.querySelector('[data-workshop-title]'),
+            deleteButton: document.querySelector('[data-workshop-delete]'),
+            messages: document.querySelector('[data-workshop-messages]'),
+            input: document.querySelector('[data-workshop-input]'),
+            send: document.querySelector('[data-workshop-send]'),
+            toCompendium: document.querySelector('[data-workshop-to-compendium]'),
+            toSummary: document.querySelector('[data-workshop-to-summary]'),
+            insertDraft: document.querySelector('[data-workshop-insert-draft]')
+        };
+    }
+
+    function selectedWorkshopSession() {
+        return workshopState.sessions.find((session) => session.id === workshopState.selectedId) || null;
+    }
+
+    function selectedAssistantMessage() {
+        const session = selectedWorkshopSession();
+        if (!session) return null;
+        if (workshopState.selectedAssistantMessageId) {
+            const selected = (session.messages || []).find((message) => message.id === workshopState.selectedAssistantMessageId);
+            if (selected && selected.role === 'assistant') return selected;
+        }
+        return [...(session.messages || [])].reverse().find((message) => message.role === 'assistant' && message.content) || null;
+    }
+
+    function setWorkshopStatus(message, tone = 'info') {
+        const { status } = workshopElements();
+        if (!status) return;
+        status.textContent = message || '';
+        status.dataset.tone = tone;
+    }
+
+    function renderWorkshop() {
+        const elements = workshopElements();
+        const projectId = currentProjectId();
+        const projectName = currentProjectName();
+        const session = selectedWorkshopSession();
+        const assistant = selectedAssistantMessage();
+        if (elements.projectLabel) elements.projectLabel.textContent = projectId ? `当前项目：${projectName}` : '从书库打开项目后开始讨论。';
+        if (elements.newButton) elements.newButton.disabled = !projectId || workshopState.generating;
+        if (elements.deleteButton) elements.deleteButton.disabled = !session || workshopState.generating;
+        if (elements.title) elements.title.textContent = session ? session.title : '选择或新建对话';
+        if (elements.input && elements.input.value !== workshopState.input) elements.input.value = workshopState.input;
+        if (elements.input) elements.input.disabled = !session || workshopState.generating;
+        if (elements.send) elements.send.disabled = !session || workshopState.generating || !workshopState.input.trim();
+        [elements.toCompendium, elements.toSummary, elements.insertDraft].forEach((button) => {
+            if (button) button.disabled = !assistant || workshopState.generating;
+        });
+
+        if (elements.list) {
+            elements.list.replaceChildren();
+            if (!projectId) {
+                const empty = document.createElement('div');
+                empty.className = 'desktop-workshop-session';
+                empty.textContent = '先打开一个项目。';
+                elements.list.appendChild(empty);
+            } else if (!workshopState.sessions.length) {
+                const empty = document.createElement('div');
+                empty.className = 'desktop-workshop-session';
+                empty.textContent = '还没有对话。';
+                elements.list.appendChild(empty);
+            } else {
+                workshopState.sessions.forEach((item) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'desktop-workshop-session';
+                    button.classList.toggle('is-active', item.id === workshopState.selectedId);
+                    const title = document.createElement('strong');
+                    title.textContent = item.title || '新对话';
+                    const meta = document.createElement('span');
+                    meta.textContent = `${(item.messages || []).length} 条消息`;
+                    button.append(title, meta);
+                    button.addEventListener('click', () => {
+                        workshopState.selectedId = item.id;
+                        workshopState.selectedAssistantMessageId = '';
+                        renderWorkshop();
+                    });
+                    elements.list.appendChild(button);
+                });
+            }
+        }
+
+        if (elements.messages) {
+            elements.messages.replaceChildren();
+            if (!session || !(session.messages || []).length) {
+                const empty = document.createElement('div');
+                empty.className = 'desktop-workshop-message';
+                empty.textContent = session ? '输入一个问题开始讨论。' : '选择或新建对话。';
+                elements.messages.appendChild(empty);
+            } else {
+                (session.messages || []).forEach((message) => {
+                    const item = document.createElement('button');
+                    item.type = 'button';
+                    item.className = 'desktop-workshop-message';
+                    item.dataset.role = message.role;
+                    const role = document.createElement('strong');
+                    role.textContent = message.role === 'user' ? '你' : '助手';
+                    const content = document.createElement('span');
+                    content.textContent = message.content || (message.role === 'assistant' && workshopState.generating ? '生成中...' : '');
+                    item.append(role, content);
+                    item.addEventListener('click', () => {
+                        if (message.role === 'assistant') {
+                            workshopState.selectedAssistantMessageId = message.id;
+                            renderWorkshop();
+                        }
+                    });
+                    elements.messages.appendChild(item);
+                });
+                elements.messages.scrollTop = elements.messages.scrollHeight;
+            }
+        }
+        if (projectId && !workshopState.generating) setWorkshopStatus(`${workshopState.sessions.length} 个对话`, 'ok');
+    }
+
+    async function loadWorkshopSessions() {
+        const projectId = currentProjectId();
+        if (!projectId) {
+            workshopState.sessions = [];
+            workshopState.selectedId = '';
+            setWorkshopStatus('未打开项目', 'info');
+            renderWorkshop();
+            return;
+        }
+        try {
+            const response = await fetch(`/api/workshop-sessions?${new URLSearchParams({ projectId }).toString()}`, { cache: 'no-store' });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            workshopState.sessions = result.sessions || [];
+            if (!workshopState.sessions.some((session) => session.id === workshopState.selectedId)) {
+                workshopState.selectedId = workshopState.sessions[0] ? workshopState.sessions[0].id : '';
+            }
+            if (nativeEditorState.snapshot) nativeEditorState.snapshot.workshopSessions = workshopState.sessions;
+        } catch (error) {
+            console.warn('Failed to load workshop sessions:', error);
+            setWorkshopStatus(`读取对话失败：${error.message || error}`, 'error');
+        }
+        renderWorkshop();
+    }
+
+    async function saveWorkshopSession(session) {
+        const projectId = currentProjectId();
+        if (!projectId || !session) return null;
+        const response = await fetch('/api/workshop-sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, session })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        return result.session;
+    }
+
+    async function createWorkshopSession() {
+        const projectId = currentProjectId();
+        if (!projectId || !window.WritingwayWorkshopSchema) return;
+        const session = window.WritingwayWorkshopSchema.createWorkshopSession({
+            projectId,
+            title: `对话 ${workshopState.sessions.length + 1}`
+        });
+        const saved = await saveWorkshopSession(session);
+        workshopState.sessions = [saved, ...workshopState.sessions];
+        workshopState.selectedId = saved.id;
+        workshopState.selectedAssistantMessageId = '';
+        renderWorkshop();
+    }
+
+    async function sendWorkshopMessage() {
+        const projectId = currentProjectId();
+        const session = selectedWorkshopSession();
+        const text = workshopState.input.trim();
+        if (!projectId || !session || !text || workshopState.generating) return;
+        const userMessage = window.WritingwayWorkshopSchema.createWorkshopMessage({ role: 'user', content: text });
+        const assistantMessage = window.WritingwayWorkshopSchema.createWorkshopMessage({ role: 'assistant', content: '' });
+        session.messages = [...(session.messages || []), userMessage, assistantMessage];
+        session.updatedAt = new Date().toISOString();
+        workshopState.input = '';
+        workshopState.generating = true;
+        setWorkshopStatus('生成中...', 'info');
+        renderWorkshop();
+        try {
+            const workshopPrompts = (nativeEditorState.snapshot && nativeEditorState.snapshot.prompts || []).filter((prompt) => prompt.category === 'workshop');
+            const prompt = window.WritingwayWorkshopPrompt.buildWorkshopPrompt({
+                project: {
+                    ...nativeEditorState.snapshot,
+                    currentSceneId: nativeEditorState.activeSceneId
+                },
+                session: {
+                    ...session,
+                    messages: session.messages.slice(0, -2)
+                },
+                template: workshopPrompts[0] || {},
+                message: text,
+                currentSceneId: nativeEditorState.activeSceneId
+            });
+            if (!window.WritingwayProviderStream || typeof window.WritingwayProviderStream.streamGeneration !== 'function') {
+                throw new Error('Provider stream is not loaded');
+            }
+            await window.WritingwayProviderStream.streamGeneration(prompt, (token) => {
+                assistantMessage.content += token;
+                renderWorkshop();
+            }, runtimeProviderConfig());
+            const saved = await saveWorkshopSession(session);
+            const index = workshopState.sessions.findIndex((item) => item.id === saved.id);
+            if (index >= 0) workshopState.sessions[index] = saved;
+            if (nativeEditorState.snapshot) nativeEditorState.snapshot.workshopSessions = workshopState.sessions;
+            setWorkshopStatus('对话已保存', 'ok');
+        } catch (error) {
+            assistantMessage.content = `Error: ${error.message || error}`;
+            assistantMessage.isError = true;
+            try { await saveWorkshopSession(session); } catch {}
+            setWorkshopStatus(`生成失败：${error.message || error}`, 'error');
+        } finally {
+            workshopState.generating = false;
+            renderWorkshop();
+        }
+    }
+
+    async function deleteWorkshopSession() {
+        const projectId = currentProjectId();
+        const session = selectedWorkshopSession();
+        if (!projectId || !session) return;
+        if (!window.confirm(`删除对话“${session.title || '新对话'}”？`)) return;
+        const response = await fetch('/api/delete-workshop-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, sessionId: session.id })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+            setWorkshopStatus(`删除失败：${result.error || response.status}`, 'error');
+            return;
+        }
+        workshopState.sessions = workshopState.sessions.filter((item) => item.id !== session.id);
+        workshopState.selectedId = workshopState.sessions[0] ? workshopState.sessions[0].id : '';
+        renderWorkshop();
+    }
+
+    async function workshopOutputToCompendium() {
+        const message = selectedAssistantMessage();
+        const projectId = currentProjectId();
+        if (!message || !projectId) return;
+        const response = await fetch('/api/compendium', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                projectId,
+                entry: {
+                    type: 'note',
+                    title: 'Workshop note',
+                    summary: message.content.slice(0, 140),
+                    body: message.content
+                }
+            })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+            setWorkshopStatus(`转资料失败：${result.error || response.status}`, 'error');
+            return;
+        }
+        await loadCompendium();
+        setWorkshopStatus('已转为资料条目', 'ok');
+    }
+
+    function workshopOutputToSummary() {
+        const message = selectedAssistantMessage();
+        const scene = currentNativeScene();
+        if (!message || !scene) return;
+        scene.summary = message.content.slice(0, 600);
+        const elements = nativeEditorElements();
+        if (elements.summary) elements.summary.value = scene.summary;
+        renderNativeEditor();
+        markNativeDirty('已写入场景摘要，未保存');
+        setWorkshopStatus('已写入当前场景摘要', 'ok');
+    }
+
+    function workshopOutputInsertDraft() {
+        const message = selectedAssistantMessage();
+        const elements = nativeEditorElements();
+        if (!message || !elements.editor) return;
+        elements.editor.value = elements.editor.value ? `${elements.editor.value}\n\n${message.content}` : message.content;
+        flushNativeEditorFields();
+        renderNativeEditor();
+        markNativeDirty('已插入正文，未保存');
+        setWorkshopStatus('已插入当前正文', 'ok');
+    }
+
+    function bindWorkshop() {
+        const elements = workshopElements();
+        if (elements.newButton) elements.newButton.addEventListener('click', createWorkshopSession);
+        if (elements.deleteButton) elements.deleteButton.addEventListener('click', deleteWorkshopSession);
+        if (elements.input) {
+            elements.input.addEventListener('input', () => {
+                workshopState.input = elements.input.value;
+                renderWorkshop();
+            });
+            elements.input.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendWorkshopMessage();
+                }
+            });
+        }
+        if (elements.send) elements.send.addEventListener('click', sendWorkshopMessage);
+        if (elements.toCompendium) elements.toCompendium.addEventListener('click', workshopOutputToCompendium);
+        if (elements.toSummary) elements.toSummary.addEventListener('click', workshopOutputToSummary);
+        if (elements.insertDraft) elements.insertDraft.addEventListener('click', workshopOutputInsertDraft);
+        renderWorkshop();
+    }
+
+    function workflowElements() {
+        return {
+            projectLabel: document.querySelector('[data-workflow-project-label]'),
+            brief: document.querySelector('[data-workflow-brief]'),
+            start: document.querySelector('[data-workflow-start]'),
+            status: document.querySelector('[data-workflow-status]'),
+            runList: document.querySelector('[data-workflow-run-list]'),
+            title: document.querySelector('[data-workflow-title]'),
+            generate: document.querySelector('[data-workflow-generate]'),
+            applyArtifact: document.querySelector('[data-workflow-apply-artifact]'),
+            approve: document.querySelector('[data-workflow-approve]'),
+            reject: document.querySelector('[data-workflow-reject]'),
+            cancel: document.querySelector('[data-workflow-cancel]'),
+            steps: document.querySelector('[data-workflow-steps]'),
+            artifacts: document.querySelector('[data-workflow-artifacts]'),
+            events: document.querySelector('[data-workflow-events]')
+        };
+    }
+
+    function selectedWorkflowRun() {
+        return workflowState.runs.find((run) => run.id === workflowState.selectedId) || null;
+    }
+
+    function activeWorkflowStep(run = selectedWorkflowRun()) {
+        if (!run) return null;
+        return (run.steps || []).find((step) => step.id === run.activeStepId)
+            || (run.steps || []).find((step) => ['ready', 'waiting_user'].includes(step.status))
+            || null;
+    }
+
+    function latestWorkflowArtifact(run, type) {
+        const artifacts = (run && run.artifacts) || [];
+        const matches = artifacts.filter((artifact) => !type || artifact.type === type);
+        return matches[matches.length - 1] || null;
+    }
+
+    function setWorkflowStatus(message, tone = 'info') {
+        const { status } = workflowElements();
+        if (!status) return;
+        status.textContent = message || '';
+        status.dataset.tone = tone;
+    }
+
+    function renderWorkflow() {
+        const elements = workflowElements();
+        const projectId = currentProjectId();
+        const run = selectedWorkflowRun();
+        const step = activeWorkflowStep(run);
+        const isTerminalRun = run && ['completed', 'cancelled', 'failed'].includes(run.status);
+        const draftArtifact = latestWorkflowArtifact(run, 'draft_text');
+        if (elements.projectLabel) {
+            const project = nativeEditorState.snapshot && nativeEditorState.snapshot.project;
+            elements.projectLabel.textContent = project ? `当前项目：${project.name || project.title || project.id}` : '从书库打开项目后启动。';
+        }
+        if (elements.start) elements.start.disabled = !projectId || workflowState.generating;
+        if (elements.generate) elements.generate.disabled = !run || !step || isTerminalRun || step.kind !== 'generation' || workflowState.generating || step.status === 'completed';
+        if (elements.applyArtifact) elements.applyArtifact.disabled = !projectId || !run || isTerminalRun || !draftArtifact || workflowState.generating;
+        if (elements.approve) elements.approve.disabled = !run || !step || isTerminalRun || workflowState.generating || !['waiting_user', 'ready'].includes(step.status);
+        if (elements.reject) elements.reject.disabled = !run || !step || isTerminalRun || workflowState.generating || step.status === 'completed';
+        if (elements.cancel) elements.cancel.disabled = !run || isTerminalRun || workflowState.generating;
+        if (elements.title) {
+            elements.title.textContent = run ? `${run.title || '半自动工作流'} / ${run.status} / ${run.activeStepId || '完成'}` : '选择或开始一个工作流';
+        }
+        if (elements.runList) {
+            elements.runList.replaceChildren();
+            if (!projectId) {
+                const empty = document.createElement('div');
+                empty.className = 'desktop-workflow-run';
+                empty.textContent = '未打开项目。';
+                elements.runList.appendChild(empty);
+            } else if (!workflowState.runs.length) {
+                const empty = document.createElement('div');
+                empty.className = 'desktop-workflow-run';
+                empty.textContent = '还没有工作流运行。';
+                elements.runList.appendChild(empty);
+            } else {
+                workflowState.runs.forEach((item) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'desktop-workflow-run';
+                    button.classList.toggle('is-active', item.id === workflowState.selectedId);
+                    button.innerHTML = `<strong>${item.title || '半自动工作流'}</strong><span>${item.status} / ${item.activeStepId || '完成'}</span>`;
+                    button.addEventListener('click', async () => {
+                        workflowState.selectedId = item.id;
+                        await loadWorkflowEvents();
+                        renderWorkflow();
+                    });
+                    elements.runList.appendChild(button);
+                });
+            }
+        }
+        if (elements.steps) {
+            elements.steps.replaceChildren();
+            (run && run.steps || []).forEach((item) => {
+                const card = document.createElement('article');
+                card.className = 'desktop-workflow-step';
+                card.classList.toggle('is-active', item.id === (step && step.id));
+                card.innerHTML = `<strong>${item.title || item.id}</strong><span>${item.kind} / ${item.status}</span>`;
+                elements.steps.appendChild(card);
+            });
+        }
+        if (elements.artifacts) {
+            elements.artifacts.replaceChildren();
+            (run && run.artifacts || []).slice().reverse().forEach((artifact) => {
+                const card = document.createElement('article');
+                card.className = 'desktop-workflow-artifact';
+                const content = document.createElement('pre');
+                content.textContent = artifact.content || '';
+                card.innerHTML = `<strong>${artifact.title || artifact.type}</strong><span>${artifact.type} / ${artifact.stepId || ''}</span>`;
+                card.appendChild(content);
+                elements.artifacts.appendChild(card);
+            });
+        }
+        if (elements.events) {
+            elements.events.replaceChildren();
+            workflowState.events.slice().reverse().forEach((event) => {
+                const card = document.createElement('div');
+                card.className = 'desktop-workflow-event';
+                card.textContent = `${formatDate(event.createdAt)} / ${event.type}${event.stepId ? ` / ${event.stepId}` : ''}`;
+                elements.events.appendChild(card);
+            });
+        }
+        if (projectId && !workflowState.generating) setWorkflowStatus(`${workflowState.runs.length} 个运行`, 'ok');
+    }
+
+    async function loadWorkflowRuns() {
+        const projectId = currentProjectId();
+        if (!projectId) {
+            workflowState.runs = [];
+            workflowState.selectedId = '';
+            workflowState.events = [];
+            renderWorkflow();
+            return;
+        }
+        try {
+            const response = await fetch(`/api/workflows?${new URLSearchParams({ projectId }).toString()}`, { cache: 'no-store' });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            workflowState.runs = result.runs || [];
+            if (!workflowState.runs.some((run) => run.id === workflowState.selectedId)) {
+                workflowState.selectedId = workflowState.runs[0] ? workflowState.runs[0].id : '';
+            }
+            if (nativeEditorState.snapshot) nativeEditorState.snapshot.workflowRuns = workflowState.runs;
+            await loadWorkflowEvents();
+        } catch (error) {
+            console.warn('Failed to load workflows:', error);
+            workflowState.runs = [];
+            workflowState.selectedId = '';
+            workflowState.events = [];
+            setWorkflowStatus(`读取工作流失败：${error.message || error}`, 'error');
+        }
+        renderWorkflow();
+    }
+
+    async function loadWorkflowEvents() {
+        const projectId = currentProjectId();
+        const run = selectedWorkflowRun();
+        if (!projectId || !run) {
+            workflowState.events = [];
+            return;
+        }
+        const response = await fetch(`/api/workflow-events?${new URLSearchParams({ projectId, runId: run.id }).toString()}`, { cache: 'no-store' });
+        const result = await response.json().catch(() => ({}));
+        workflowState.events = response.ok && result.ok ? (result.events || []) : [];
+    }
+
+    async function startWorkflowRun() {
+        const projectId = currentProjectId();
+        const elements = workflowElements();
+        if (!projectId) return;
+        setWorkflowStatus('正在创建运行前快照...', 'info');
+        const response = await fetch('/api/workflows/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                projectId,
+                brief: elements.brief ? elements.brief.value : ''
+            })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        workflowState.runs = [result.run, ...workflowState.runs.filter((run) => run.id !== result.run.id)];
+        workflowState.selectedId = result.run.id;
+        if (nativeEditorState.snapshot) nativeEditorState.snapshot.workflowRuns = workflowState.runs;
+        await loadWorkflowEvents();
+        renderWorkflow();
+        setWorkflowStatus('工作流已启动，运行前快照已创建。', 'ok');
+    }
+
+    async function generateWorkflowStep() {
+        const projectId = currentProjectId();
+        const run = selectedWorkflowRun();
+        const step = activeWorkflowStep(run);
+        if (!projectId || !run || !step || step.kind !== 'generation' || workflowState.generating) return;
+        workflowState.generating = true;
+        workflowState.generatedText = '';
+        setWorkflowStatus(`正在生成：${step.title || step.id}`, 'info');
+        renderWorkflow();
+        try {
+            const prepareResponse = await fetch('/api/workflows/prepare-step', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId, runId: run.id, stepId: step.id })
+            });
+            const prepared = await prepareResponse.json().catch(() => ({}));
+            if (!prepareResponse.ok || !prepared.ok) throw new Error(prepared.error || `HTTP ${prepareResponse.status}`);
+            if (!window.WritingwayProviderStream || typeof window.WritingwayProviderStream.streamGeneration !== 'function') {
+                throw new Error('Native generation provider stream is not loaded.');
+            }
+            await window.WritingwayProviderStream.streamGeneration(prepared.prompt, (token) => {
+                workflowState.generatedText += token;
+                const currentRun = selectedWorkflowRun();
+                const existing = latestWorkflowArtifact(currentRun, 'generation_result');
+                if (!existing && currentRun) {
+                    currentRun.artifacts = currentRun.artifacts || [];
+                    currentRun.artifacts.push({
+                        id: 'workflow-live-generation',
+                        type: 'generation_result',
+                        title: '生成中',
+                        stepId: step.id,
+                        content: workflowState.generatedText,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    });
+                } else if (existing && existing.id === 'workflow-live-generation') {
+                    existing.content = workflowState.generatedText;
+                }
+                renderWorkflow();
+            }, runtimeProviderConfig());
+            const completeResponse = await fetch('/api/workflows/complete-generation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId,
+                    runId: run.id,
+                    stepId: step.id,
+                    result: {
+                        text: workflowState.generatedText,
+                        prompt: prepared.prompt
+                    }
+                })
+            });
+            const completed = await completeResponse.json().catch(() => ({}));
+            if (!completeResponse.ok || !completed.ok) throw new Error(completed.error || `HTTP ${completeResponse.status}`);
+            workflowState.runs = workflowState.runs.map((item) => item.id === completed.run.id ? completed.run : item);
+            await loadWorkflowEvents();
+            setWorkflowStatus('步骤已生成，等待人工确认。', 'ok');
+        } catch (error) {
+            console.warn('Workflow generation failed:', error);
+            setWorkflowStatus(`工作流生成失败：${error.message || error}`, 'error');
+        } finally {
+            workflowState.generating = false;
+            workflowState.generatedText = '';
+            renderWorkflow();
+        }
+    }
+
+    async function approveWorkflowStep() {
+        const projectId = currentProjectId();
+        const run = selectedWorkflowRun();
+        const step = activeWorkflowStep(run);
+        if (!projectId || !run || !step) return;
+        const response = await fetch('/api/workflows/approve-step', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, runId: run.id, stepId: step.id })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        workflowState.runs = workflowState.runs.map((item) => item.id === result.run.id ? result.run : item);
+        await loadWorkflowEvents();
+        if (result.applyResult && result.applyResult.applied) {
+            const refreshed = await fetchProjectSnapshot({ id: projectId });
+            loadNativeProjectEditor(refreshed, { id: projectId, source: 'project-directory' });
+            loadReaderFromProjectSnapshot(refreshed);
+            await loadProjectLibrary();
+        }
+        renderWorkflow();
+        setWorkflowStatus(result.run.status === 'completed' ? '工作流已完成，草稿已写入项目。' : '步骤已批准。', 'ok');
+    }
+
+    async function rejectWorkflowStep() {
+        const projectId = currentProjectId();
+        const run = selectedWorkflowRun();
+        const step = activeWorkflowStep(run);
+        if (!projectId || !run || !step) return;
+        const reason = window.prompt('退回原因', '需要调整后重新生成。') || '';
+        const response = await fetch('/api/workflows/reject-step', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, runId: run.id, stepId: step.id, reason })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        workflowState.runs = workflowState.runs.map((item) => item.id === result.run.id ? result.run : item);
+        await loadWorkflowEvents();
+        renderWorkflow();
+        setWorkflowStatus('步骤已退回，可重新生成。', 'ok');
+    }
+
+    async function applyWorkflowArtifact() {
+        const projectId = currentProjectId();
+        const run = selectedWorkflowRun();
+        const draftArtifact = latestWorkflowArtifact(run, 'draft_text');
+        if (!projectId || !run || !draftArtifact) return;
+        const response = await fetch('/api/workflows/apply-artifact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, runId: run.id, artifactId: draftArtifact.id })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        workflowState.runs = workflowState.runs.map((item) => item.id === result.run.id ? result.run : item);
+        await loadWorkflowEvents();
+        if (result.applyResult && result.applyResult.applied) {
+            const refreshed = await fetchProjectSnapshot({ id: projectId });
+            loadNativeProjectEditor(refreshed, { id: projectId, source: 'project-directory' });
+            loadReaderFromProjectSnapshot(refreshed);
+            await loadProjectLibrary();
+        }
+        renderWorkflow();
+        setWorkflowStatus('草稿已采纳到当前项目，工作流仍可继续调整。', 'ok');
+    }
+
+    async function cancelWorkflowRun() {
+        const projectId = currentProjectId();
+        const run = selectedWorkflowRun();
+        if (!projectId || !run) return;
+        const reason = window.prompt('取消原因', '用户取消此工作流。') || '';
+        const response = await fetch('/api/workflows/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, runId: run.id, reason })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        workflowState.runs = workflowState.runs.map((item) => item.id === result.run.id ? result.run : item);
+        await loadWorkflowEvents();
+        renderWorkflow();
+        setWorkflowStatus('工作流已取消。', 'ok');
+    }
+
+    function bindWorkflow() {
+        const elements = workflowElements();
+        if (elements.start) elements.start.addEventListener('click', () => startWorkflowRun().catch((error) => setWorkflowStatus(`启动失败：${error.message || error}`, 'error')));
+        if (elements.generate) elements.generate.addEventListener('click', generateWorkflowStep);
+        if (elements.applyArtifact) elements.applyArtifact.addEventListener('click', () => applyWorkflowArtifact().catch((error) => setWorkflowStatus(`采纳失败：${error.message || error}`, 'error')));
+        if (elements.approve) elements.approve.addEventListener('click', () => approveWorkflowStep().catch((error) => setWorkflowStatus(`批准失败：${error.message || error}`, 'error')));
+        if (elements.reject) elements.reject.addEventListener('click', () => rejectWorkflowStep().catch((error) => setWorkflowStatus(`退回失败：${error.message || error}`, 'error')));
+        if (elements.cancel) elements.cancel.addEventListener('click', () => cancelWorkflowRun().catch((error) => setWorkflowStatus(`取消失败：${error.message || error}`, 'error')));
+        renderWorkflow();
+    }
+
+    function setNativeSaveStatus(message, tone = 'info') {
+        const { saveStatus } = nativeEditorElements();
+        if (!saveStatus) return;
+        saveStatus.textContent = message || '';
+        saveStatus.dataset.tone = tone;
+    }
+
+    function clampNumber(value, min, max, fallback) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return fallback;
+        return Math.min(max, Math.max(min, number));
+    }
+
+    function loadNativeEditorPrefs() {
+        try {
+            const saved = JSON.parse(window.localStorage.getItem(NATIVE_EDITOR_PREFS_STORAGE_KEY) || '{}');
+            nativeEditorState.editorPrefs = {
+                fontSize: clampNumber(saved.fontSize, 15, 24, nativeEditorState.editorPrefs.fontSize),
+                lineHeight: clampNumber(saved.lineHeight, 1.45, 2.2, nativeEditorState.editorPrefs.lineHeight),
+                textWidth: clampNumber(saved.textWidth, 620, 1040, nativeEditorState.editorPrefs.textWidth),
+                paragraphSpacing: clampNumber(saved.paragraphSpacing, 0, 1.5, nativeEditorState.editorPrefs.paragraphSpacing),
+                fontFamily: ['system', 'serif', 'yahei'].includes(saved.fontFamily) ? saved.fontFamily : nativeEditorState.editorPrefs.fontFamily,
+                wordGoal: clampNumber(saved.wordGoal, 0, 999999, nativeEditorState.editorPrefs.wordGoal)
+            };
+        } catch (error) {
+            nativeEditorState.editorPrefs = { fontSize: 18, lineHeight: 1.9, textWidth: 760, paragraphSpacing: 0, fontFamily: 'system', wordGoal: 0 };
+        }
+    }
+
+    function saveNativeEditorPrefs() {
+        try {
+            window.localStorage.setItem(NATIVE_EDITOR_PREFS_STORAGE_KEY, JSON.stringify(nativeEditorState.editorPrefs));
+        } catch (error) {
+            /* ignore local preference persistence errors */
+        }
+    }
+
+    function loadExportOptions() {
+        try {
+            const elements = nativeEditorElements();
+            const saved = JSON.parse(window.localStorage.getItem(EXPORT_OPTIONS_STORAGE_KEY) || '{}');
+            if (elements.exportIncludeSceneTitles) {
+                elements.exportIncludeSceneTitles.checked = saved.includeSceneTitles !== false;
+            }
+        } catch (error) {
+            /* ignore */
+        }
+    }
+
+    function saveExportOptions() {
+        try {
+            const elements = nativeEditorElements();
+            window.localStorage.setItem(EXPORT_OPTIONS_STORAGE_KEY, JSON.stringify({
+                includeSceneTitles: elements.exportIncludeSceneTitles ? elements.exportIncludeSceneTitles.checked : true
+            }));
+        } catch (error) {
+            /* ignore local preference persistence errors */
+        }
+    }
+
+    function editorFontStack() {
+        const family = nativeEditorState.editorPrefs.fontFamily;
+        if (family === 'serif') {
+            return '"SimSun", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif';
+        }
+        if (family === 'yahei') {
+            return '"Microsoft YaHei", "Segoe UI", system-ui, sans-serif';
+        }
+        return '"Microsoft YaHei", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    }
+
+    function applyNativeEditorPrefs() {
+        const elements = nativeEditorElements();
+        const prefs = nativeEditorState.editorPrefs;
+        if (elements.root) {
+            elements.root.style.setProperty('--native-editor-font-size', `${prefs.fontSize}px`);
+            elements.root.style.setProperty('--native-editor-line-height', String(prefs.lineHeight));
+            elements.root.style.setProperty('--native-editor-text-width', `${prefs.textWidth}px`);
+            elements.root.style.setProperty('--native-editor-paragraph-spacing', `${prefs.paragraphSpacing}em`);
+            elements.root.style.setProperty('--native-editor-font-family', editorFontStack());
+        }
+        if (elements.editorFontSize) elements.editorFontSize.value = String(prefs.fontSize);
+        if (elements.editorFontSizeValue) elements.editorFontSizeValue.textContent = String(prefs.fontSize);
+        if (elements.editorLineHeight) elements.editorLineHeight.value = String(prefs.lineHeight);
+        if (elements.editorLineHeightValue) elements.editorLineHeightValue.textContent = prefs.lineHeight.toFixed(2);
+        if (elements.editorTextWidth) elements.editorTextWidth.value = String(prefs.textWidth);
+        if (elements.editorTextWidthValue) elements.editorTextWidthValue.textContent = String(prefs.textWidth);
+        if (elements.editorParagraphSpacing) elements.editorParagraphSpacing.value = String(prefs.paragraphSpacing);
+        if (elements.editorParagraphSpacingValue) elements.editorParagraphSpacingValue.textContent = prefs.paragraphSpacing.toFixed(1);
+        if (elements.editorFontFamily) elements.editorFontFamily.value = String(prefs.fontFamily);
+        if (elements.editorWordGoal) {
+            const goal = prefs.wordGoal || 0;
+            if (elements.editorWordGoal.value !== String(goal)) elements.editorWordGoal.value = String(goal);
+        }
+        if (elements.typography) elements.typography.hidden = !nativeEditorState.typographyOpen;
+        if (elements.toggleTypography) {
+            elements.toggleTypography.setAttribute('aria-pressed', nativeEditorState.typographyOpen ? 'true' : 'false');
+        }
+    }
+
+    function countNativeWords(text) {
+        const normalized = String(text || '').trim();
+        if (!normalized) return 0;
+        const cjk = normalized.match(/[\u3400-\u9fff]/g) || [];
+        const words = normalized.replace(/[\u3400-\u9fff]/g, ' ')
+            .split(/[\s,.;:!?()[\]{}"'，。！？、；：（）《》]+/)
+            .filter(Boolean);
+        return cjk.length + words.length;
+    }
+
+    function nativeSceneTags(scene) {
+        if (!scene) return [];
+        if (Array.isArray(scene.tags)) return scene.tags.filter(Boolean);
+        if (typeof scene.tags === 'string') {
+            return scene.tags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean);
+        }
+        return [];
+    }
+
+    function flushNativeEditorFields() {
+        const elements = nativeEditorElements();
+        const snapshot = nativeEditorState.snapshot;
+        const scene = currentNativeScene();
+        if (!snapshot || !scene) return;
+
+        snapshot.sceneContents = snapshot.sceneContents || {};
+        if (elements.editor) snapshot.sceneContents[scene.id] = elements.editor.value;
+        if (elements.summary) scene.summary = elements.summary.value.trim();
+        if (elements.tags) scene.tags = elements.tags.value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean);
+        if (elements.pov) scene.povCharacter = elements.pov.value.trim();
+        if (elements.tense) scene.tense = elements.tense.value;
+    }
+
+    function beginNativeSceneTitleEdit() {
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        if (!elements.sceneTitle || !scene || nativeEditorState.titleEditing) return;
+        nativeEditorState.titleEditing = true;
+        nativeEditorState.titleEditingOriginal = scene.title || '';
+        elements.sceneTitle.contentEditable = 'true';
+        elements.sceneTitle.classList.add('is-editing');
+        elements.sceneTitle.focus();
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(elements.sceneTitle);
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
+
+    function finishNativeSceneTitleEdit(options = {}) {
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        if (!elements.sceneTitle || !nativeEditorState.titleEditing) return;
+        const nextTitle = options.cancel
+            ? nativeEditorState.titleEditingOriginal
+            : (elements.sceneTitle.textContent || '').trim();
+        const finalTitle = nextTitle || nativeEditorState.titleEditingOriginal || '未命名场景';
+        nativeEditorState.titleEditing = false;
+        nativeEditorState.titleEditingOriginal = '';
+        elements.sceneTitle.contentEditable = 'false';
+        elements.sceneTitle.classList.remove('is-editing');
+        if (!scene) {
+            renderNativeEditor();
+            return;
+        }
+        if (!options.cancel && finalTitle !== (scene.title || '')) {
+            scene.title = finalTitle;
+            markNativeDirty('标题未保存');
+        }
+        renderNativeEditor();
+    }
+
+    function updateNativeStats() {
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        const text = elements.editor ? elements.editor.value : '';
+        if (elements.stats) {
+            const wordCount = countNativeWords(text);
+            const goal = nativeEditorState.editorPrefs.wordGoal || 0;
+            if (scene && goal > 0) {
+                elements.stats.textContent = `${formatNumber(wordCount)} / ${formatNumber(goal)} 字`;
+                elements.stats.dataset.tone = wordCount >= goal ? 'goal-met' : '';
+            } else if (scene) {
+                elements.stats.textContent = `${formatNumber(wordCount)} 字`;
+                delete elements.stats.dataset.tone;
+            } else {
+                elements.stats.textContent = '0 字';
+                delete elements.stats.dataset.tone;
+            }
+        }
+    }
+
+    function markNativeDirty(message = '未保存') {
+        nativeEditorState.dirty = true;
+        flushNativeEditorFields();
+        updateNativeStats();
+        setNativeSaveStatus(message, 'warn');
+        scheduleNativeAutosave();
+    }
+
+    function scheduleNativeAutosave() {
+        if (nativeEditorState.autosaveTimer) {
+            window.clearTimeout(nativeEditorState.autosaveTimer);
+        }
+        nativeEditorState.autosaveTimer = window.setTimeout(() => {
+            if (nativeEditorState.dirty && nativeEditorState.snapshot) {
+                saveNativeScene({ reason: 'autosave' });
+            }
+        }, 1600);
+    }
+
+    function normalizeNativeOrders() {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot) return;
+        (snapshot.chapters || [])
+            .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+            .forEach((chapter, index) => { chapter.order = index; });
+        const chapterIds = new Set((snapshot.chapters || []).map((chapter) => chapter.id));
+        (snapshot.scenes || []).forEach((scene) => {
+            if (!chapterIds.has(scene.chapterId) && snapshot.chapters && snapshot.chapters[0]) {
+                scene.chapterId = snapshot.chapters[0].id;
+            }
+        });
+        (snapshot.chapters || []).forEach((chapter) => {
+            (snapshot.scenes || [])
+                .filter((scene) => scene.chapterId === chapter.id)
+                .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+                .forEach((scene, index) => { scene.order = index; });
+        });
+    }
+
+    function currentNativeScene() {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot) return null;
+        return (snapshot.scenes || []).find((scene) => scene.id === nativeEditorState.activeSceneId) || null;
+    }
+
+    function currentNativeChapter(scene) {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot || !scene) return null;
+        return (snapshot.chapters || []).find((chapter) => chapter.id === scene.chapterId) || null;
+    }
+
+    function renderNativeEditor() {
+        const elements = nativeEditorElements();
+        const snapshot = nativeEditorState.snapshot;
+        const project = snapshot && snapshot.project ? snapshot.project : null;
+        if (!elements.root) return;
+        elements.root.classList.toggle('is-focus-mode', nativeEditorState.focusMode);
+        elements.root.classList.toggle('is-outline-collapsed', nativeEditorState.outlineCollapsed);
+        elements.root.classList.toggle('is-assistant-collapsed', nativeEditorState.assistantCollapsed);
+        elements.root.classList.toggle('is-assistant-bottom', nativeEditorState.assistantPlacement === 'bottom');
+        applyNativeEditorPrefs();
+        if (elements.assistantPlacement) {
+            elements.assistantPlacement.textContent = nativeEditorState.assistantPlacement === 'bottom' ? '辅助在右' : '辅助在下';
+            elements.assistantPlacement.setAttribute('aria-pressed', nativeEditorState.assistantPlacement === 'bottom' ? 'true' : 'false');
+        }
+        if (elements.focusMode) {
+            elements.focusMode.textContent = nativeEditorState.focusMode ? '退出专注' : '专注';
+            elements.focusMode.setAttribute('aria-pressed', nativeEditorState.focusMode ? 'true' : 'false');
+        }
+        if (elements.toggleOutline) {
+            elements.toggleOutline.textContent = nativeEditorState.outlineCollapsed ? '显示结构' : '隐藏结构';
+            elements.toggleOutline.setAttribute('aria-pressed', nativeEditorState.outlineCollapsed ? 'true' : 'false');
+        }
+        if (elements.toggleAssistant) {
+            elements.toggleAssistant.textContent = nativeEditorState.assistantCollapsed ? '显示辅助' : '隐藏辅助';
+            elements.toggleAssistant.setAttribute('aria-pressed', nativeEditorState.assistantCollapsed ? 'true' : 'false');
+        }
+        elements.panelTabs.forEach((tab) => {
+            tab.classList.toggle('is-active', tab.dataset.nativePanelTab === nativeEditorState.assistantPanel);
+        });
+        elements.panels.forEach((panel) => {
+            panel.classList.toggle('is-active', panel.dataset.nativePanel === nativeEditorState.assistantPanel);
+        });
+
+        if (!snapshot || !project) {
+            if (elements.projectTitle) elements.projectTitle.textContent = '未打开项目';
+            if (elements.projectMeta) elements.projectMeta.textContent = '从书架打开项目后开始编辑。';
+            if (elements.projectSource) elements.projectSource.textContent = '项目';
+            if (elements.search) {
+                elements.search.value = '';
+                elements.search.disabled = true;
+            }
+            if (elements.replace) {
+                elements.replace.value = '';
+                elements.replace.disabled = true;
+            }
+            if (elements.replaceCurrent) elements.replaceCurrent.disabled = true;
+            if (elements.replaceAll) elements.replaceAll.disabled = true;
+            if (elements.searchStatus) elements.searchStatus.textContent = '';
+            if (elements.searchPrev) elements.searchPrev.disabled = true;
+            if (elements.searchNext) elements.searchNext.disabled = true;
+            if (elements.sceneList) elements.sceneList.replaceChildren();
+            if (elements.chapterTitle) elements.chapterTitle.textContent = '场景编辑';
+            if (elements.sceneTitle && !nativeEditorState.titleEditing) elements.sceneTitle.textContent = '选择一个场景';
+            if (elements.editor) {
+                elements.editor.value = '';
+                elements.editor.disabled = true;
+            }
+            [elements.summary, elements.tags, elements.pov, elements.tense].forEach((field) => {
+                if (!field) return;
+                field.value = '';
+                field.disabled = true;
+            });
+            if (elements.stats) {
+                elements.stats.textContent = '0 字';
+                delete elements.stats.dataset.tone;
+            }
+            if (elements.saveButton) elements.saveButton.disabled = true;
+            if (elements.readAloud) {
+                elements.readAloud.disabled = true;
+                elements.readAloud.hidden = false;
+            }
+            if (elements.stopReading) elements.stopReading.hidden = true;
+            if (elements.addChapter) elements.addChapter.disabled = true;
+            if (elements.renameChapter) elements.renameChapter.disabled = true;
+            if (elements.deleteChapter) elements.deleteChapter.disabled = true;
+            if (elements.addScene) elements.addScene.disabled = true;
+            if (elements.renameScene) elements.renameScene.disabled = true;
+            if (elements.deleteScene) elements.deleteScene.disabled = true;
+            if (elements.moveSceneUp) elements.moveSceneUp.disabled = true;
+            if (elements.moveSceneDown) elements.moveSceneDown.disabled = true;
+            if (elements.exportMarkdown) elements.exportMarkdown.disabled = true;
+            if (elements.exportText) elements.exportText.disabled = true;
+            if (elements.exportHtml) elements.exportHtml.disabled = true;
+            if (elements.exportEpub) elements.exportEpub.disabled = true;
+            if (elements.exportPackage) elements.exportPackage.disabled = true;
+            if (elements.exportIncludeSceneTitles) elements.exportIncludeSceneTitles.disabled = true;
+            if (elements.beatInput) {
+                elements.beatInput.value = '';
+                elements.beatInput.disabled = true;
+            }
+            if (elements.previewPrompt) elements.previewPrompt.disabled = true;
+            if (elements.generate) elements.generate.disabled = true;
+            setNativeSaveStatus('', 'info');
+            renderNativeRewrite();
+            renderNativeCharacters();
+            renderNativeContext();
+            renderNativeGeneration();
+            return;
+        }
+
+        normalizeNativeOrders();
+        const chapters = [...(snapshot.chapters || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+        const scenes = [...(snapshot.scenes || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+        if (!nativeEditorState.activeSceneId && scenes[0]) nativeEditorState.activeSceneId = scenes[0].id;
+        const activeScene = currentNativeScene();
+        const activeSceneChapter = currentNativeChapter(activeScene);
+        if (activeSceneChapter) nativeEditorState.activeChapterId = activeSceneChapter.id;
+        if (!nativeEditorState.activeChapterId && chapters[0]) nativeEditorState.activeChapterId = chapters[0].id;
+        const activeChapterId = nativeEditorState.activeChapterId;
+        const activeChapter = currentNativeChapterByState();
+        const query = nativeEditorState.searchQuery.trim().toLowerCase();
+
+        if (elements.projectTitle) elements.projectTitle.textContent = project.name || '未命名项目';
+        if (elements.projectSource) elements.projectSource.textContent = nativeEditorState.projectSource === 'project-directory' ? '项目目录' : '旧快照';
+        if (elements.projectMeta) {
+            elements.projectMeta.textContent = `${scenes.length} 场 / ${chapters.length} 章`;
+        }
+        if (elements.search) {
+            elements.search.disabled = false;
+            if (elements.search.value !== nativeEditorState.searchQuery) elements.search.value = nativeEditorState.searchQuery;
+        }
+        if (elements.replace) elements.replace.disabled = false;
+        if (elements.replaceCurrent) elements.replaceCurrent.disabled = !activeScene || !nativeEditorState.searchQuery;
+        if (elements.replaceAll) elements.replaceAll.disabled = !nativeEditorState.searchQuery;
+
+        if (elements.sceneList) {
+            elements.sceneList.replaceChildren();
+            chapters.forEach((chapter) => {
+                const chapterScenes = scenes.filter((scene) => scene.chapterId === chapter.id);
+                const visibleScenes = chapterScenes.filter((scene) => {
+                    if (!query) return true;
+                    const haystack = [
+                        chapter.title,
+                        scene.title,
+                        scene.summary,
+                        nativeSceneTags(scene).join(' '),
+                        nativeSceneContent(scene.id)
+                    ].join(' ').toLowerCase();
+                    return haystack.includes(query);
+                });
+                if (query && !visibleScenes.length && !String(chapter.title || '').toLowerCase().includes(query)) {
+                    return;
+                }
+
+                const chapterLabel = document.createElement('button');
+                chapterLabel.type = 'button';
+                chapterLabel.className = 'desktop-native-chapter';
+                chapterLabel.classList.toggle('is-active', chapter.id === activeChapterId);
+                chapterLabel.dataset.nativeChapterId = chapter.id;
+                chapterLabel.draggable = true;
+                const chapterName = document.createElement('span');
+                chapterName.textContent = chapter.title || '未命名章节';
+                const chapterCount = document.createElement('span');
+                chapterCount.className = 'desktop-native-chapter-count';
+                chapterCount.textContent = `${chapterScenes.length}`;
+                chapterLabel.append(chapterName, chapterCount);
+                chapterLabel.addEventListener('click', () => {
+                    finishNativeSceneTitleEdit();
+                    flushNativeEditorFields();
+                    nativeEditorState.activeChapterId = chapter.id;
+                    if (!chapterScenes.some((scene) => scene.id === nativeEditorState.activeSceneId) && chapterScenes[0]) {
+                        nativeEditorState.activeSceneId = chapterScenes[0].id;
+                    }
+                    renderNativeEditor();
+                });
+                chapterLabel.addEventListener('dragstart', (event) => {
+                    event.dataTransfer.setData('text/plain', `chapter:${chapter.id}`);
+                });
+                chapterLabel.addEventListener('dragover', (event) => event.preventDefault());
+                chapterLabel.addEventListener('drop', (event) => {
+                    event.preventDefault();
+                    const value = event.dataTransfer.getData('text/plain') || '';
+                    if (!value.startsWith('chapter:')) return;
+                    reorderNativeChapter(value.slice('chapter:'.length), chapter.id);
+                });
+                elements.sceneList.appendChild(chapterLabel);
+
+                visibleScenes.forEach((scene) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'desktop-native-scene';
+                    button.classList.toggle('is-active', scene.id === nativeEditorState.activeSceneId);
+                    button.dataset.nativeSceneId = scene.id;
+                    button.draggable = true;
+                    const title = document.createElement('span');
+                    title.textContent = scene.title || '未命名场景';
+                    const meta = document.createElement('small');
+                    const parts = [`${formatNumber(countNativeWords(nativeSceneContent(scene.id)))} 字`];
+                    if (scene.summary) parts.push('摘要');
+                    if (nativeSceneTags(scene).length) parts.push(nativeSceneTags(scene).join('/'));
+                    meta.textContent = parts.join(' · ');
+                    button.append(title, meta);
+                    button.addEventListener('click', () => {
+                        finishNativeSceneTitleEdit();
+                        flushNativeEditorFields();
+                        nativeEditorState.activeSceneId = scene.id;
+                        nativeEditorState.activeChapterId = scene.chapterId;
+                        renderNativeEditor();
+                    });
+                    button.addEventListener('dragstart', (event) => {
+                        event.dataTransfer.setData('text/plain', `scene:${scene.id}`);
+                    });
+                    button.addEventListener('dragover', (event) => event.preventDefault());
+                    button.addEventListener('drop', (event) => {
+                        event.preventDefault();
+                        const value = event.dataTransfer.getData('text/plain') || '';
+                        if (!value.startsWith('scene:')) return;
+                        reorderNativeScene(value.slice('scene:'.length), scene.id);
+                    });
+                    elements.sceneList.appendChild(button);
+                });
+            });
+        }
+
+        if (elements.chapterTitle) elements.chapterTitle.textContent = activeChapter ? activeChapter.title : '场景编辑';
+        if (elements.sceneTitle && !nativeEditorState.titleEditing) {
+            elements.sceneTitle.textContent = activeScene ? (activeScene.title || '未命名场景') : '选择一个场景';
+            elements.sceneTitle.contentEditable = 'false';
+            elements.sceneTitle.classList.remove('is-editing');
+        }
+        if (elements.editor) {
+            elements.editor.disabled = !activeScene;
+            elements.editor.value = activeScene ? nativeSceneContent(activeScene.id) : '';
+        }
+        if (query && activeScene) {
+            updateNativeSearchMatchState();
+        } else {
+            nativeEditorState.searchMatchPositions = [];
+            nativeEditorState.searchMatchIndex = -1;
+            renderNativeSearchStatus();
+        }
+        if (elements.summary) {
+            elements.summary.disabled = !activeScene;
+            elements.summary.value = activeScene ? (activeScene.summary || '') : '';
+        }
+        if (elements.tags) {
+            elements.tags.disabled = !activeScene;
+            elements.tags.value = activeScene ? nativeSceneTags(activeScene).join(', ') : '';
+        }
+        if (elements.pov) {
+            elements.pov.disabled = !activeScene;
+            elements.pov.value = activeScene ? (activeScene.povCharacter || activeScene.pov || '') : '';
+        }
+        if (elements.tense) {
+            elements.tense.disabled = !activeScene;
+            elements.tense.value = activeScene ? (activeScene.tense || '') : '';
+        }
+        updateNativeStats();
+        if (elements.saveButton) elements.saveButton.disabled = !activeScene;
+        if (elements.readAloud) {
+            elements.readAloud.disabled = !activeScene;
+            elements.readAloud.hidden = nativeEditorState.tts.reading;
+        }
+        if (elements.stopReading) elements.stopReading.hidden = !nativeEditorState.tts.reading;
+        if (elements.addChapter) elements.addChapter.disabled = false;
+        if (elements.renameChapter) elements.renameChapter.disabled = !activeChapterId;
+        if (elements.deleteChapter) elements.deleteChapter.disabled = !activeChapterId || chapters.length <= 1;
+        if (elements.addScene) elements.addScene.disabled = !activeChapterId;
+        if (elements.renameScene) elements.renameScene.disabled = !activeScene;
+        if (elements.deleteScene) elements.deleteScene.disabled = !activeScene || scenes.length <= 1;
+        const siblingScenes = activeScene ? scenes.filter((scene) => scene.chapterId === activeScene.chapterId) : [];
+        const activeIndex = activeScene ? siblingScenes.findIndex((scene) => scene.id === activeScene.id) : -1;
+        if (elements.moveSceneUp) elements.moveSceneUp.disabled = activeIndex <= 0;
+        if (elements.moveSceneDown) elements.moveSceneDown.disabled = activeIndex < 0 || activeIndex >= siblingScenes.length - 1;
+        if (elements.exportMarkdown) elements.exportMarkdown.disabled = !scenes.length;
+        if (elements.exportText) elements.exportText.disabled = !scenes.length;
+        if (elements.exportHtml) elements.exportHtml.disabled = !scenes.length;
+        if (elements.exportEpub) elements.exportEpub.disabled = !scenes.length;
+        if (elements.exportPackage) elements.exportPackage.disabled = !scenes.length;
+        if (elements.exportIncludeSceneTitles) elements.exportIncludeSceneTitles.disabled = !scenes.length;
+        if (elements.generateSceneSummary) elements.generateSceneSummary.disabled = !activeScene || nativeEditorState.generation.inProgress;
+        if (elements.generateChapterSummary) elements.generateChapterSummary.disabled = !activeChapter || nativeEditorState.generation.inProgress;
+        if (!nativeEditorState.dirty) setNativeSaveStatus('', 'info');
+        if (elements.beatInput) elements.beatInput.disabled = !activeScene;
+        renderNativeRewrite();
+        renderNativeCharacters();
+        renderNativeContext();
+        renderNativeGeneration();
+    }
+
+    function loadNativeProjectEditor(snapshot, projectSummary = {}) {
+        if (nativeEditorState.autosaveTimer) {
+            window.clearTimeout(nativeEditorState.autosaveTimer);
+            nativeEditorState.autosaveTimer = null;
+        }
+        nativeEditorState.snapshot = JSON.parse(JSON.stringify(snapshot || {}));
+        const scenes = Array.isArray(snapshot && snapshot.scenes) ? snapshot.scenes : [];
+        const chapters = Array.isArray(snapshot && snapshot.chapters) ? snapshot.chapters : [];
+        const preferredScene = scenes.find((scene) => scene.id === snapshot.currentSceneId) || scenes[0] || null;
+        nativeEditorState.activeSceneId = preferredScene ? preferredScene.id : '';
+        nativeEditorState.activeChapterId = snapshot.currentChapterId || (preferredScene && preferredScene.chapterId) || (chapters[0] && chapters[0].id) || '';
+        nativeEditorState.projectSource = projectSummary.source || 'legacy-snapshot';
+        nativeEditorState.searchQuery = '';
+        nativeEditorState.searchMatchIndex = -1;
+        nativeEditorState.searchMatchPositions = [];
+        loadNativeContextPrefs();
+        nativeEditorState.dirty = false;
+        nativeEditorState.isSaving = false;
+        nativeEditorState.generation = {
+            beat: '',
+            text: '',
+            reasoning: '',
+            prompt: null,
+            record: null,
+            inProgress: false,
+            abortController: null,
+            lastAcceptedSceneId: '',
+            inlineBaseText: '',
+            insertionStart: 0,
+            insertionEnd: 0,
+            pendingSceneId: '',
+            task: 'fiction-prose'
+        };
+        compendiumState.entries = Array.isArray(nativeEditorState.snapshot.compendium) ? nativeEditorState.snapshot.compendium : [];
+        compendiumState.selectedId = compendiumState.entries[0] ? compendiumState.entries[0].id : '';
+        compendiumState.query = '';
+        compendiumState.type = '';
+        compendiumState.dirty = false;
+        promptState.prompts = Array.isArray(nativeEditorState.snapshot.prompts) ? nativeEditorState.snapshot.prompts : [];
+        promptState.selectedId = promptState.prompts[0] ? promptState.prompts[0].id : 'default-prose';
+        renderNativeEditor();
+        renderCompendium();
+    }
+
+    async function saveNativeScene(options = {}) {
+        const elements = nativeEditorElements();
+        const snapshot = nativeEditorState.snapshot;
+        const scene = currentNativeScene();
+        if (!snapshot || !scene || !elements.editor || nativeEditorState.isSaving) return;
+
+        flushNativeEditorFields();
+        normalizeNativeOrders();
+        const now = new Date().toISOString();
+        snapshot.filesystemSavedAt = now;
+        snapshot.exportedAt = snapshot.exportedAt || now;
+        if (snapshot.project) {
+            snapshot.project.modified = now;
+            snapshot.project.updatedAt = Date.now();
+        }
+        scene.modified = now;
+        scene.updatedAt = Date.now();
+
+        nativeEditorState.isSaving = true;
+        setNativeSaveStatus(options.reason === 'autosave' ? '自动保存中...' : '保存中...', 'busy');
+        if (elements.saveButton) elements.saveButton.disabled = true;
+        try {
+            const response = await fetch('/api/save-project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(snapshot)
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            nativeEditorState.projectSource = result.source || nativeEditorState.projectSource;
+            loadReaderFromProjectSnapshot(snapshot);
+            await loadProjectLibrary();
+            nativeEditorState.dirty = false;
+            setNativeSaveStatus(options.reason === 'autosave' ? '已自动保存' : '已保存', 'ok');
+        } catch (error) {
+            console.error('Native editor save failed:', error);
+            setNativeSaveStatus(`保存失败：${error.message || error}`, 'error');
+        } finally {
+            nativeEditorState.isSaving = false;
+            if (elements.saveButton) elements.saveButton.disabled = false;
+        }
+    }
+
+    function nativeId(prefix) {
+        return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    function requestNativeName(options = {}) {
+        const elements = nativeEditorElements();
+        if (!elements.nameModal || !elements.nameForm || !elements.nameInput) {
+            return Promise.resolve(window.prompt(options.title || '名称', options.defaultValue || '') || '');
+        }
+        return new Promise((resolve) => {
+            let settled = false;
+            const cleanup = () => {
+                elements.nameForm.removeEventListener('submit', onSubmit);
+                elements.nameCancelButtons.forEach((button) => button.removeEventListener('click', onCancel));
+                elements.nameModal.hidden = true;
+            };
+            const settle = (value) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(String(value || '').trim());
+            };
+            const onSubmit = (event) => {
+                event.preventDefault();
+                const value = elements.nameInput.value.trim();
+                if (!value) {
+                    if (elements.nameStatus) {
+                        elements.nameStatus.textContent = '请输入名称。';
+                        elements.nameStatus.dataset.tone = 'error';
+                    }
+                    elements.nameInput.focus();
+                    return;
+                }
+                settle(value);
+            };
+            const onCancel = () => settle('');
+
+            if (elements.nameKicker) elements.nameKicker.textContent = options.kicker || 'Writer';
+            if (elements.nameTitle) elements.nameTitle.textContent = options.title || '命名';
+            if (elements.nameLabel) elements.nameLabel.textContent = options.label || '名称';
+            if (elements.nameStatus) elements.nameStatus.textContent = '';
+            elements.nameInput.value = options.defaultValue || '';
+            elements.nameForm.addEventListener('submit', onSubmit);
+            elements.nameCancelButtons.forEach((button) => button.addEventListener('click', onCancel));
+            elements.nameModal.hidden = false;
+            window.setTimeout(() => {
+                elements.nameInput.focus();
+                elements.nameInput.select();
+            }, 0);
+        });
+    }
+
+    function activeChapterIdForNativeEditor() {
+        if (nativeEditorState.activeChapterId) return nativeEditorState.activeChapterId;
+        const scene = currentNativeScene();
+        if (scene && scene.chapterId) return scene.chapterId;
+        const snapshot = nativeEditorState.snapshot;
+        return snapshot && snapshot.chapters && snapshot.chapters[0] ? snapshot.chapters[0].id : '';
+    }
+
+    async function addNativeChapter() {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot || !snapshot.project) return;
+        const chapterTitle = await requestNativeName({
+            kicker: '章节',
+            title: '新建章节',
+            label: '章节名称',
+            defaultValue: `第 ${(snapshot.chapters || []).length + 1} 章`
+        });
+        if (!chapterTitle) return;
+        const now = new Date().toISOString();
+        const chapterId = nativeId('chapter');
+        const sceneId = nativeId('scene');
+        snapshot.chapters = snapshot.chapters || [];
+        snapshot.scenes = snapshot.scenes || [];
+        snapshot.sceneContents = snapshot.sceneContents || {};
+        snapshot.chapters.push({
+            id: chapterId,
+            projectId: snapshot.project.id,
+            title: chapterTitle.trim(),
+            order: snapshot.chapters.length,
+            created: now,
+            modified: now,
+            updatedAt: Date.now()
+        });
+        snapshot.scenes.push({
+            id: sceneId,
+            projectId: snapshot.project.id,
+            chapterId,
+            title: '新场景',
+            order: 0,
+            created: now,
+            modified: now,
+            updatedAt: Date.now()
+        });
+        snapshot.sceneContents[sceneId] = '';
+        nativeEditorState.activeSceneId = sceneId;
+        nativeEditorState.activeChapterId = chapterId;
+        renderNativeEditor();
+        markNativeDirty();
+    }
+
+    async function addNativeScene() {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot || !snapshot.project) return;
+        const chapterId = activeChapterIdForNativeEditor();
+        if (!chapterId) return;
+        const sceneTitle = await requestNativeName({
+            kicker: '场景',
+            title: '新建场景',
+            label: '场景名称',
+            defaultValue: `场景 ${(snapshot.scenes || []).filter((scene) => scene.chapterId === chapterId).length + 1}`
+        });
+        if (!sceneTitle) return;
+        const now = new Date().toISOString();
+        const sceneId = nativeId('scene');
+        const chapterScenes = (snapshot.scenes || []).filter((scene) => scene.chapterId === chapterId);
+        snapshot.scenes = snapshot.scenes || [];
+        snapshot.sceneContents = snapshot.sceneContents || {};
+        snapshot.scenes.push({
+            id: sceneId,
+            projectId: snapshot.project.id,
+            chapterId,
+            title: sceneTitle.trim(),
+            order: chapterScenes.length,
+            created: now,
+            modified: now,
+            updatedAt: Date.now()
+        });
+        snapshot.sceneContents[sceneId] = '';
+        nativeEditorState.activeSceneId = sceneId;
+        nativeEditorState.activeChapterId = chapterId;
+        renderNativeEditor();
+        markNativeDirty();
+    }
+
+    function currentNativeChapterByState() {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot) return null;
+        const activeScene = currentNativeScene();
+        const chapterId = nativeEditorState.activeChapterId || (activeScene && activeScene.chapterId);
+        return (snapshot.chapters || []).find((chapter) => chapter.id === chapterId) || null;
+    }
+
+    async function renameNativeChapter() {
+        const chapter = currentNativeChapterByState();
+        if (!chapter) return;
+        const nextTitle = await requestNativeName({
+            kicker: '章节',
+            title: '重命名章节',
+            label: '章节名称',
+            defaultValue: chapter.title || ''
+        });
+        if (!nextTitle || !nextTitle.trim()) return;
+        chapter.title = nextTitle.trim();
+        chapter.modified = new Date().toISOString();
+        chapter.updatedAt = Date.now();
+        renderNativeEditor();
+        markNativeDirty();
+    }
+
+    function deleteNativeChapter() {
+        const snapshot = nativeEditorState.snapshot;
+        const chapter = currentNativeChapterByState();
+        if (!snapshot || !chapter) return;
+        if ((snapshot.chapters || []).length <= 1) {
+            setNativeSaveStatus('至少保留一个章节', 'error');
+            return;
+        }
+        const chapterScenes = (snapshot.scenes || []).filter((scene) => scene.chapterId === chapter.id);
+        const message = chapterScenes.length
+            ? `删除章节“${chapter.title || '未命名章节'}”及其中 ${chapterScenes.length} 个场景？`
+            : `删除章节“${chapter.title || '未命名章节'}”？`;
+        if (!window.confirm(message)) return;
+        const deletedSceneIds = new Set(chapterScenes.map((scene) => scene.id));
+        snapshot.chapters = (snapshot.chapters || []).filter((item) => item.id !== chapter.id);
+        snapshot.scenes = (snapshot.scenes || []).filter((scene) => !deletedSceneIds.has(scene.id));
+        if (snapshot.sceneContents) {
+            deletedSceneIds.forEach((sceneId) => delete snapshot.sceneContents[sceneId]);
+        }
+        normalizeNativeOrders();
+        const nextChapter = (snapshot.chapters || [])[0] || null;
+        const nextScene = nextChapter ? (snapshot.scenes || []).find((scene) => scene.chapterId === nextChapter.id) : null;
+        nativeEditorState.activeChapterId = nextChapter ? nextChapter.id : '';
+        nativeEditorState.activeSceneId = nextScene ? nextScene.id : '';
+        renderNativeEditor();
+        markNativeDirty();
+    }
+
+    async function renameNativeScene() {
+        const scene = currentNativeScene();
+        if (!scene) return;
+        const nextTitle = await requestNativeName({
+            kicker: '场景',
+            title: '重命名场景',
+            label: '场景名称',
+            defaultValue: scene.title || ''
+        });
+        if (!nextTitle) return;
+        scene.title = nextTitle.trim();
+        scene.modified = new Date().toISOString();
+        scene.updatedAt = Date.now();
+        renderNativeEditor();
+        markNativeDirty();
+    }
+
+    function deleteNativeScene() {
+        const snapshot = nativeEditorState.snapshot;
+        const scene = currentNativeScene();
+        if (!snapshot || !scene) return;
+        if ((snapshot.scenes || []).length <= 1) {
+            setNativeSaveStatus('至少保留一个场景', 'error');
+            return;
+        }
+        if (!window.confirm(`删除场景“${scene.title || '未命名场景'}”？`)) return;
+        snapshot.scenes = (snapshot.scenes || []).filter((item) => item.id !== scene.id);
+        if (snapshot.sceneContents) delete snapshot.sceneContents[scene.id];
+        nativeEditorState.activeSceneId = snapshot.scenes[0] ? snapshot.scenes[0].id : '';
+        nativeEditorState.activeChapterId = snapshot.scenes[0] ? snapshot.scenes[0].chapterId : activeChapterIdForNativeEditor();
+        normalizeNativeOrders();
+        renderNativeEditor();
+        markNativeDirty();
+    }
+
+    function moveNativeScene(direction) {
+        const snapshot = nativeEditorState.snapshot;
+        const scene = currentNativeScene();
+        if (!snapshot || !scene) return;
+        flushNativeEditorFields();
+        const chapterScenes = (snapshot.scenes || [])
+            .filter((item) => item.chapterId === scene.chapterId)
+            .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        const index = chapterScenes.findIndex((item) => item.id === scene.id);
+        const nextIndex = index + direction;
+        if (index < 0 || nextIndex < 0 || nextIndex >= chapterScenes.length) return;
+        const other = chapterScenes[nextIndex];
+        const originalOrder = scene.order;
+        scene.order = other.order;
+        other.order = originalOrder;
+        normalizeNativeOrders();
+        renderNativeEditor();
+        markNativeDirty();
+    }
+
+    function switchNativeScene(direction) {
+        const snapshot = nativeEditorState.snapshot;
+        const scene = currentNativeScene();
+        if (!snapshot || !scene) return;
+        flushNativeEditorFields();
+        const orderedScenes = [...(snapshot.scenes || [])]
+            .sort((a, b) => {
+                const chapterA = (snapshot.chapters || []).find((chapter) => chapter.id === a.chapterId);
+                const chapterB = (snapshot.chapters || []).find((chapter) => chapter.id === b.chapterId);
+                const chapterOrder = (Number(chapterA && chapterA.order) || 0) - (Number(chapterB && chapterB.order) || 0);
+                return chapterOrder || ((Number(a.order) || 0) - (Number(b.order) || 0));
+            });
+        const index = orderedScenes.findIndex((item) => item.id === scene.id);
+        const next = orderedScenes[index + direction];
+        if (!next) return;
+        nativeEditorState.activeSceneId = next.id;
+        nativeEditorState.activeChapterId = next.chapterId;
+        renderNativeEditor();
+    }
+
+    function reorderNativeChapter(sourceId, targetId) {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot || sourceId === targetId) return;
+        flushNativeEditorFields();
+        const chapters = [...(snapshot.chapters || [])].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        const sourceIndex = chapters.findIndex((chapter) => chapter.id === sourceId);
+        const targetIndex = chapters.findIndex((chapter) => chapter.id === targetId);
+        if (sourceIndex < 0 || targetIndex < 0) return;
+        const [source] = chapters.splice(sourceIndex, 1);
+        chapters.splice(targetIndex, 0, source);
+        chapters.forEach((chapter, index) => { chapter.order = index; });
+        renderNativeEditor();
+        markNativeDirty();
+    }
+
+    function reorderNativeScene(sourceId, targetId) {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot || sourceId === targetId) return;
+        flushNativeEditorFields();
+        const source = (snapshot.scenes || []).find((scene) => scene.id === sourceId);
+        const target = (snapshot.scenes || []).find((scene) => scene.id === targetId);
+        if (!source || !target || source.chapterId !== target.chapterId) return;
+        const scenes = (snapshot.scenes || [])
+            .filter((scene) => scene.chapterId === target.chapterId)
+            .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        const sourceIndex = scenes.findIndex((scene) => scene.id === sourceId);
+        const targetIndex = scenes.findIndex((scene) => scene.id === targetId);
+        if (sourceIndex < 0 || targetIndex < 0) return;
+        const [item] = scenes.splice(sourceIndex, 1);
+        scenes.splice(targetIndex, 0, item);
+        scenes.forEach((scene, index) => { scene.order = index; });
+        nativeEditorState.activeSceneId = sourceId;
+        nativeEditorState.activeChapterId = target.chapterId;
+        renderNativeEditor();
+        markNativeDirty();
+    }
+
+    function escapeRegExp(text) {
+        return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function nativeSceneMatches(query) {
+        const editor = nativeEditorElements().editor;
+        if (!editor || !query) return [];
+        const text = editor.value || '';
+        if (!text) return [];
+        const pattern = new RegExp(escapeRegExp(query), 'gi');
+        const matches = [];
+        let match;
+        while ((match = pattern.exec(text)) !== null) {
+            matches.push({ start: match.index, end: match.index + match[0].length });
+        }
+        return matches;
+    }
+
+    function updateNativeSearchMatchState() {
+        const elements = nativeEditorElements();
+        const query = nativeEditorState.searchQuery.trim();
+        const matches = query ? nativeSceneMatches(query) : [];
+        nativeEditorState.searchMatchPositions = matches;
+        nativeEditorState.searchMatchIndex = matches.length > 0 ? 0 : -1;
+        renderNativeSearchStatus();
+    }
+
+    function renderNativeSearchStatus() {
+        const elements = nativeEditorElements();
+        const query = nativeEditorState.searchQuery.trim();
+        const matches = nativeEditorState.searchMatchPositions;
+        const count = matches.length;
+        if (!query) {
+            if (elements.searchStatus) elements.searchStatus.textContent = '';
+            if (elements.searchPrev) elements.searchPrev.disabled = true;
+            if (elements.searchNext) elements.searchNext.disabled = true;
+            return;
+        }
+        if (count === 0) {
+            if (elements.searchStatus) elements.searchStatus.textContent = '没有匹配项';
+            if (elements.searchPrev) elements.searchPrev.disabled = true;
+            if (elements.searchNext) elements.searchNext.disabled = true;
+            return;
+        }
+        const idx = nativeEditorState.searchMatchIndex;
+        if (elements.searchStatus) elements.searchStatus.textContent = `第 ${idx + 1}/${count} 个匹配`;
+        if (elements.searchPrev) elements.searchPrev.disabled = count <= 1;
+        if (elements.searchNext) elements.searchNext.disabled = count <= 1;
+        selectNativeSearchMatch(idx);
+    }
+
+    function selectNativeSearchMatch(index) {
+        const editor = nativeEditorElements().editor;
+        const matches = nativeEditorState.searchMatchPositions;
+        if (!editor || index < 0 || index >= matches.length) return;
+        const match = matches[index];
+        editor.focus();
+        editor.setSelectionRange(match.start, match.end);
+        const textBefore = editor.value.slice(0, match.start);
+        const lines = textBefore.split('\n').length;
+        const lineHeight = 20;
+        editor.scrollTop = Math.max(0, (lines - 4) * lineHeight);
+    }
+
+    function navigateNativeSearchMatch(direction) {
+        const matches = nativeEditorState.searchMatchPositions;
+        if (!matches.length) return;
+        let idx = nativeEditorState.searchMatchIndex + direction;
+        if (idx < 0) idx = matches.length - 1;
+        if (idx >= matches.length) idx = 0;
+        nativeEditorState.searchMatchIndex = idx;
+        renderNativeSearchStatus();
+    }
+
+    function replaceNativeText(scope) {
+        const elements = nativeEditorElements();
+        const snapshot = nativeEditorState.snapshot;
+        const query = nativeEditorState.searchQuery;
+        if (!snapshot || !query) return;
+        const replacement = elements.replace ? elements.replace.value : '';
+        flushNativeEditorFields();
+        const pattern = new RegExp(escapeRegExp(query), 'gi');
+        const replaceScene = (scene) => {
+            const current = nativeSceneContent(scene.id);
+            const next = current.replace(pattern, replacement);
+            if (next !== current) {
+                snapshot.sceneContents = snapshot.sceneContents || {};
+                snapshot.sceneContents[scene.id] = next;
+                scene.modified = new Date().toISOString();
+                scene.updatedAt = Date.now();
+                return 1;
+            }
+            return 0;
+        };
+        let count = 0;
+        if (scope === 'all') {
+            (snapshot.scenes || []).forEach((scene) => { count += replaceScene(scene); });
+        } else {
+            const scene = currentNativeScene();
+            if (!scene) return;
+            const matches = nativeEditorState.searchMatchPositions;
+            const matchIndex = nativeEditorState.searchMatchIndex;
+            if (matches.length > 0 && matchIndex >= 0 && matchIndex < matches.length) {
+                const match = matches[matchIndex];
+                const current = nativeSceneContent(scene.id);
+                if (match.start >= 0 && match.end <= current.length) {
+                    const next = current.slice(0, match.start) + replacement + current.slice(match.end);
+                    if (next !== current) {
+                        snapshot.sceneContents = snapshot.sceneContents || {};
+                        snapshot.sceneContents[scene.id] = next;
+                        scene.modified = new Date().toISOString();
+                        scene.updatedAt = Date.now();
+                        count = 1;
+                    }
+                }
+            } else {
+                count += replaceScene(scene);
+            }
+        }
+        if (!count) {
+            setNativeSaveStatus('没有匹配项', 'info');
+            return;
+        }
+        renderNativeEditor();
+        markNativeDirty(`已替换 ${count} 处`);
+    }
+
+    function projectExportName(extension) {
+        const project = nativeEditorState.snapshot && nativeEditorState.snapshot.project;
+        const base = String(project && project.name ? project.name : 'Writingway Project')
+            .replace(/[\\/:*?"<>|]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim() || 'Writingway Project';
+        return `${base}.${extension}`;
+    }
+
+    function buildNativeExport(format) {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot) return '';
+        flushNativeEditorFields();
+        normalizeNativeOrders();
+        const chapters = [...(snapshot.chapters || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+        const scenes = [...(snapshot.scenes || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+        const markdown = format === 'markdown';
+        const lines = [];
+        chapters.forEach((chapter) => {
+            lines.push(markdown ? `# ${chapter.title || '未命名章节'}` : (chapter.title || '未命名章节'));
+            scenes.filter((scene) => scene.chapterId === chapter.id).forEach((scene) => {
+                const content = nativeSceneContent(scene.id).trim();
+                if (scene.title) lines.push('', markdown ? `## ${scene.title}` : scene.title);
+                if (content) lines.push('', content);
+            });
+            lines.push('');
+        });
+        return lines.join('\n').replace(/\n{4,}/g, '\n\n\n').trim() + '\n';
+    }
+
+    async function downloadNativeExport(format) {
+        const elements = nativeEditorElements();
+        const projectId = currentProjectId();
+        if (!projectId) {
+            setNativeSaveStatus('没有可导出的项目', 'error');
+            return;
+        }
+        if (nativeEditorState.dirty) {
+            await saveNativeScene();
+        } else {
+            flushNativeEditorFields();
+        }
+        const extensionMap = { markdown: 'md', text: 'txt', html: 'html', epub: 'epub' };
+        const extension = extensionMap[format] || format;
+        const includeSceneTitles = elements.exportIncludeSceneTitles ? elements.exportIncludeSceneTitles.checked : true;
+        triggerDownload(`/api/export-project-document?${new URLSearchParams({ projectId, format, includeSceneTitles }).toString()}`);
+        setNativeSaveStatus(`已开始导出 ${extension.toUpperCase()}`, 'ok');
+    }
+
+    async function downloadNativeProjectPackage() {
+        const projectId = currentProjectId();
+        if (!projectId) {
+            setNativeSaveStatus('没有可导出的项目', 'error');
+            return;
+        }
+        if (nativeEditorState.dirty) {
+            await saveNativeScene();
+        } else {
+            flushNativeEditorFields();
+        }
+        triggerDownload(`/api/export-project-package?${new URLSearchParams({ projectId }).toString()}`);
+        setNativeSaveStatus('已开始导出项目包', 'ok');
+    }
+
+    function nativeGenerationHistory() {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot) return [];
+        return Array.isArray(snapshot.promptHistory) ? snapshot.promptHistory : [];
+    }
+
+    function selectedPromptTemplate() {
+        return promptState.prompts.find((prompt) => prompt.id === promptState.selectedId)
+            || promptState.prompts[0]
+            || { id: 'default-prose', title: '默认正文扩写', category: 'prose', content: '', systemContent: '' };
+    }
+
+    async function loadPrompts() {
+        const projectId = currentProjectId();
+        if (!projectId) {
+            promptState.prompts = [];
+            promptState.selectedId = 'default-prose';
+            renderNativeGeneration();
+            return;
+        }
+        try {
+            const response = await fetch(`/api/prompts?${new URLSearchParams({ projectId, category: 'prose' }).toString()}`, { cache: 'no-store' });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+            promptState.prompts = result.prompts || [];
+            if (!promptState.prompts.some((prompt) => prompt.id === promptState.selectedId)) {
+                promptState.selectedId = promptState.prompts[0] ? promptState.prompts[0].id : 'default-prose';
+            }
+            if (nativeEditorState.snapshot) nativeEditorState.snapshot.prompts = promptState.prompts.filter((prompt) => prompt.id !== 'default-prose');
+        } catch (error) {
+            console.warn('Failed to load prompts:', error);
+            promptState.prompts = [{ id: 'default-prose', title: '默认正文扩写', category: 'prose', content: '', systemContent: '' }];
+        }
+        renderNativeGeneration();
+    }
+
+    function renderPromptManager() {
+        const elements = nativeEditorElements();
+        const prompt = selectedPromptTemplate();
+        if (elements.promptManagerTitle) elements.promptManagerTitle.value = prompt.title || '';
+        if (elements.promptManagerCategory) elements.promptManagerCategory.value = prompt.category || 'prose';
+        if (elements.promptManagerSystem) elements.promptManagerSystem.value = prompt.systemContent || '';
+        if (elements.promptManagerContent) elements.promptManagerContent.value = prompt.content || '';
+        if (elements.promptManagerDelete) elements.promptManagerDelete.disabled = !prompt || prompt.id === 'default-prose';
+    }
+
+    async function savePromptTemplate(event) {
+        if (event) event.preventDefault();
+        const projectId = currentProjectId();
+        if (!projectId) return;
+        const elements = nativeEditorElements();
+        const current = selectedPromptTemplate();
+        const prompt = {
+            id: current && current.id !== 'default-prose' ? current.id : undefined,
+            category: elements.promptManagerCategory ? elements.promptManagerCategory.value : 'prose',
+            title: elements.promptManagerTitle ? elements.promptManagerTitle.value : '新提示词',
+            systemContent: elements.promptManagerSystem ? elements.promptManagerSystem.value : '',
+            content: elements.promptManagerContent ? elements.promptManagerContent.value : ''
+        };
+        const response = await fetch('/api/prompts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, prompt })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+            setNativeSaveStatus(`提示词保存失败：${result.error || response.status}`, 'error');
+            return;
+        }
+        promptState.selectedId = result.prompt.id;
+        await loadPrompts();
+        renderPromptManager();
+        setNativeSaveStatus('提示词已保存', 'ok');
+    }
+
+    async function deletePromptTemplate() {
+        const projectId = currentProjectId();
+        const prompt = selectedPromptTemplate();
+        if (!projectId || !prompt || prompt.id === 'default-prose') return;
+        if (!window.confirm(`删除提示词“${prompt.title || '未命名'}”？`)) return;
+        const response = await fetch('/api/delete-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, promptId: prompt.id })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+            setNativeSaveStatus(`提示词删除失败：${result.error || response.status}`, 'error');
+            return;
+        }
+        promptState.selectedId = 'default-prose';
+        await loadPrompts();
+        renderPromptManager();
+        setNativeSaveStatus('提示词已删除', 'ok');
+    }
+
+    function newPromptTemplate() {
+        promptState.selectedId = 'default-prose';
+        const elements = nativeEditorElements();
+        if (elements.promptManagerTitle) elements.promptManagerTitle.value = '新正文提示词';
+        if (elements.promptManagerCategory) elements.promptManagerCategory.value = 'prose';
+        if (elements.promptManagerSystem) elements.promptManagerSystem.value = '';
+        if (elements.promptManagerContent) elements.promptManagerContent.value = '';
+        if (elements.promptManagerDelete) elements.promptManagerDelete.disabled = true;
+    }
+
+    function renderNativeRewrite() {
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        if (elements.rewriteTaskButtons && elements.rewriteTaskButtons.length) {
+            elements.rewriteTaskButtons.forEach((btn) => {
+                const task = btn.getAttribute('data-native-rewrite-task');
+                btn.classList.toggle('is-active', task === nativeEditorState.rewrite.rewriteTask);
+            });
+        }
+        if (elements.rewritePreset && elements.rewritePreset.value !== nativeEditorState.rewrite.preset) {
+            elements.rewritePreset.value = nativeEditorState.rewrite.preset;
+        }
+        if (elements.rewriteInstruction && elements.rewriteInstruction.value !== nativeEditorState.rewrite.instruction) {
+            elements.rewriteInstruction.value = nativeEditorState.rewrite.instruction;
+        }
+        const hasSelection = !!(elements.editor && elements.editor.selectionStart !== elements.editor.selectionEnd);
+        if (elements.previewRewrite) elements.previewRewrite.disabled = !scene || !hasSelection || nativeEditorState.generation.inProgress;
+        if (elements.startRewrite) elements.startRewrite.disabled = !scene || !hasSelection || nativeEditorState.generation.inProgress;
+        if (elements.regenerateSelection) elements.regenerateSelection.disabled = !scene || !hasSelection || nativeEditorState.generation.inProgress;
+    }
+
+    function renderNativeCharacters() {
+        const elements = nativeEditorElements();
+        if (elements.newCharacter) elements.newCharacter.disabled = !currentProjectId();
+        if (elements.openCompendium) elements.openCompendium.disabled = !currentProjectId();
+        if (!elements.characterList) return;
+        elements.characterList.replaceChildren();
+        const characters = (compendiumState.entries || [])
+            .filter((entry) => entry.type === 'character' || entry.category === 'character')
+            .sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'zh-CN'));
+        if (!characters.length) {
+            const empty = document.createElement('div');
+            empty.className = 'desktop-native-character-card';
+            empty.textContent = currentProjectId() ? '还没有人物卡。' : '打开项目后可创建人物卡。';
+            elements.characterList.appendChild(empty);
+            return;
+        }
+        characters.forEach((entry) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'desktop-native-character-card';
+            const title = document.createElement('strong');
+            title.textContent = entry.title || '未命名人物';
+            const summary = document.createElement('span');
+            summary.textContent = entry.summary || entry.body || '暂无简介';
+            item.append(title, summary);
+            item.addEventListener('click', () => {
+                compendiumState.selectedId = entry.id;
+                setView('compendium');
+                renderCompendium();
+            });
+            elements.characterList.appendChild(item);
+        });
+    }
+
+    function nativeContextStorageKey() {
+        return currentProjectId() ? `writingway:nativeContext:${currentProjectId()}` : '';
+    }
+
+    function saveNativeContextPrefs() {
+        const key = nativeContextStorageKey();
+        if (!key) return;
+        try {
+            window.localStorage.setItem(key, JSON.stringify(nativeEditorState.context));
+        } catch (error) { /* ignore */ }
+    }
+
+    function loadNativeContextPrefs() {
+        const key = nativeContextStorageKey();
+        nativeEditorState.context = { compendiumIds: [], sceneModes: {} };
+        if (!key) return;
+        try {
+            const parsed = JSON.parse(window.localStorage.getItem(key) || '{}');
+            nativeEditorState.context = {
+                compendiumIds: Array.isArray(parsed.compendiumIds) ? parsed.compendiumIds : [],
+                compendiumTags: Array.isArray(parsed.compendiumTags) ? parsed.compendiumTags : [],
+                chapterModes: parsed.chapterModes && typeof parsed.chapterModes === 'object' ? parsed.chapterModes : {},
+                sceneModes: parsed.sceneModes && typeof parsed.sceneModes === 'object' ? parsed.sceneModes : {}
+            };
+        } catch (error) { /* ignore */ }
+    }
+
+    function renderNativeContext() {
+        const elements = nativeEditorElements();
+        const snapshot = nativeEditorState.snapshot;
+        if (!elements.contextCompendium || !elements.contextScenes) return;
+        elements.contextCompendium.replaceChildren();
+        if (elements.contextCompendiumTags) elements.contextCompendiumTags.replaceChildren();
+        if (elements.contextChapters) elements.contextChapters.replaceChildren();
+        elements.contextScenes.replaceChildren();
+        if (!snapshot || !snapshot.project) {
+            elements.contextCompendium.textContent = '打开项目后选择资料。';
+            if (elements.contextCompendiumTags) elements.contextCompendiumTags.textContent = '打开项目后选择资料标签。';
+            if (elements.contextChapters) elements.contextChapters.textContent = '打开项目后选择章节。';
+            elements.contextScenes.textContent = '打开项目后选择场景。';
+            renderNativeContextSummary();
+            return;
+        }
+        const compendium = compendiumState.entries || snapshot.compendium || [];
+        if (!compendium.length) {
+            elements.contextCompendium.textContent = '暂无资料。';
+        } else {
+            compendium.forEach((entry) => {
+                const label = document.createElement('label');
+                label.className = 'desktop-native-context-row';
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.checked = nativeEditorState.context.compendiumIds.includes(entry.id);
+                input.addEventListener('change', () => {
+                    const set = new Set(nativeEditorState.context.compendiumIds);
+                    if (input.checked) set.add(entry.id); else set.delete(entry.id);
+                    nativeEditorState.context.compendiumIds = Array.from(set);
+                    saveNativeContextPrefs();
+                    renderNativeContextSummary();
+                });
+                const text = document.createElement('span');
+                text.textContent = `${entry.title || '未命名资料'}${entry.type ? ` · ${entry.type}` : ''}`;
+                label.append(input, text);
+                elements.contextCompendium.appendChild(label);
+            });
+        }
+        const tagSet = new Set();
+        compendium.forEach((entry) => {
+            (entry.tags || []).forEach((tag) => {
+                const normalized = String(tag || '').trim();
+                if (normalized) tagSet.add(normalized);
+            });
+        });
+        if (elements.contextCompendiumTags) {
+            const tags = Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+            if (!tags.length) {
+                elements.contextCompendiumTags.textContent = '暂无资料标签。';
+            } else {
+                tags.forEach((tag) => {
+                    const label = document.createElement('label');
+                    label.className = 'desktop-native-context-row';
+                    const input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.checked = nativeEditorState.context.compendiumTags.includes(tag);
+                    input.addEventListener('change', () => {
+                        const set = new Set(nativeEditorState.context.compendiumTags);
+                        if (input.checked) set.add(tag); else set.delete(tag);
+                        nativeEditorState.context.compendiumTags = Array.from(set);
+                        saveNativeContextPrefs();
+                        renderNativeContextSummary();
+                    });
+                    const text = document.createElement('span');
+                    text.textContent = tag;
+                    label.append(input, text);
+                    elements.contextCompendiumTags.appendChild(label);
+                });
+            }
+        }
+        if (elements.contextChapters) {
+            const chapters = [...(snapshot.chapters || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+            if (!chapters.length) {
+                elements.contextChapters.textContent = '暂无章节。';
+            } else {
+                chapters.forEach((chapter) => {
+                    const row = document.createElement('label');
+                    row.className = 'desktop-native-context-row';
+                    const select = document.createElement('select');
+                    select.value = nativeEditorState.context.chapterModes[chapter.id] || '';
+                    [['', '不引用'], ['summary', '摘要'], ['full', '全文']].forEach(([value, label]) => {
+                        const option = document.createElement('option');
+                        option.value = value;
+                        option.textContent = label;
+                        select.appendChild(option);
+                    });
+                    select.addEventListener('change', () => {
+                        if (select.value) nativeEditorState.context.chapterModes[chapter.id] = select.value;
+                        else delete nativeEditorState.context.chapterModes[chapter.id];
+                        saveNativeContextPrefs();
+                        renderNativeContextSummary();
+                    });
+                    const text = document.createElement('span');
+                    text.textContent = chapter.title || '未命名章节';
+                    row.append(select, text);
+                    elements.contextChapters.appendChild(row);
+                });
+            }
+        }
+        const scenes = [...(snapshot.scenes || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+        if (!scenes.length) {
+            elements.contextScenes.textContent = '暂无场景。';
+        } else {
+            scenes.forEach((scene) => {
+                const row = document.createElement('label');
+                row.className = 'desktop-native-context-row';
+                const select = document.createElement('select');
+                select.value = nativeEditorState.context.sceneModes[scene.id] || '';
+                [['', '不引用'], ['summary', '摘要'], ['full', '全文']].forEach(([value, label]) => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = label;
+                    select.appendChild(option);
+                });
+                select.addEventListener('change', () => {
+                    if (select.value) nativeEditorState.context.sceneModes[scene.id] = select.value;
+                    else delete nativeEditorState.context.sceneModes[scene.id];
+                    saveNativeContextPrefs();
+                    renderNativeContextSummary();
+                });
+                const text = document.createElement('span');
+                text.textContent = scene.title || '未命名场景';
+                row.append(select, text);
+                elements.contextScenes.appendChild(row);
+            });
+        }
+        renderNativeContextSummary();
+    }
+
+    function renderNativeContextSummary() {
+        const elements = nativeEditorElements();
+        const snapshot = nativeEditorState.snapshot;
+        if (!elements.contextSummary) return;
+        if (!snapshot || !snapshot.project) {
+            elements.contextSummary.textContent = '打开项目后选择引用的上下文。';
+            return;
+        }
+        const ctx = nativeEditorState.context;
+        const compendium = compendiumState.entries || snapshot.compendium || [];
+        const selectedEntryIds = new Set(ctx.compendiumIds || []);
+        const selectedTagSet = new Set(ctx.compendiumTags || []);
+        const tagMatchedIds = new Set();
+        const entryMap = new Map();
+        compendium.forEach((entry) => {
+            entryMap.set(entry.id, entry);
+            if (!selectedEntryIds.has(entry.id)) {
+                const tags = Array.isArray(entry.tags) ? entry.tags.map((t) => String(t || '').trim()).filter(Boolean) : [];
+                if (tags.some((t) => selectedTagSet.has(t))) tagMatchedIds.add(entry.id);
+            }
+        });
+        const chapterModes = ctx.chapterModes || {};
+        const sceneModes = ctx.sceneModes || {};
+        const selectedChapters = Object.entries(chapterModes).filter(([, mode]) => mode);
+        const selectedScenes = Object.entries(sceneModes).filter(([, mode]) => mode);
+        const parts = [];
+        const directCount = selectedEntryIds.size;
+        const tagCount = tagMatchedIds.size;
+        if (directCount > 0 || tagCount > 0) {
+            const names = [];
+            selectedEntryIds.forEach((id) => {
+                const entry = entryMap.get(id);
+                if (entry) names.push(entry.title || '未命名资料');
+            });
+            tagMatchedIds.forEach((id) => {
+                const entry = entryMap.get(id);
+                if (entry) names.push(entry.title || '未命名资料');
+            });
+            const label = [];
+            if (directCount > 0) label.push(`${directCount}条直接引用`);
+            if (tagCount > 0) label.push(`${tagCount}条标签匹配`);
+            const preview = names.slice(0, 3).join('、');
+            const suffix = names.length > 3 ? ` 等${names.length}条` : '';
+            parts.push(`资料: ${label.join('，')}（${preview}${suffix}）`);
+        }
+        if (selectedChapters.length > 0) {
+            const modeLabels = { summary: '摘要', full: '全文' };
+            const list = selectedChapters.map(([id, mode]) => {
+                const chapter = (snapshot.chapters || []).find((c) => c.id === id);
+                return `${chapter ? chapter.title || '未命名章节' : '未命名章节'}（${modeLabels[mode] || mode}）`;
+            }).join(', ');
+            parts.push(`章节引用: ${list}`);
+        }
+        if (selectedScenes.length > 0) {
+            const modeLabels = { summary: '摘要', full: '全文' };
+            const list = selectedScenes.map(([id, mode]) => {
+                const scene = (snapshot.scenes || []).find((s) => s.id === id);
+                return `${scene ? scene.title || '未命名场景' : '未命名场景'}（${modeLabels[mode] || mode}）`;
+            }).join(', ');
+            parts.push(`场景引用: ${list}`);
+        }
+        if (parts.length === 0) {
+            elements.contextSummary.textContent = '未选择引用上下文。';
+            return;
+        }
+        elements.contextSummary.textContent = parts.join(' | ');
+    }
+
+    function rewriteInstructionText() {
+        const preset = nativeEditorState.rewrite.preset || 'polish';
+        const custom = (nativeEditorState.rewrite.instruction || '').trim();
+        const presets = {
+            'balanced-polish': '重写选中文本，使语言更自然、流畅、有画面感，同时保留原意、事实信息、人物关系和叙事视角。不要扩写过多，长度尽量接近原文。',
+            tighten: '压缩并精炼选中文本，删去重复、拖沓、解释过度的句子，让表达更干净有力。保留关键动作、信息和情绪，长度约为原文的 60%-80%。',
+            expand: '适度扩写选中文本，补足必要的动作衔接、心理反应、环境细节和节奏停顿。不要改变剧情走向和人物意图，长度约为原文的 1.3-1.8 倍。',
+            'show-dont-tell': '把选中文本中的直白说明、总结性描述和情绪标签，改写成具体动作、感官细节、人物反应和可观察的场景表现。',
+            sensory: '增强选中文本的感官描写和空间感，优先使用视觉、声音、触感、气味或温度等细节，让场景更可感。',
+            tension: '提高选中文本的紧张感和压迫感。加强动作节奏、停顿、未知感、人物警觉或危险暗示。不要提前揭示答案。',
+            'pace-fast': '让选中文本节奏更快、更利落。减少解释和内心独白，使用更短的句子、更清晰的动作链和更直接的冲突推进。',
+            'pace-slow': '放慢选中文本叙事节奏，增加停顿、观察、细微动作和情绪层次，让读者更充分地感受到这一刻的重要性。',
+            'dialogue-natural': '重写选中文本中的对白，让台词更自然、有角色感，减少书面腔和信息直给，并加入适量动作或停顿承载潜台词。',
+            subtext: '增加潜台词。让人物少直接说出真实想法，把矛盾、犹豫、亲近或敌意藏在措辞、停顿、动作和反应里。',
+            'emotion-deeper': '加深人物情绪层次。通过身体反应、记忆闪回、细微动作或自我克制表现情绪，避免直接堆砌情绪标签。',
+            'character-voice': '让语言更贴合当前视角人物的性格、身份、年龄、经历和情绪状态。调整用词、观察重点和反应方式，使角色声音更鲜明。',
+            literary: '将选中文本重写得更文学化：语言更凝练，意象更准确，节奏更有余韵。避免华丽堆砌和空泛比喻。',
+            webnovel: '将选中文本重写得更适合中文网文连载：节奏明确，情绪更外放，冲突更清楚，句子更有推进力。',
+            cinematic: '增强电影镜头感。用清晰的画面调度、动作顺序、视线移动和环境反应呈现场景，直接写成小说正文。',
+            clarity: '理清句子逻辑、人物指代、动作先后和因果关系。不要改变剧情，只让读者更容易理解正在发生什么。',
+            continuity: '让选中文本更自然地衔接上下文。注意代词、时间、动作连续性、情绪延续和叙述视角一致性。',
+            'remove-cliche': '去掉陈词滥调、套路化形容和常见套话，换成更具体、更贴合当前场景和人物的表达。',
+            'grammar-copyedit': '只做校对级修改：修正错别字、病句、标点、重复和明显不顺的表达。尽量保留原句结构、风格和长度。',
+            'same-meaning-alt': '在不改变原意、不增删剧情信息的前提下，把选中文本换一种更自然、更有可读性的写法。长度接近原文。'
+        };
+        return custom || presets[preset] || presets['balanced-polish'];
+    }
+
+    function buildNativeRewritePrompt() {
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        if (!scene || !elements.editor) return null;
+        const start = elements.editor.selectionStart || 0;
+        const end = elements.editor.selectionEnd || 0;
+        if (start === end) return null;
+        const selectedText = elements.editor.value.slice(start, end);
+        const instruction = rewriteInstructionText();
+        return {
+            messages: [
+                {
+                    role: 'system',
+                    content: '你是小说编辑助手。只输出改写后的正文，不要解释，不要加标题。'
+                },
+                {
+                    role: 'user',
+                    content: [
+                        `改写要求：${instruction}`,
+                        '',
+                        `当前场景上下文：\n${elements.editor.value.slice(Math.max(0, start - 1200), Math.min(elements.editor.value.length, end + 1200))}`,
+                        '',
+                        `需要改写的文本：\n${selectedText}`,
+                        '',
+                        '请只输出改写后的文本：'
+                    ].join('\n')
+                }
+            ],
+            asString() {
+                return this.messages.map((message) => `<|im_start|>${message.role}\n${message.content}<|im_end|>`).join('\n');
+            },
+            selection: { start, end, selectedText },
+            instruction
+        };
+    }
+
+    function buildNativeRegenerateSelectionPrompt() {
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        if (!scene || !elements.editor) return null;
+        const start = elements.editor.selectionStart || 0;
+        const end = elements.editor.selectionEnd || 0;
+        if (start === end) return null;
+        const value = elements.editor.value || '';
+        const selectedText = value.slice(start, end);
+        const instruction = (nativeEditorState.rewrite.instruction || '').trim() || '重新生成选中文段，使它自然衔接前后文，并保留当前剧情意图。';
+        const contextBefore = value.slice(Math.max(0, start - 8000), start);
+        const contextAfter = value.slice(end, Math.min(value.length, end + 8000));
+        return {
+            messages: [
+                {
+                    role: 'system',
+                    content: '你是小说共同写作助手。只输出用于替换选区的小说正文，不要解释，不要加标题，不要使用 Markdown。'
+                },
+                {
+                    role: 'user',
+                    content: [
+                        '请重新生成选中文段。',
+                        '必须使用前后文保持连续性，替换文本要能自然插回原位置。',
+                        '不要输出前文、后文、标签、分析或说明。',
+                        '',
+                        `用户要求：${instruction}`,
+                        '',
+                        `前文：\n${contextBefore || '[场景开头]'}`,
+                        '',
+                        `需要替换的选中文段：\n${selectedText}`,
+                        '',
+                        `后文：\n${contextAfter || '[场景结尾]'}`,
+                        '',
+                        '替换后的正文：'
+                    ].join('\n')
+                }
+            ],
+            asString() {
+                return this.messages.map((message) => `<|im_start|>${message.role}\n${message.content}<|im_end|>`).join('\n');
+            },
+            selection: { start, end, selectedText },
+            instruction
+        };
+    }
+
+    function renderNativeGeneration() {
+        const elements = nativeEditorElements();
+        const generation = nativeEditorState.generation;
+        const scene = currentNativeScene();
+        if (elements.genTaskButtons && elements.genTaskButtons.length) {
+            elements.genTaskButtons.forEach((btn) => {
+                const task = btn.getAttribute('data-native-gen-task');
+                btn.classList.toggle('is-active', task === generation.genTask);
+            });
+        }
+        if (elements.beatInput) {
+            if (elements.beatInput.value !== generation.beat) {
+                elements.beatInput.value = generation.beat;
+            }
+            const placeholders = {
+                'continue': '输入这一段要发生什么，或写下续写方向（可选）',
+                'beat': '输入节拍描述（必填）',
+                'summary': '无需输入，直接生成场景摘要'
+            };
+            elements.beatInput.placeholder = placeholders[generation.genTask] || '输入这一段要发生什么，或写下续写方向（可选）';
+        }
+        const isBeat = generation.genTask === 'beat';
+        const canGenerate = !!scene && !generation.inProgress && (isBeat ? !!generation.beat.trim() : true);
+        if (elements.previewPrompt) {
+            const isSummary = generation.genTask === 'summary';
+            elements.previewPrompt.disabled = !scene || generation.inProgress || isSummary || (isBeat && !generation.beat.trim());
+        }
+        if (elements.generate) elements.generate.disabled = !canGenerate;
+        if (elements.cancelGeneration) {
+            elements.cancelGeneration.hidden = !generation.inProgress;
+            elements.cancelGeneration.disabled = !generation.inProgress;
+        }
+        if (elements.generationOutput) elements.generationOutput.hidden = !generation.text && !generation.inProgress;
+        if (elements.generationResult) elements.generationResult.textContent = generation.text || (generation.inProgress ? '生成中...' : '');
+        if (elements.reasoning) elements.reasoning.hidden = !generation.reasoning;
+        if (elements.reasoningText) elements.reasoningText.textContent = generation.reasoning || '';
+        if (elements.acceptGeneration) elements.acceptGeneration.disabled = !generation.text || generation.inProgress;
+        if (elements.retryGeneration) {
+            const needsBeat = generation.genTask === 'beat';
+            elements.retryGeneration.disabled = generation.inProgress || (needsBeat && !generation.beat.trim());
+        }
+        if (elements.discardGeneration) elements.discardGeneration.disabled = generation.inProgress || !generation.text;
+        if (elements.insertMode) elements.insertMode.disabled = generation.inProgress || !generation.text;
+        if (elements.promptTemplate) {
+            elements.promptTemplate.replaceChildren();
+            const prompts = promptState.prompts.length ? promptState.prompts : [{ id: 'default-prose', title: '默认正文扩写' }];
+            prompts.forEach((prompt) => {
+                const option = document.createElement('option');
+                option.value = prompt.id;
+                option.textContent = prompt.title || '未命名提示词';
+                elements.promptTemplate.appendChild(option);
+            });
+            elements.promptTemplate.value = promptState.selectedId;
+            elements.promptTemplate.disabled = !currentProjectId();
+        }
+        if (elements.managePrompts) elements.managePrompts.disabled = !currentProjectId();
+
+        if (elements.generationHistory) {
+            const allRecords = nativeGenerationHistory();
+            const scene = currentNativeScene();
+            const filtered = nativeEditorState.historySceneFilter && scene
+                ? allRecords.filter((r) => r.sceneId === scene.id)
+                : allRecords;
+            const records = filtered.slice(-5).reverse();
+            elements.generationHistory.replaceChildren();
+            if (elements.historyToolbar) {
+                elements.historyToolbar.replaceChildren();
+                const filterToggle = document.createElement('button');
+                filterToggle.type = 'button';
+                filterToggle.className = 'desktop-native-history-filter-toggle';
+                filterToggle.setAttribute('data-native-history-filter', '');
+                filterToggle.textContent = '当前场景';
+                filterToggle.setAttribute('aria-pressed', nativeEditorState.historySceneFilter ? 'true' : 'false');
+                if (nativeEditorState.historySceneFilter) filterToggle.classList.add('is-active');
+                filterToggle.addEventListener('click', () => {
+                    nativeEditorState.historySceneFilter = !nativeEditorState.historySceneFilter;
+                    renderNativeGeneration();
+                });
+                elements.historyToolbar.appendChild(filterToggle);
+            }
+            if (!records.length) {
+                const empty = document.createElement('div');
+                empty.className = 'desktop-native-history-item';
+                empty.textContent = '暂无生成记录';
+                elements.generationHistory.appendChild(empty);
+            } else {
+                const snapshot = nativeEditorState.snapshot;
+                const scenes = (snapshot && Array.isArray(snapshot.scenes)) ? snapshot.scenes : [];
+                const TASK_LABELS = {
+                    'fiction-prose': '正文扩写',
+                    'summary': '场景摘要',
+                    'continue': '续写',
+                    'beat': '节拍生成'
+                };
+                records.forEach((record) => {
+                    const item = document.createElement('div');
+                    item.className = 'desktop-native-history-item';
+                    const taskLabel = document.createElement('div');
+                    taskLabel.className = 'desktop-native-history-task-label';
+                    taskLabel.setAttribute('data-native-history-task', '');
+                    taskLabel.textContent = TASK_LABELS[record.task] || record.task || '生成';
+                    const sceneName = scenes.find((s) => s.id === record.sceneId);
+                    if (sceneName) {
+                        taskLabel.textContent += ` · ${sceneName.title || sceneName.id}`;
+                        taskLabel.title = sceneName.title || sceneName.id;
+                    }
+                    const title = document.createElement('strong');
+                    title.textContent = record.beat || '未命名生成';
+                    const meta = document.createElement('span');
+                    meta.className = 'desktop-native-history-meta';
+                    meta.setAttribute('data-native-history-meta', '');
+                    const wc = countNativeWords(record.resultText || '');
+                    meta.textContent = `${new Date(record.createdAt || Date.now()).toLocaleString('zh-CN')} · ${wc} 字`;
+                    const preview = document.createElement('div');
+                    preview.className = 'desktop-native-history-preview';
+                    preview.setAttribute('data-native-history-preview', '');
+                    const previewText = (record.resultText || '').trim();
+                    preview.textContent = previewText.slice(0, 60) + (previewText.length > 60 ? '...' : '');
+                    const actions = document.createElement('div');
+                    actions.className = 'desktop-native-history-actions';
+                    const reuse = document.createElement('button');
+                    reuse.type = 'button';
+                    reuse.textContent = '复用提示';
+                    reuse.setAttribute('data-native-history-reuse', '');
+                    reuse.addEventListener('click', () => {
+                        generation.beat = record.beat || '';
+                        generation.text = record.resultText || '';
+                        generation.reasoning = record.reasoning || '';
+                        generation.prompt = { messages: record.messages || [], asString: () => record.promptText || '' };
+                        renderNativeGeneration();
+                    });
+                    const copy = document.createElement('button');
+                    copy.type = 'button';
+                    copy.textContent = '复制';
+                    copy.setAttribute('data-native-history-copy', '');
+                    copy.disabled = !record.resultText;
+                    copy.addEventListener('click', () => copyNativeHistoryRecord(record));
+                    const retry = document.createElement('button');
+                    retry.type = 'button';
+                    retry.textContent = '重试';
+                    retry.setAttribute('data-native-history-retry', '');
+                    retry.disabled = !scene;
+                    retry.addEventListener('click', () => retryNativeHistoryRecord(record));
+                    const insert = document.createElement('button');
+                    insert.type = 'button';
+                    insert.textContent = '写入';
+                    insert.setAttribute('data-native-history-insert', '');
+                    insert.disabled = !scene || !record.resultText;
+                    insert.addEventListener('click', () => insertNativeHistoryRecord(record));
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.textContent = '删除';
+                    remove.setAttribute('data-native-history-delete', '');
+                    remove.addEventListener('click', () => deleteNativeHistoryRecord(record));
+                    actions.append(reuse, copy, retry, insert, remove);
+                    item.append(taskLabel, title, meta, preview, actions);
+                    elements.generationHistory.appendChild(item);
+                });
+            }
+        }
+    }
+
+    function insertNativeHistoryRecord(record) {
+        const generation = nativeEditorState.generation;
+        if (!record || !record.resultText) return;
+        if (generation.text && generation.inlineBaseText) restorePendingInlineGeneration();
+        generation.beat = record.beat || '';
+        generation.text = record.resultText || '';
+        generation.reasoning = record.reasoning || '';
+        generation.prompt = { messages: record.messages || [], asString: () => record.promptText || '' };
+        generation.record = record;
+        if (!prepareInlineGeneration('fiction-prose', null)) return;
+        syncInlineGenerationToEditor();
+        flushNativeEditorFields();
+        markNativeDirty('历史生成已写入正文，未保存');
+        renderNativeGeneration();
+    }
+
+    function deleteNativeHistoryRecord(record) {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot || !Array.isArray(snapshot.promptHistory) || !record) return;
+        snapshot.promptHistory = snapshot.promptHistory.filter((item) => item.id !== record.id);
+        if (nativeEditorState.generation.record && nativeEditorState.generation.record.id === record.id) {
+            nativeEditorState.generation.record = null;
+        }
+        markNativeDirty('历史记录已删除，未保存');
+        renderNativeGeneration();
+    }
+
+    async function copyNativeHistoryRecord(record) {
+        if (!record || !record.resultText) return;
+        window.__writingwayAuditClipboard = record.resultText;
+        try {
+            if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(record.resultText);
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = record.resultText;
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+            }
+            setNativeSaveStatus('已复制到剪贴板', 'ok');
+        } catch (error) {
+            setNativeSaveStatus('复制失败', 'error');
+        }
+    }
+
+    async function retryNativeHistoryRecord(record) {
+        if (!record || !record.beat) return;
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        if (!scene) {
+            setNativeSaveStatus('请先选择一个场景', 'error');
+            return;
+        }
+        if (settingsState.loading && settingsState.loadPromise) {
+            await settingsState.loadPromise.catch(() => null);
+        } else if (!settingsState.runtimeProvider) {
+            await loadSettings();
+        }
+        const generation = nativeEditorState.generation;
+        if (generation.inProgress) return;
+        if (generation.text && generation.inlineBaseText) restorePendingInlineGeneration();
+        generation.text = '';
+        generation.reasoning = '';
+        generation.record = null;
+        generation.prompt = null;
+        generation.beat = record.beat || '';
+        if (elements.beatInput) elements.beatInput.value = generation.beat;
+        if (elements.generationResult) elements.generationResult.textContent = '';
+        if (elements.generationOutput) elements.generationOutput.hidden = false;
+        setNativeSaveStatus('正在重试...', 'info');
+        nativeEditorState.assistantPanel = 'generate';
+        renderNativeEditor();
+        await startNativeGeneration();
+    }
+
+    function buildNativePrompt() {
+        const elements = nativeEditorElements();
+        if (elements.beatInput) nativeEditorState.generation.beat = elements.beatInput.value;
+        const scene = currentNativeScene();
+        const snapshot = nativeEditorState.snapshot;
+        if (!scene || !snapshot || !window.WritingwayPromptBuilder) return null;
+        flushNativeEditorFields();
+        const chapter = currentNativeChapter(scene);
+        const template = selectedPromptTemplate();
+        const context = window.WritingwayContextResolver && typeof window.WritingwayContextResolver.resolveContext === 'function'
+            ? window.WritingwayContextResolver.resolveContext({
+                project: {
+                    ...snapshot,
+                    currentSceneId: scene.id
+                },
+                beat: nativeEditorState.generation.beat,
+                selection: {
+                    currentSceneId: scene.id,
+                    recentSceneLimit: 6,
+                    maxChars: 6000
+                }
+            })
+            : { compendiumEntries: [], sceneSummaries: [] };
+        const compendiumMap = new Map((context.compendiumEntries || []).map((entry) => [entry.id, entry]));
+        (snapshot.compendium || []).forEach((entry) => {
+            if (nativeEditorState.context.compendiumIds.includes(entry.id)) compendiumMap.set(entry.id, entry);
+            const tags = Array.isArray(entry.tags) ? entry.tags.map((tag) => String(tag || '').trim()).filter(Boolean) : [];
+            if (tags.some((tag) => nativeEditorState.context.compendiumTags.includes(tag))) compendiumMap.set(entry.id, entry);
+        });
+        const sceneSummaryMap = new Map((context.sceneSummaries || []).map((item) => [item.title, item]));
+        Object.entries(nativeEditorState.context.chapterModes || {}).forEach(([chapterId, mode]) => {
+            const chapter = (snapshot.chapters || []).find((item) => item.id === chapterId);
+            if (!chapter) return;
+            const chapterScenes = (snapshot.scenes || [])
+                .filter((item) => item.chapterId === chapterId && item.id !== scene.id)
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+            const summary = mode === 'full'
+                ? chapterScenes.map((item) => `${item.title || '未命名场景'}\n${nativeSceneContent(item.id)}`).join('\n\n')
+                : (chapter.summary || chapterScenes.map((item) => `${item.title || '未命名场景'}：${item.summary || nativeSceneContent(item.id).slice(0, 600)}`).join('\n'));
+            if (summary.trim()) {
+                sceneSummaryMap.set(chapter.title || chapter.id, {
+                    title: chapter.title || '未命名章节',
+                    summary
+                });
+            }
+        });
+        Object.entries(nativeEditorState.context.sceneModes || {}).forEach(([sceneId, mode]) => {
+            const referenced = (snapshot.scenes || []).find((item) => item.id === sceneId);
+            if (!referenced || referenced.id === scene.id) return;
+            sceneSummaryMap.set(referenced.title || referenced.id, {
+                title: referenced.title || '未命名场景',
+                summary: mode === 'full' ? nativeSceneContent(referenced.id) : (referenced.summary || nativeSceneContent(referenced.id).slice(0, 600))
+            });
+        });
+        return window.WritingwayPromptBuilder.buildFictionPrompt({
+            beat: nativeEditorState.generation.beat,
+            sceneContext: nativeSceneContent(scene.id),
+            options: {
+                povCharacter: scene.povCharacter || '',
+                pov: '3rd person limited',
+                tense: scene.tense || 'past',
+                sceneSummaries: Array.from(sceneSummaryMap.values()),
+                compendiumEntries: Array.from(compendiumMap.values()),
+                systemPrompt: template.systemContent || '',
+                prosePrompt: [chapter && chapter.summary ? `Chapter context: ${chapter.summary}` : '', template.content || '', context.manualText || ''].filter(Boolean).join('\n\n')
+            }
+        });
+    }
+
+    function showNativePromptPreview() {
+        if (nativeEditorState.generation.genTask === 'summary') return;
+        const elements = nativeEditorElements();
+        const prompt = buildNativePrompt();
+        if (!prompt) return;
+        nativeEditorState.generation.prompt = prompt;
+        if (elements.promptPreview) elements.promptPreview.textContent = prompt.asString ? prompt.asString() : JSON.stringify(prompt.messages || prompt, null, 2);
+        if (elements.promptDialog && typeof elements.promptDialog.showModal === 'function') {
+            elements.promptDialog.showModal();
+        }
+    }
+
+    function nativeGenerationConfig(signal) {
+        return runtimeProviderConfig({ signal });
+    }
+
+    function prepareInlineGeneration(task, prompt) {
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        const generation = nativeEditorState.generation;
+        if (!elements.editor || !scene) return false;
+        const current = elements.editor.value || '';
+        let start = current.length;
+        let end = current.length;
+        if (task === 'rewrite' && prompt && prompt.selection) {
+            start = prompt.selection.start;
+            end = prompt.selection.end;
+        } else {
+            const mode = elements.insertMode ? elements.insertMode.value : 'append';
+            if (mode === 'replace' && elements.editor.selectionStart !== elements.editor.selectionEnd) {
+                start = elements.editor.selectionStart;
+                end = elements.editor.selectionEnd;
+            } else if (mode === 'cursor') {
+                start = elements.editor.selectionStart || 0;
+                end = start;
+            }
+        }
+        generation.inlineBaseText = current;
+        generation.insertionStart = start;
+        generation.insertionEnd = end;
+        generation.pendingSceneId = scene.id;
+        generation.task = task || 'fiction-prose';
+        return true;
+    }
+
+    function formatInlineGeneratedText(text) {
+        const generation = nativeEditorState.generation;
+        const base = generation.inlineBaseText || '';
+        const before = base.slice(0, generation.insertionStart);
+        const after = base.slice(generation.insertionEnd);
+        if (generation.task === 'rewrite' || generation.task === 'regenerate-selection') return text;
+        if (generation.insertionStart === base.length && generation.insertionEnd === base.length) {
+            return base && text ? `\n\n${text}` : text;
+        }
+        const prefix = before && text && !/\s$/.test(before) ? '\n\n' : '';
+        const suffix = after && text && !/^\s/.test(after) ? '\n\n' : '';
+        return `${prefix}${text}${suffix}`;
+    }
+
+    function syncInlineGenerationToEditor() {
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        const generation = nativeEditorState.generation;
+        if (!elements.editor || !scene || generation.pendingSceneId !== scene.id) return;
+        const inserted = formatInlineGeneratedText(generation.text || '');
+        const nextValue = `${generation.inlineBaseText.slice(0, generation.insertionStart)}${inserted}${generation.inlineBaseText.slice(generation.insertionEnd)}`;
+        elements.editor.value = nextValue;
+        const cursor = generation.insertionStart + inserted.length;
+        elements.editor.selectionStart = cursor;
+        elements.editor.selectionEnd = cursor;
+        updateNativeStats();
+    }
+
+    function restorePendingInlineGeneration() {
+        const elements = nativeEditorElements();
+        const generation = nativeEditorState.generation;
+        if (!elements.editor || !generation.inlineBaseText || generation.pendingSceneId !== nativeEditorState.activeSceneId) return;
+        elements.editor.value = generation.inlineBaseText;
+        flushNativeEditorFields();
+    }
+
+    function insertNativeSpecialChar(char) {
+        const elements = nativeEditorElements();
+        if (!elements.editor || elements.editor.disabled) return;
+        const value = elements.editor.value || '';
+        const start = elements.editor.selectionStart || 0;
+        const end = elements.editor.selectionEnd || start;
+        elements.editor.value = `${value.slice(0, start)}${char}${value.slice(end)}`;
+        elements.editor.focus();
+        elements.editor.selectionStart = start + char.length;
+        elements.editor.selectionEnd = start + char.length;
+        flushNativeEditorFields();
+        markNativeDirty('已插入符号，未保存');
+        updateNativeStats();
+    }
+
+    function stopNativeReading() {
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+        nativeEditorState.tts.reading = false;
+        const elements = nativeEditorElements();
+        if (elements.readAloud) elements.readAloud.hidden = false;
+        if (elements.stopReading) elements.stopReading.hidden = true;
+    }
+
+    function readNativeSceneAloud() {
+        const elements = nativeEditorElements();
+        if (!elements.editor || !window.speechSynthesis) {
+            setNativeSaveStatus('当前环境不支持朗读', 'error');
+            return;
+        }
+        const start = elements.editor.selectionStart || 0;
+        const end = elements.editor.selectionEnd || 0;
+        const text = (start !== end ? elements.editor.value.slice(start, end) : elements.editor.value).trim();
+        if (!text) {
+            setNativeSaveStatus('没有可朗读的文本', 'error');
+            return;
+        }
+        stopNativeReading();
+        const utterance = new SpeechSynthesisUtterance(text);
+        const savedRate = Number(window.localStorage.getItem('writingway:ttsSpeed') || '1');
+        utterance.rate = Number.isFinite(savedRate) ? Math.min(2, Math.max(0.5, savedRate)) : 1;
+        const savedVoice = window.localStorage.getItem('writingway:ttsVoice') || '';
+        const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+        const voice = voices.find((item) => item.name === savedVoice) || voices.find((item) => /zh|Chinese|Mandarin/i.test(`${item.lang} ${item.name}`));
+        if (voice) utterance.voice = voice;
+        utterance.onend = stopNativeReading;
+        utterance.onerror = stopNativeReading;
+        nativeEditorState.tts.reading = true;
+        if (elements.readAloud) elements.readAloud.hidden = true;
+        if (elements.stopReading) elements.stopReading.hidden = false;
+        window.speechSynthesis.speak(utterance);
+    }
+
+    function applyNativeAutoReplace() {
+        const elements = nativeEditorElements();
+        if (!elements.editor || elements.editor.disabled) return;
+        const cursor = elements.editor.selectionStart || 0;
+        const value = elements.editor.value || '';
+        if (!value.includes('--')) return;
+        const beforeCursor = value.slice(0, cursor);
+        const nextValue = value.replace(/--/g, '—');
+        const nextCursor = beforeCursor.replace(/--/g, '—').length;
+        elements.editor.value = nextValue;
+        elements.editor.selectionStart = nextCursor;
+        elements.editor.selectionEnd = nextCursor;
+    }
+
+    async function startNativeGeneration() {
+        const elements = nativeEditorElements();
+        if (elements.beatInput) nativeEditorState.generation.beat = elements.beatInput.value;
+        if (settingsState.loading && settingsState.loadPromise) {
+            await settingsState.loadPromise.catch(() => null);
+        } else if (!settingsState.runtimeProvider) {
+            await loadSettings();
+        }
+        const scene = currentNativeScene();
+        const snapshot = nativeEditorState.snapshot;
+        if (!scene || !snapshot) {
+            setNativeSaveStatus('请先选择一个场景', 'error');
+            return { ok: false, reason: 'no-scene' };
+        }
+        if (nativeEditorState.generation.inProgress) return { ok: false, reason: 'in-progress' };
+        const prompt = buildNativePrompt();
+        if (nativeEditorState.generation.genTask === 'beat' && !nativeEditorState.generation.beat.trim()) {
+            setNativeSaveStatus('请输入 beat', 'error');
+            return { ok: false, reason: 'empty-beat' };
+        }
+        if (!prompt) {
+            setNativeSaveStatus('Prompt 构建失败', 'error');
+            return { ok: false, reason: 'no-prompt' };
+        }
+
+        const generation = nativeEditorState.generation;
+        if (generation.text && generation.inlineBaseText) restorePendingInlineGeneration();
+        generation.text = '';
+        generation.reasoning = '';
+        generation.prompt = prompt;
+        generation.record = null;
+        if (!prepareInlineGeneration('fiction-prose', prompt)) return { ok: false, reason: 'no-editor' };
+        generation.inProgress = true;
+        generation.abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        renderNativeGeneration();
+        setNativeSaveStatus('生成中...', 'info');
+
+        const startedAt = new Date().toISOString();
+        let failureMessage = '';
+        try {
+            if (!window.WritingwayProviderStream || typeof window.WritingwayProviderStream.streamGeneration !== 'function') {
+                throw new Error('Native generation provider stream is not loaded.');
+            }
+            await window.WritingwayProviderStream.streamGeneration(prompt, (token) => {
+                generation.text += token;
+                syncInlineGenerationToEditor();
+                renderNativeGeneration();
+            }, nativeGenerationConfig(generation.abortController && generation.abortController.signal));
+            if (!generation.text.trim()) {
+                throw new Error('AI provider returned an empty response.');
+            }
+
+            const result = window.WritingwayGenerationResult
+                ? window.WritingwayGenerationResult.createGenerationResult({
+                    task: 'fiction-prose',
+                    text: generation.text,
+                    messages: prompt.messages || [],
+                    startedAt,
+                    finishedAt: new Date().toISOString()
+                })
+                : { text: generation.text, messages: prompt.messages || [] };
+            const record = window.WritingwayGenerationHistory
+                ? window.WritingwayGenerationHistory.createGenerationRecord({
+                    projectId: snapshot.project && snapshot.project.id,
+                    sceneId: scene.id,
+                    task: 'fiction-prose',
+                    beat: generation.beat,
+                    messages: prompt.messages || [],
+                    promptText: prompt.asString ? prompt.asString() : '',
+                    resultText: result.text || generation.text,
+                    reasoning: result.reasoning || ''
+                })
+                : { id: `generation-${Date.now()}`, beat: generation.beat, resultText: generation.text, createdAt: new Date().toISOString() };
+            snapshot.promptHistory = snapshot.promptHistory || [];
+            snapshot.promptHistory.push(record);
+            generation.record = record;
+            setNativeSaveStatus('生成完成', 'ok');
+            flushNativeEditorFields();
+            markNativeDirty('生成结果已写入正文，未保存');
+            return { ok: true, record };
+        } catch (error) {
+            if (error && error.name === 'AbortError') {
+                setNativeSaveStatus('生成已取消', 'info');
+            } else {
+                console.error('Native generation failed:', error);
+                const normalized = window.WritingwayGenerationResult
+                    ? window.WritingwayGenerationResult.normalizeGenerationError(error)
+                    : { message: error && error.message ? error.message : String(error) };
+                failureMessage = normalized.message;
+                setNativeSaveStatus(`生成失败：${normalized.message}`, 'error');
+            }
+        } finally {
+            generation.inProgress = false;
+            generation.abortController = null;
+            renderNativeGeneration();
+        }
+        return { ok: false, reason: 'failed', message: failureMessage };
+    }
+
+    function showNativeRewritePreview() {
+        const elements = nativeEditorElements();
+        const prompt = buildNativeRewritePrompt();
+        if (!prompt) {
+            setNativeSaveStatus('请先在正文中选中文本', 'error');
+            return;
+        }
+        if (elements.promptPreview) elements.promptPreview.textContent = prompt.asString();
+        if (elements.promptDialog && typeof elements.promptDialog.showModal === 'function') {
+            elements.promptDialog.showModal();
+        }
+    }
+
+    async function startNativeRewrite() {
+        const elements = nativeEditorElements();
+        if (elements.rewritePreset) nativeEditorState.rewrite.preset = elements.rewritePreset.value || 'polish';
+        if (elements.rewriteInstruction) nativeEditorState.rewrite.instruction = elements.rewriteInstruction.value || '';
+        if (settingsState.loading && settingsState.loadPromise) {
+            await settingsState.loadPromise.catch(() => null);
+        } else if (!settingsState.runtimeProvider) {
+            await loadSettings();
+        }
+        const prompt = buildNativeRewritePrompt();
+        const scene = currentNativeScene();
+        if (!prompt || !scene) {
+            setNativeSaveStatus('请先在正文中选中文本', 'error');
+            return { ok: false, reason: 'no-selection' };
+        }
+        const generation = nativeEditorState.generation;
+        if (generation.inProgress) return { ok: false, reason: 'in-progress' };
+        if (generation.text && generation.inlineBaseText) restorePendingInlineGeneration();
+        generation.beat = prompt.instruction;
+        generation.text = '';
+        generation.reasoning = '';
+        generation.prompt = prompt;
+        generation.record = null;
+        if (!prepareInlineGeneration('rewrite', prompt)) return { ok: false, reason: 'no-editor' };
+        generation.inProgress = true;
+        generation.abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        renderNativeGeneration();
+        setNativeSaveStatus('改写中...', 'info');
+        const startedAt = new Date().toISOString();
+        let failureMessage = '';
+        try {
+            await window.WritingwayProviderStream.streamGeneration(prompt, (token) => {
+                generation.text += token;
+                syncInlineGenerationToEditor();
+                renderNativeGeneration();
+            }, nativeGenerationConfig(generation.abortController && generation.abortController.signal));
+            if (!generation.text.trim()) throw new Error('AI provider returned an empty response.');
+            const record = window.WritingwayGenerationHistory
+                ? window.WritingwayGenerationHistory.createGenerationRecord({
+                    projectId: nativeEditorState.snapshot.project && nativeEditorState.snapshot.project.id,
+                    sceneId: scene.id,
+                    task: 'rewrite',
+                    beat: prompt.instruction,
+                    messages: prompt.messages || [],
+                    promptText: prompt.asString(),
+                    resultText: generation.text,
+                    startedAt,
+                    finishedAt: new Date().toISOString()
+                })
+                : { id: `rewrite-${Date.now()}`, task: 'rewrite', beat: prompt.instruction, resultText: generation.text, createdAt: new Date().toISOString() };
+            nativeEditorState.snapshot.promptHistory = nativeEditorState.snapshot.promptHistory || [];
+            nativeEditorState.snapshot.promptHistory.push(record);
+            generation.record = record;
+            flushNativeEditorFields();
+            markNativeDirty('改写已写入正文，未保存');
+            setNativeSaveStatus('改写完成', 'ok');
+            return { ok: true, record };
+        } catch (error) {
+            console.error('Native rewrite failed:', error);
+            const normalized = window.WritingwayGenerationResult
+                ? window.WritingwayGenerationResult.normalizeGenerationError(error)
+                : { message: error && error.message ? error.message : String(error) };
+            failureMessage = normalized.message;
+            setNativeSaveStatus(`改写失败：${normalized.message}`, 'error');
+        } finally {
+            generation.inProgress = false;
+            generation.abortController = null;
+            renderNativeGeneration();
+        }
+        return { ok: false, reason: 'failed', message: failureMessage };
+    }
+
+    async function startNativeRegenerateSelection() {
+        const elements = nativeEditorElements();
+        if (elements.rewriteInstruction) nativeEditorState.rewrite.instruction = elements.rewriteInstruction.value || '';
+        if (settingsState.loading && settingsState.loadPromise) {
+            await settingsState.loadPromise.catch(() => null);
+        } else if (!settingsState.runtimeProvider) {
+            await loadSettings();
+        }
+        const prompt = buildNativeRegenerateSelectionPrompt();
+        const scene = currentNativeScene();
+        if (!prompt || !scene) {
+            setNativeSaveStatus('请先在正文中选中要重生成的文本', 'error');
+            return { ok: false, reason: 'no-selection' };
+        }
+        const generation = nativeEditorState.generation;
+        if (generation.inProgress) return { ok: false, reason: 'in-progress' };
+        if (generation.text && generation.inlineBaseText) restorePendingInlineGeneration();
+        generation.beat = prompt.instruction;
+        generation.text = '';
+        generation.reasoning = '';
+        generation.prompt = prompt;
+        generation.record = null;
+        if (!prepareInlineGeneration('regenerate-selection', prompt)) return { ok: false, reason: 'no-editor' };
+        generation.inProgress = true;
+        generation.abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        renderNativeGeneration();
+        setNativeSaveStatus('正在重生成选区...', 'info');
+        const startedAt = new Date().toISOString();
+        let failureMessage = '';
+        try {
+            await window.WritingwayProviderStream.streamGeneration(prompt, (token) => {
+                generation.text += token;
+                syncInlineGenerationToEditor();
+                renderNativeGeneration();
+            }, nativeGenerationConfig(generation.abortController && generation.abortController.signal));
+            if (!generation.text.trim()) throw new Error('AI provider returned an empty response.');
+            const record = window.WritingwayGenerationHistory
+                ? window.WritingwayGenerationHistory.createGenerationRecord({
+                    projectId: nativeEditorState.snapshot.project && nativeEditorState.snapshot.project.id,
+                    sceneId: scene.id,
+                    task: 'regenerate-selection',
+                    beat: prompt.instruction,
+                    messages: prompt.messages || [],
+                    promptText: prompt.asString(),
+                    resultText: generation.text,
+                    startedAt,
+                    finishedAt: new Date().toISOString()
+                })
+                : { id: `regenerate-selection-${Date.now()}`, task: 'regenerate-selection', beat: prompt.instruction, resultText: generation.text, createdAt: new Date().toISOString() };
+            nativeEditorState.snapshot.promptHistory = nativeEditorState.snapshot.promptHistory || [];
+            nativeEditorState.snapshot.promptHistory.push(record);
+            generation.record = record;
+            flushNativeEditorFields();
+            markNativeDirty('选区已重生成，未保存');
+            setNativeSaveStatus('选区重生成完成', 'ok');
+            return { ok: true, record };
+        } catch (error) {
+            console.error('Native selection regeneration failed:', error);
+            const normalized = window.WritingwayGenerationResult
+                ? window.WritingwayGenerationResult.normalizeGenerationError(error)
+                : { message: error && error.message ? error.message : String(error) };
+            failureMessage = normalized.message;
+            setNativeSaveStatus(`选区重生成失败：${normalized.message}`, 'error');
+        } finally {
+            generation.inProgress = false;
+            generation.abortController = null;
+            renderNativeGeneration();
+        }
+        return { ok: false, reason: 'failed', message: failureMessage };
+    }
+
+    async function generateNativeSummary(scope) {
+        if (settingsState.loading && settingsState.loadPromise) {
+            await settingsState.loadPromise.catch(() => null);
+        } else if (!settingsState.runtimeProvider) {
+            await loadSettings();
+        }
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        const chapter = currentNativeChapterByState();
+        if (!nativeEditorState.snapshot || !scene || !chapter) return;
+        flushNativeEditorFields();
+        let sourceText = '';
+        let targetTitle = '';
+        if (scope === 'chapter') {
+            const chapterScenes = (nativeEditorState.snapshot.scenes || [])
+                .filter((item) => item.chapterId === chapter.id)
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+            sourceText = chapterScenes.map((item) => {
+                const content = nativeSceneContent(item.id).trim();
+                return `${item.title || '未命名场景'}\n${item.summary || content}`;
+            }).join('\n\n');
+            targetTitle = chapter.title || '当前章节';
+        } else {
+            sourceText = nativeSceneContent(scene.id).trim();
+            targetTitle = scene.title || '当前场景';
+        }
+        if (!sourceText.trim()) {
+            setNativeSaveStatus('没有可总结的正文', 'error');
+            return;
+        }
+        const prompt = {
+            messages: [
+                { role: 'system', content: '你是小说编辑助手。请输出简洁、准确、可用于后续上下文检索的摘要。不要加入评价。' },
+                { role: 'user', content: `请为“${targetTitle}”生成 ${scope === 'chapter' ? '章节' : '场景'}摘要，控制在 120-220 字：\n\n${sourceText}` }
+            ],
+            asString() {
+                return this.messages.map((message) => `<|im_start|>${message.role}\n${message.content}<|im_end|>`).join('\n');
+            }
+        };
+        const generation = nativeEditorState.generation;
+        if (generation.inProgress) return;
+        generation.inProgress = true;
+        generation.abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        let summary = '';
+        renderNativeGeneration();
+        setNativeSaveStatus(scope === 'chapter' ? '正在生成章节摘要...' : '正在生成场景摘要...', 'info');
+        try {
+            await window.WritingwayProviderStream.streamGeneration(prompt, (token) => {
+                summary += token;
+                if (scope === 'scene' && elements.summary) elements.summary.value = summary;
+            }, nativeGenerationConfig(generation.abortController && generation.abortController.signal));
+            summary = summary.trim();
+            if (!summary) throw new Error('AI provider returned an empty response.');
+            if (scope === 'chapter') {
+                chapter.summary = summary;
+                chapter.summaryUpdated = new Date().toISOString();
+                chapter.summarySource = 'ai';
+            } else {
+                scene.summary = summary;
+                scene.summaryUpdated = new Date().toISOString();
+                scene.summarySource = 'ai';
+                scene.summaryStale = false;
+                if (elements.summary) elements.summary.value = summary;
+            }
+            markNativeDirty(scope === 'chapter' ? '章节摘要已生成，未保存' : '场景摘要已生成，未保存');
+            renderNativeEditor();
+        } catch (error) {
+            console.error('Native summary failed:', error);
+            setNativeSaveStatus(`摘要生成失败：${error.message || error}`, 'error');
+        } finally {
+            generation.inProgress = false;
+            generation.abortController = null;
+            renderNativeGeneration();
+        }
+    }
+
+    function acceptNativeGeneration() {
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        const generation = nativeEditorState.generation;
+        if (!scene || !generation.text || !elements.editor) return;
+        syncInlineGenerationToEditor();
+        generation.lastAcceptedSceneId = scene.id;
+        generation.text = '';
+        generation.reasoning = '';
+        generation.inlineBaseText = '';
+        generation.pendingSceneId = '';
+        flushNativeEditorFields();
+        markNativeDirty('已保留生成内容，未保存');
+        renderNativeEditor();
+        renderNativeGeneration();
+    }
+
+    function discardNativeGeneration() {
+        const elements = nativeEditorElements();
+        const generation = nativeEditorState.generation;
+        if (elements.editor && generation.pendingSceneId === nativeEditorState.activeSceneId && generation.inlineBaseText) {
+            elements.editor.value = generation.inlineBaseText;
+            flushNativeEditorFields();
+            markNativeDirty('已撤回生成内容，未保存');
+        }
+        generation.text = '';
+        generation.reasoning = '';
+        generation.inlineBaseText = '';
+        generation.pendingSceneId = '';
+        renderNativeGeneration();
+        setNativeSaveStatus('已撤回生成内容', 'info');
+    }
+
+    function cancelNativeGeneration() {
+        const controller = nativeEditorState.generation.abortController;
+        if (controller) controller.abort();
     }
 
     function countWords(text) {
@@ -1400,9 +5796,26 @@
         setProjectLibraryStatus(`正在打开《${project.name || '未命名项目'}》...`, 'info');
         setView('writer');
 
-        const app = await waitForLegacyAppData();
         const snapshot = await fetchProjectSnapshot(project);
+        loadNativeProjectEditor(snapshot, project || {});
         loadReaderFromProjectSnapshot(snapshot);
+        await loadCompendium();
+        await loadPrompts();
+        await loadWorkshopSessions();
+        await loadWorkflowRuns();
+
+        setProjectLibraryStatus('', 'ok');
+    }
+
+    async function openLegacyWriterForCurrentProject() {
+        const snapshot = nativeEditorState.snapshot;
+        if (!snapshot || !snapshot.project || !snapshot.project.id) {
+            setNativeSaveStatus('请先从书库打开一个项目。', 'error');
+            return;
+        }
+        ensureLegacyWriterLoaded();
+        setNativeSaveStatus('正在打开兼容写作器...', 'info');
+        const app = await waitForLegacyAppData();
         await importSnapshotIntoLegacyDb(snapshot);
 
         if (typeof app.loadProjects === 'function') await app.loadProjects();
@@ -1413,70 +5826,361 @@
             await app.selectProject(snapshot.project.id);
         }
 
-        setProjectLibraryStatus('', 'ok');
+        const frame = getWriterFrame();
+        if (frame) frame.scrollIntoView({ block: 'nearest' });
+        setNativeSaveStatus('兼容写作器已打开', 'ok');
     }
 
-    async function runLegacyAction(action) {
-        setView('writer');
-
-        const app = await waitForLegacyAppData();
-        if (action === 'ai-settings') {
-            app.showAISettings = true;
-            return;
+    function bindNativeEditor() {
+        const elements = nativeEditorElements();
+        if (elements.saveButton) {
+            elements.saveButton.addEventListener('click', () => {
+                saveNativeScene();
+            });
         }
-
-        if (action === 'new-project') {
-            app.showProjectsView = true;
-            app.showNewProjectModal = true;
-            return;
+        if (elements.readAloud) elements.readAloud.addEventListener('click', readNativeSceneAloud);
+        if (elements.stopReading) elements.stopReading.addEventListener('click', stopNativeReading);
+        if (elements.toggleOutline) {
+            elements.toggleOutline.addEventListener('click', () => {
+                nativeEditorState.outlineCollapsed = !nativeEditorState.outlineCollapsed;
+                renderNativeEditor();
+            });
         }
-
-        if (action === 'backup-settings') {
-            if (typeof app.openBackupSettings === 'function') {
-                await app.openBackupSettings();
-            } else {
-                app.showBackupSettings = true;
-            }
-            return;
+        if (elements.toggleAssistant) {
+            elements.toggleAssistant.addEventListener('click', () => {
+                nativeEditorState.assistantCollapsed = !nativeEditorState.assistantCollapsed;
+                renderNativeEditor();
+            });
         }
-
-        if (action === 'local-recovery') {
-            if (typeof app.openLocalBackupRecovery === 'function') {
-                await app.openLocalBackupRecovery();
-            } else {
-                app.showLocalBackupRecoveryModal = true;
-            }
+        if (elements.assistantPlacement) {
+            elements.assistantPlacement.addEventListener('click', () => {
+                nativeEditorState.assistantPlacement = nativeEditorState.assistantPlacement === 'bottom' ? 'right' : 'bottom';
+                try { window.localStorage.setItem('writingway:nativeAssistantPlacement', nativeEditorState.assistantPlacement); } catch (error) { /* ignore */ }
+                renderNativeEditor();
+            });
         }
-    }
-
-    function bindLegacyActions() {
-        document.querySelectorAll('[data-legacy-action]').forEach((button) => {
-            button.addEventListener('click', async () => {
-                button.disabled = true;
-                try {
-                    await runLegacyAction(button.dataset.legacyAction);
-                } catch (error) {
-                    console.error('Failed to run legacy desktop action:', error);
-                    setView('writer');
-                } finally {
-                    button.disabled = false;
-                }
+        if (elements.toggleSpecials) {
+            elements.toggleSpecials.addEventListener('click', () => {
+                if (elements.specials) elements.specials.hidden = !elements.specials.hidden;
+            });
+        }
+        if (elements.toggleTypography) {
+            elements.toggleTypography.addEventListener('click', () => {
+                nativeEditorState.typographyOpen = !nativeEditorState.typographyOpen;
+                renderNativeEditor();
+            });
+        }
+        [
+            ['editorFontSize', 'fontSize'],
+            ['editorLineHeight', 'lineHeight'],
+            ['editorTextWidth', 'textWidth'],
+            ['editorParagraphSpacing', 'paragraphSpacing']
+        ].forEach(([elementKey, prefKey]) => {
+            const field = elements[elementKey];
+            if (!field) return;
+            field.addEventListener('input', () => {
+                const limits = {
+                    fontSize: [15, 24, 18],
+                    lineHeight: [1.45, 2.2, 1.9],
+                    textWidth: [620, 1040, 760],
+                    paragraphSpacing: [0, 1.5, 0]
+                }[prefKey];
+                nativeEditorState.editorPrefs[prefKey] = clampNumber(field.value, limits[0], limits[1], limits[2]);
+                saveNativeEditorPrefs();
+                applyNativeEditorPrefs();
             });
         });
+        if (elements.editorFontFamily) {
+            elements.editorFontFamily.addEventListener('change', () => {
+                nativeEditorState.editorPrefs.fontFamily = elements.editorFontFamily.value || 'system';
+                saveNativeEditorPrefs();
+                applyNativeEditorPrefs();
+            });
+        }
+        if (elements.editorWordGoal) {
+            elements.editorWordGoal.addEventListener('input', () => {
+                nativeEditorState.editorPrefs.wordGoal = clampNumber(elements.editorWordGoal.value, 0, 999999, 0);
+                saveNativeEditorPrefs();
+                updateNativeStats();
+            });
+        }
+        elements.specialButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                insertNativeSpecialChar(button.dataset.nativeSpecialChar || button.textContent || '');
+                if (elements.specials) elements.specials.hidden = true;
+            });
+        });
+        if (elements.sceneTitle) {
+            elements.sceneTitle.addEventListener('dblclick', beginNativeSceneTitleEdit);
+            elements.sceneTitle.addEventListener('keydown', (event) => {
+                if (!currentNativeScene()) return;
+                if (!nativeEditorState.titleEditing && (event.key === 'Enter' || event.key === 'F2')) {
+                    event.preventDefault();
+                    beginNativeSceneTitleEdit();
+                    return;
+                }
+                if (nativeEditorState.titleEditing && event.key === 'Enter') {
+                    event.preventDefault();
+                    finishNativeSceneTitleEdit();
+                }
+                if (nativeEditorState.titleEditing && event.key === 'Escape') {
+                    event.preventDefault();
+                    finishNativeSceneTitleEdit({ cancel: true });
+                }
+            });
+            elements.sceneTitle.addEventListener('blur', () => {
+                if (nativeEditorState.titleEditing) finishNativeSceneTitleEdit();
+            });
+        }
+        if (elements.focusMode) {
+            elements.focusMode.addEventListener('click', () => {
+                nativeEditorState.focusMode = !nativeEditorState.focusMode;
+                renderNativeEditor();
+                if (elements.editor && nativeEditorState.focusMode) elements.editor.focus();
+            });
+        }
+        elements.panelTabs.forEach((tab) => {
+            tab.addEventListener('click', () => {
+                nativeEditorState.assistantPanel = tab.dataset.nativePanelTab || 'generate';
+                renderNativeEditor();
+            });
+        });
+        if (elements.search) {
+            elements.search.addEventListener('input', () => {
+                nativeEditorState.searchQuery = elements.search.value;
+                renderNativeEditor();
+            });
+        }
+        if (elements.replaceCurrent) elements.replaceCurrent.addEventListener('click', () => replaceNativeText('current'));
+        if (elements.replaceAll) elements.replaceAll.addEventListener('click', () => replaceNativeText('all'));
+        if (elements.searchPrev) elements.searchPrev.addEventListener('click', () => navigateNativeSearchMatch(-1));
+        if (elements.searchNext) elements.searchNext.addEventListener('click', () => navigateNativeSearchMatch(1));
+        if (elements.editor) {
+            elements.editor.addEventListener('input', () => {
+                if (!nativeEditorState.snapshot || !nativeEditorState.activeSceneId) return;
+                applyNativeAutoReplace();
+                markNativeDirty();
+                if (nativeEditorState.searchQuery.trim()) updateNativeSearchMatchState();
+            });
+            ['select', 'mouseup', 'keyup'].forEach((eventName) => {
+                elements.editor.addEventListener(eventName, renderNativeRewrite);
+            });
+        }
+        [elements.summary, elements.tags, elements.pov, elements.tense].forEach((field) => {
+            if (!field) return;
+            field.addEventListener('input', () => {
+                if (!nativeEditorState.snapshot || !nativeEditorState.activeSceneId) return;
+                markNativeDirty();
+            });
+            field.addEventListener('change', () => {
+                if (!nativeEditorState.snapshot || !nativeEditorState.activeSceneId) return;
+                markNativeDirty();
+            });
+        });
+        if (elements.legacyButton) {
+            elements.legacyButton.addEventListener('click', async () => {
+                elements.legacyButton.disabled = true;
+                try {
+                    await openLegacyWriterForCurrentProject();
+                } catch (error) {
+                    console.warn('Failed to open legacy writer:', error);
+                    setNativeSaveStatus(`兼容写作器打开失败：${error.message || error}`, 'error');
+                } finally {
+                    elements.legacyButton.disabled = false;
+                }
+            });
+        }
+        if (elements.newProject) {
+            elements.newProject.addEventListener('click', () => {
+                openProjectCreator();
+            });
+        }
+        if (elements.showBookshelf) {
+            elements.showBookshelf.addEventListener('click', () => {
+                setView('bookshelf');
+            });
+        }
+        if (elements.addChapter) elements.addChapter.addEventListener('click', addNativeChapter);
+        if (elements.renameChapter) elements.renameChapter.addEventListener('click', renameNativeChapter);
+        if (elements.deleteChapter) elements.deleteChapter.addEventListener('click', deleteNativeChapter);
+        if (elements.addScene) elements.addScene.addEventListener('click', addNativeScene);
+        if (elements.renameScene) elements.renameScene.addEventListener('click', renameNativeScene);
+        if (elements.deleteScene) elements.deleteScene.addEventListener('click', deleteNativeScene);
+        if (elements.moveSceneUp) elements.moveSceneUp.addEventListener('click', () => moveNativeScene(-1));
+        if (elements.moveSceneDown) elements.moveSceneDown.addEventListener('click', () => moveNativeScene(1));
+        if (elements.exportMarkdown) elements.exportMarkdown.addEventListener('click', () => downloadNativeExport('markdown'));
+        if (elements.exportText) elements.exportText.addEventListener('click', () => downloadNativeExport('text'));
+        if (elements.exportHtml) elements.exportHtml.addEventListener('click', () => downloadNativeExport('html'));
+        if (elements.exportEpub) elements.exportEpub.addEventListener('click', () => downloadNativeExport('epub'));
+        if (elements.exportPackage) elements.exportPackage.addEventListener('click', downloadNativeProjectPackage);
+        if (elements.exportIncludeSceneTitles) elements.exportIncludeSceneTitles.addEventListener('change', saveExportOptions);
+        if (elements.beatInput) {
+            elements.beatInput.addEventListener('input', () => {
+                nativeEditorState.generation.beat = elements.beatInput.value;
+                renderNativeGeneration();
+            });
+        }
+        if (elements.closePrompt) {
+            elements.closePrompt.addEventListener('click', () => {
+                if (elements.promptDialog && typeof elements.promptDialog.close === 'function') elements.promptDialog.close();
+            });
+        }
+        if (elements.promptTemplate) {
+            elements.promptTemplate.addEventListener('change', () => {
+                promptState.selectedId = elements.promptTemplate.value || 'default-prose';
+                renderPromptManager();
+            });
+        }
+        if (elements.managePrompts) {
+            elements.managePrompts.addEventListener('click', () => {
+                renderPromptManager();
+                if (elements.promptManagerDialog && typeof elements.promptManagerDialog.showModal === 'function') {
+                    elements.promptManagerDialog.showModal();
+                }
+            });
+        }
+        if (elements.promptManagerForm) elements.promptManagerForm.addEventListener('submit', savePromptTemplate);
+        if (elements.promptManagerNew) elements.promptManagerNew.addEventListener('click', newPromptTemplate);
+        if (elements.promptManagerDelete) elements.promptManagerDelete.addEventListener('click', deletePromptTemplate);
+        if (elements.promptManagerClose) {
+            elements.promptManagerClose.addEventListener('click', () => {
+                if (elements.promptManagerDialog && typeof elements.promptManagerDialog.close === 'function') elements.promptManagerDialog.close();
+            });
+        }
+        if (elements.rewritePreset) {
+            elements.rewritePreset.addEventListener('change', () => {
+                nativeEditorState.rewrite.preset = elements.rewritePreset.value || 'polish';
+                renderNativeRewrite();
+            });
+        }
+        if (elements.rewriteInstruction) {
+            elements.rewriteInstruction.addEventListener('input', () => {
+                nativeEditorState.rewrite.instruction = elements.rewriteInstruction.value || '';
+            });
+        }
+        if (elements.previewRewrite) elements.previewRewrite.addEventListener('click', showNativeRewritePreview);
+        if (elements.startRewrite) elements.startRewrite.addEventListener('click', startNativeRewrite);
+        if (elements.regenerateSelection) elements.regenerateSelection.addEventListener('click', startNativeRegenerateSelection);
+        if (elements.genTaskButtons && elements.genTaskButtons.length) {
+            elements.genTaskButtons.forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    nativeEditorState.generation.genTask = btn.getAttribute('data-native-gen-task') || 'continue';
+                    renderNativeGeneration();
+                });
+            });
+        }
+        if (elements.rewriteTaskButtons && elements.rewriteTaskButtons.length) {
+            const rewriteTaskPresetMap = {
+                polish: 'balanced-polish',
+                expand: 'expand',
+                shorten: 'tighten',
+                style: 'same-meaning-alt'
+            };
+            elements.rewriteTaskButtons.forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const task = btn.getAttribute('data-native-rewrite-task') || 'polish';
+                    nativeEditorState.rewrite.rewriteTask = task;
+                    nativeEditorState.rewrite.preset = rewriteTaskPresetMap[task] || 'balanced-polish';
+                    renderNativeRewrite();
+                });
+            });
+        }
+        if (elements.generateSceneSummary) elements.generateSceneSummary.addEventListener('click', () => generateNativeSummary('scene'));
+        if (elements.generateChapterSummary) elements.generateChapterSummary.addEventListener('click', () => generateNativeSummary('chapter'));
+        if (elements.newCharacter) {
+            elements.newCharacter.addEventListener('click', async () => {
+                compendiumState.type = 'character';
+                await createCompendiumEntry('character');
+                nativeEditorState.assistantPanel = 'characters';
+                renderNativeEditor();
+            });
+        }
+        if (elements.openCompendium) {
+            elements.openCompendium.addEventListener('click', () => {
+                compendiumState.type = 'character';
+                setView('compendium');
+                renderCompendium();
+            });
+        }
+        document.addEventListener('click', (event) => {
+            const target = event.target && event.target.closest ? event.target.closest('[data-native-generate],[data-native-preview-prompt],[data-native-cancel-generation],[data-native-accept-generation],[data-native-retry-generation],[data-native-discard-generation]') : null;
+            if (!target) return;
+            if (target.dataset.nativeGenerate !== undefined) {
+                if (nativeEditorState.generation.genTask === 'summary') {
+                    generateNativeSummary('scene');
+                } else {
+                    startNativeGeneration();
+                }
+            }
+            if (target.dataset.nativePreviewPrompt !== undefined) showNativePromptPreview();
+            if (target.dataset.nativeCancelGeneration !== undefined) cancelNativeGeneration();
+            if (target.dataset.nativeAcceptGeneration !== undefined) acceptNativeGeneration();
+            if (target.dataset.nativeRetryGeneration !== undefined) {
+                if (nativeEditorState.generation.genTask === 'summary') {
+                    generateNativeSummary('scene');
+                } else {
+                    startNativeGeneration();
+                }
+            }
+            if (target.dataset.nativeDiscardGeneration !== undefined) discardNativeGeneration();
+        });
+        window.addEventListener('keydown', (event) => {
+            if (!nativeEditorState.snapshot) return;
+            const isSave = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's';
+            if (isSave) {
+                event.preventDefault();
+                saveNativeScene();
+            }
+            const isNewScene = (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'n';
+            if (isNewScene) {
+                event.preventDefault();
+                addNativeScene();
+            }
+            if (event.altKey && event.key === 'ArrowUp') {
+                event.preventDefault();
+                switchNativeScene(-1);
+            }
+            if (event.altKey && event.key === 'ArrowDown') {
+                event.preventDefault();
+                switchNativeScene(1);
+            }
+        });
+        window.addEventListener('beforeunload', (event) => {
+            if (!nativeEditorState.dirty) return;
+            event.preventDefault();
+            event.returnValue = '';
+        });
+        renderNativeEditor();
     }
 
     function init() {
+        try {
+            const placement = window.localStorage.getItem('writingway:nativeAssistantPlacement');
+            if (placement === 'bottom' || placement === 'right') nativeEditorState.assistantPlacement = placement;
+        } catch (error) { /* ignore */ }
+        loadNativeEditorPrefs();
+        loadExportOptions();
         bindNavigation();
         bindWindowControls();
         bindProjectLibrary();
         bindProjectCreator();
         bindProjectEditor();
+        bindNativeEditor();
+        bindRecovery();
         bindReader();
+        bindSettings();
+        bindCompendium();
+        bindWorkshop();
+        bindWorkflow();
         bindLegacyProjectUpdates();
-        bindLegacyActions();
         const state = getState();
         setView(state ? state.loadInitialView() : 'bookshelf');
         loadProjectLibrary();
+        loadRecoveryList();
+        loadSettings();
+        renderCompendium();
+        renderWorkshop();
+        renderWorkflow();
     }
 
     if (document.readyState === 'loading') {
@@ -1487,8 +6191,9 @@
 
     window.WritingwayDesktopShell = {
         loadProjectLibrary,
-        runLegacyAction,
         setView,
-        toggleFullscreen
+        toggleFullscreen,
+        startNativeGeneration,
+        loadSettings
     };
 })();

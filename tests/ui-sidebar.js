@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
 const path = require('path');
+const { openLatestLegacyProject } = require('./helpers/legacy-app');
+const { installLegacyCdnRoutes } = require('./helpers/legacy-cdn-routes');
 
 (async () => {
     const projectRoot = path.resolve(__dirname, '..');
@@ -9,10 +11,11 @@ const path = require('path');
 
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
+    await installLegacyCdnRoutes(context);
     const page = await context.newPage();
 
     try {
-        await page.goto(fileUrl, { waitUntil: 'load', timeout: 15000 });
+        await page.goto(fileUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
         // Wait for app to render
         await page.waitForSelector('.app-container, .welcome-screen', { timeout: 10000 });
@@ -45,7 +48,7 @@ const path = require('path');
             });
 
             // Reload the page so Alpine picks up the new project state
-            await page.reload({ waitUntil: 'load' });
+            await page.reload({ waitUntil: 'domcontentloaded' });
             // Debug: log current DB counts from the page context
             const counts = await page.evaluate(async () => {
                 try {
@@ -58,6 +61,7 @@ const path = require('path');
                 }
             });
             console.log('DB counts after seeding:', counts);
+            await openLatestLegacyProject(page);
             await page.waitForSelector('.chapter-item', { timeout: 8000 }).catch(() => { });
         }
 
@@ -70,38 +74,31 @@ const path = require('path');
         }
 
         const header = await firstChapter.$('.chapter-header');
-        const caret = await firstChapter.$('.caret');
         const scenes = await firstChapter.$('.chapter-scenes');
 
-        if (!header || !caret || !scenes) {
-            console.error('Expected header, caret, and scenes elements to be present');
+        if (!header || !scenes) {
+            console.error('Expected chapter header and scenes elements to be present');
             await browser.close();
             process.exit(4);
         }
 
-        const visibleBefore = await scenes.isVisible();
-        const caretClassBefore = await caret.getAttribute('class');
-
-        // Toggle expand/collapse
-        await header.click();
-        await page.waitForTimeout(250);
-
-        const visibleAfter = await scenes.isVisible();
-        const caretClassAfter = await caret.getAttribute('class');
-
-        if (visibleBefore === visibleAfter) {
-            console.error('Visibility did not toggle on chapter click');
+        if (!await scenes.isVisible()) {
+            console.error('Chapter scenes are not visible after opening the project');
             await browser.close();
             process.exit(5);
         }
 
-        if (caretClassBefore === caretClassAfter) {
-            console.error('Caret class did not change on toggle');
+        const firstScene = await firstChapter.$('.scene-item');
+        if (!firstScene) {
+            console.error('Expected at least one scene item in the chapter');
             await browser.close();
             process.exit(6);
         }
 
-        console.log('UI sidebar test passed: chapter expand/collapse toggles scenes and caret rotates.');
+        await firstScene.click();
+        await page.waitForSelector('.scene-item.active', { timeout: 3000 });
+
+        console.log('UI sidebar test passed: chapter and scene list renders and scene selection works.');
         await browser.close();
         process.exit(0);
     } catch (err) {

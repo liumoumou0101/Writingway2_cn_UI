@@ -4,7 +4,11 @@
     "private": true,
     "description": "Desktop-first AI fiction writing, project management, and local reading workbench.",
     "author": "Writingway contributors",
+    "dependencies": {
+        "jszip": "^3.10.1"
+    },
     "devDependencies": {
+        "dexie": "^3.2.4",
         "electron": "^42.4.1",
         "electron-builder": "^26.15.3",
         "eslint": "^8.45.0",
@@ -14,12 +18,19 @@
         "desktop": "electron .",
         "pack": "electron-builder --dir",
         "dist": "electron-builder",
+        "packaged-smoke": "node tests/packaged-smoke.js",
         "smoke": "node tests/smoke.js",
-        "desktop-test": "node tests/desktop-library.js && node tests/desktop-reader.js",
-        "unit": "node tests/gen-buildPrompt.js && node tests/unit-context-tags.js && node tests/unit-rewrite-presets.js",
+        "desktop-mainline-test": "node tests/desktop-library.js && node tests/desktop-reader.js",
+        "writer-audit": "node tests/writer-button-audit.js",
+        "desktop-test": "npm run desktop-mainline-test",
+        "core-test": "node tests/core-project.js && node tests/core-generation.js && npm run storage-test",
+        "storage-test": "node tests/project-file-store.js && node tests/project-directory-api.js && node tests/workflow-store.js && node tests/workflow-engine-service.js && node tests/settings-service.js && node tests/compendium-service.js && node tests/prompt-service.js && node tests/workshop-service.js && node tests/project-migration-service.js",
+        "unit": "npm run core-test && node tests/context-prompt-core.js && node tests/gen-buildPrompt.js && node tests/unit-context-tags.js && node tests/unit-rewrite-presets.js && node tests/release-config.js",
         "backup-test": "node tests/backup-api.js && node tests/backup-browser.js",
-        "ui": "node tests/ui-generation.js && node tests/ui-generation-retry.js && node tests/ui-move-scene.js && node tests/ui-sidebar.js",
-        "test": "npm run smoke && npm run unit && npm run ui"
+        "legacy-ui-test": "node tests/run-legacy-ui-tests.js",
+        "legacy-test": "npm run legacy-ui-test && npm run backup-test",
+        "ui": "npm run legacy-ui-test",
+        "test": "npm run smoke && npm run unit && npm run desktop-mainline-test && npm run legacy-ui-test"
     },
     "main": "desktop/main.js",
     "build": {

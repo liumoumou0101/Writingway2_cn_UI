@@ -1,7 +1,7 @@
 (function () {
     const STORAGE_KEY = 'writingway:desktop:lastView';
     const DEFAULT_VIEW = 'bookshelf';
-    const VALID_VIEWS = new Set(['bookshelf', 'writer', 'reader', 'recovery', 'settings']);
+    const VALID_VIEWS = new Set(['bookshelf', 'writer', 'reader', 'compendium', 'workshop', 'workflow', 'recovery', 'settings']);
 
     function normalizeView(view) {
         return VALID_VIEWS.has(view) ? view : DEFAULT_VIEW;

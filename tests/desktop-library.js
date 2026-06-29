@@ -22,6 +22,19 @@ function snapshot(id, name, text, exportedAt) {
     };
 }
 
+async function submitNativeName(page, value) {
+    await page.waitForFunction(() => {
+        const modal = document.querySelector('[data-native-name-modal]');
+        return modal && !modal.hidden;
+    });
+    await page.fill('[data-native-name-input]', value);
+    await page.locator('[data-native-name-form] button[type="submit"]').click();
+    await page.waitForFunction(() => {
+        const modal = document.querySelector('[data-native-name-modal]');
+        return modal && modal.hidden;
+    });
+}
+
 (async () => {
     const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'writingway-library-test-'));
     const projectsDir = path.join(dataRoot, 'projects');
@@ -131,15 +144,12 @@ function snapshot(id, name, text, exportedAt) {
         assert.ok(revealedPaths[0].includes('book-2.json'), 'revealed path should point at the edited project snapshot');
 
         await page.locator('.desktop-project-card').first().click();
-        await page.waitForFunction(() => {
-            const frame = document.getElementById('legacy-writer-frame');
-            const writerWindow = frame && frame.contentWindow;
-            const writerDocument = frame && frame.contentDocument;
-            const root = writerDocument && writerDocument.querySelector('[x-data="app"]');
-            if (!writerWindow || !writerWindow.Alpine || !root) return false;
-            const app = writerWindow.Alpine.$data(root);
-            return app.currentProject && app.currentProject.id === 'book-2' && app.currentProject.name === '短篇集修订版';
-        }, { timeout: 12000 });
+        await page.waitForFunction(() => document.querySelector('[data-native-project-title]').textContent === '短篇集修订版', { timeout: 12000 });
+        assert.strictEqual(
+            await page.evaluate(() => !!document.getElementById('legacy-writer-frame').getAttribute('src')),
+            false,
+            'desktop mainline should not load the legacy iframe when opening a project'
+        );
 
         await page.click('[data-view-target="bookshelf"]');
         await page.waitForFunction(() => document.querySelectorAll('.desktop-project-card').length === 1);
@@ -163,20 +173,364 @@ function snapshot(id, name, text, exportedAt) {
         await page.fill('[data-project-create-tags]', 'desktop, draft');
         await page.fill('[data-project-create-description]', 'Created from the native desktop library.');
         await page.locator('[data-project-create-form] button[type="submit"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-native-project-title]').textContent === 'Desktop Draft');
+        await page.fill('[data-native-scene-editor]', 'Native editor saved prose.');
+        await page.click('[data-native-save-scene]');
+        await page.waitForFunction(() => document.querySelector('[data-native-save-status]').textContent.includes('已保存'));
+        await page.click('[data-native-add-scene]');
+        await submitNativeName(page, 'Second Scene');
+        await page.waitForFunction(() => document.querySelector('[data-native-scene-title]').textContent === 'Second Scene');
+        await page.fill('[data-native-scene-editor]', 'Second native scene.');
+        await page.click('[data-native-panel-tab="structure"]');
+        await page.click('[data-native-rename-scene]');
+        await submitNativeName(page, 'Renamed Second Scene');
+        await page.waitForFunction(() => document.querySelector('[data-native-scene-title]').textContent === 'Renamed Second Scene');
+        await page.click('[data-native-panel-tab="metadata"]');
+        await page.fill('[data-native-scene-summary]', 'A saved native scene summary.');
+        await page.fill('[data-native-scene-tags]', 'draft, important');
+        await page.fill('[data-native-scene-pov]', 'Ada');
+        await page.selectOption('[data-native-scene-tense]', 'present');
+        await page.click('[data-native-panel-tab="structure"]');
+        await page.click('[data-native-move-scene-up]');
+        await page.waitForFunction(() => document.querySelector('[data-native-save-status]').textContent.includes('未保存'));
+        await page.click('[data-native-panel-tab="search"]');
+        await page.fill('[data-native-search]', 'Renamed Second');
         await page.waitForFunction(() => {
-            const frame = document.getElementById('legacy-writer-frame');
-            const writerWindow = frame && frame.contentWindow;
-            const writerDocument = frame && frame.contentDocument;
-            const root = writerDocument && writerDocument.querySelector('[x-data="app"]');
-            if (!writerWindow || !writerWindow.Alpine || !root) return false;
-            const app = writerWindow.Alpine.$data(root);
-            return app.currentProject && app.currentProject.name === 'Desktop Draft';
-        }, { timeout: 12000 });
+            const scenes = Array.from(document.querySelectorAll('[data-native-scene-id]'));
+            return scenes.length === 1 && scenes[0].textContent.includes('Renamed Second Scene');
+        });
+        await page.fill('[data-native-search]', '');
+        await page.waitForFunction(() => document.querySelectorAll('[data-native-scene-id]').length >= 2);
+        await page.click('[data-native-panel-tab="structure"]');
+        await page.click('[data-native-rename-chapter]');
+        await submitNativeName(page, 'Opening Chapter');
+        await page.waitForFunction(() => document.querySelector('[data-native-chapter-title]').textContent === 'Opening Chapter');
+        await page.click('[data-native-add-chapter]');
+        await submitNativeName(page, 'Disposable Chapter');
+        await page.waitForFunction(() => document.querySelector('[data-native-chapter-title]').textContent === 'Disposable Chapter');
+        page.once('dialog', async (dialog) => {
+            assert.strictEqual(dialog.type(), 'confirm');
+            await dialog.accept();
+        });
+        await page.click('[data-native-delete-chapter]');
+        await page.waitForFunction(() => document.querySelector('[data-native-chapter-title]').textContent === 'Opening Chapter');
+        await page.click('[data-native-panel-tab="search"]');
+        await page.fill('[data-native-search]', 'Second native');
+        await page.waitForFunction(() => document.querySelectorAll('[data-native-scene-id]').length === 1);
+        await page.click('[data-native-scene-id]');
+        await page.fill('[data-native-replace]', 'Replaced native');
+        await page.click('[data-native-replace-current]');
+        await page.waitForFunction(() => document.querySelector('[data-native-scene-editor]').value.includes('Replaced native scene.'));
+        await page.fill('[data-native-search]', '');
+        await page.click('[data-native-add-scene]');
+        await submitNativeName(page, 'Temporary Scene');
+        await page.waitForFunction(() => document.querySelector('[data-native-scene-title]').textContent === 'Temporary Scene');
+        page.once('dialog', async (dialog) => {
+            assert.strictEqual(dialog.type(), 'confirm');
+            await dialog.accept();
+        });
+        await page.click('[data-native-panel-tab="structure"]');
+        await page.click('[data-native-delete-scene]');
+        await page.waitForFunction(() => document.querySelector('[data-native-scene-title]').textContent !== 'Temporary Scene');
+        await page.click('[data-native-save-scene]');
+        await page.waitForFunction(() => document.querySelector('[data-native-save-status]').textContent.includes('已保存'));
+        const downloadPromise = page.waitForEvent('download');
+        await page.click('[data-native-panel-tab="structure"]');
+        await page.click('[data-native-export-md]');
+        const download = await downloadPromise;
+        assert.ok(download.suggestedFilename().endsWith('.md'), 'native editor should export Markdown');
+        const draftListBeforeCompendium = await fetch('http://127.0.0.1:8000/api/list-projects');
+        const draftListBeforeCompendiumBody = await draftListBeforeCompendium.json();
+        const draftProjectId = draftListBeforeCompendiumBody.projects.find((project) => project.name === 'Desktop Draft').id;
+        await page.click('[data-view-target="compendium"]');
+        await page.waitForSelector('[data-compendium-new]:not([disabled])');
+        await page.click('[data-compendium-new]');
+        await page.waitForSelector('.desktop-compendium-item.is-active');
+        await page.selectOption('[data-compendium-entry-type]', 'character');
+        await page.fill('[data-compendium-title]', 'Ada Navigator');
+        await page.fill('[data-compendium-summary]', 'A pilot with a careful memory.');
+        await page.fill('[data-compendium-tags]', 'pilot, protagonist');
+        await page.fill('[data-compendium-aliases]', 'Ada, Navigator');
+        await page.check('[data-compendium-always]');
+        await page.fill('[data-compendium-body]', 'Ada remembers every route through the storm belt.');
+        await page.locator('[data-compendium-form] button[type="submit"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-compendium-status]').textContent.includes('资料已保存'));
+        await page.fill('[data-compendium-search]', 'storm belt');
+        await page.waitForFunction(() => document.querySelectorAll('.desktop-compendium-item').length === 1 && document.body.innerText.includes('Ada Navigator'));
+        const compendiumApiResponse = await fetch(`http://127.0.0.1:8000/api/compendium?projectId=${encodeURIComponent(draftProjectId)}&query=storm%20belt`);
+        const compendiumApiBody = await compendiumApiResponse.json();
+        assert.ok(compendiumApiResponse.ok && compendiumApiBody.ok, 'native compendium API should stay readable after UI save');
+        assert.strictEqual(compendiumApiBody.entries[0].title, 'Ada Navigator', 'native compendium UI should save entries');
+        await page.click('[data-view-target="writer"]');
+        await page.click('[data-native-panel-tab="generate"]');
+        await page.click('[data-native-manage-prompts]');
+        await page.fill('[data-prompt-manager-title]', 'Test Prose Prompt');
+        await page.fill('[data-prompt-manager-system]', 'Write with luminous restraint.');
+        await page.fill('[data-prompt-manager-content]', 'Mention tactile details when appropriate.');
+        await page.locator('[data-prompt-manager-form] button[type="submit"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-native-save-status]').textContent.includes('提示词已保存'));
+        await page.locator('[data-prompt-manager-close]').click();
+        await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-native-prompt-template] option')).some((option) => option.textContent.includes('Test Prose Prompt')));
+        await page.click('[data-view-target="settings"]');
+        await page.waitForSelector('[data-settings-form]');
+        await page.selectOption('[data-settings-mode]', 'api');
+        await page.selectOption('[data-settings-provider]', 'openai-compatible');
+        await page.fill('[data-settings-endpoint]', 'https://example.test/v1/chat/completions');
+        await page.fill('[data-settings-model]', 'desktop-test-model');
+        await page.fill('[data-settings-api-key]', 'desktop-test-key');
+        await page.fill('[data-settings-temperature]', '0.55');
+        await page.fill('[data-settings-max-tokens]', '444');
+        await page.locator('[data-settings-form] button[type="submit"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-settings-status]').textContent.includes('设置已保存'));
+        await page.click('[data-view-target="writer"]');
+        await page.evaluate(() => {
+            window.__nativeGenerationCalls = 0;
+            window.__writingwayNativeGenerationStub = async (prompt, onToken, config) => {
+                window.__nativeGenerationCalls += 1;
+                window.__lastNativePrompt = prompt && prompt.asString ? prompt.asString() : String(prompt);
+                window.__lastNativeGenerationConfig = config;
+                for (const token of [' Generated', ' native', ' prose.']) {
+                    await new Promise((resolve) => setTimeout(resolve, 5));
+                    onToken(token);
+                }
+            };
+        });
+        await page.waitForFunction(() => window.WritingwayProviderStream && typeof window.WritingwayProviderStream.streamGeneration === 'function');
+        await page.fill('[data-native-beat-input]', '让主角发现一封旧信。');
+        await page.waitForFunction(() => !document.querySelector('[data-native-generate]').disabled);
+        await page.click('[data-native-preview-prompt]');
+        await page.waitForFunction(() => document.querySelector('[data-native-prompt-preview]').textContent.includes('BEAT TO EXPAND'));
+        const previewText = await page.locator('[data-native-prompt-preview]').innerText();
+        assert.ok(previewText.includes('Write with luminous restraint.'), 'prompt preview should include selected system template');
+        assert.ok(previewText.includes('Mention tactile details'), 'prompt preview should include selected user template');
+        assert.ok(previewText.includes('Ada remembers every route'), 'prompt preview should include always-in-context compendium entry');
+        await page.evaluate(() => document.querySelector('[data-native-prompt-dialog]').close());
+        await page.waitForFunction(() => !document.querySelector('[data-native-prompt-dialog]').open);
+        await page.click('[data-view-target="workshop"]');
+        await page.waitForSelector('[data-workshop-new]:not([disabled])');
+        await page.click('[data-workshop-new]');
+        await page.waitForFunction(() => document.querySelector('[data-workshop-title]').textContent.includes('对话'));
+        await page.evaluate(() => {
+            window.__workshopGenerationCalls = 0;
+            window.__writingwayNativeGenerationStub = async (prompt, onToken, config) => {
+                window.__workshopGenerationCalls += 1;
+                window.__lastWorkshopPrompt = prompt && prompt.asString ? prompt.asString() : JSON.stringify(prompt);
+                window.__lastWorkshopConfig = config;
+                for (const token of [' Workshop', ' answer', ' text.']) {
+                    await new Promise((resolve) => setTimeout(resolve, 5));
+                    onToken(token);
+                }
+            };
+        });
+        await page.fill('[data-workshop-input]', '讨论 @[Ada Navigator] 接下来该去哪里？');
+        await page.click('[data-workshop-send]');
+        await page.waitForFunction(() => window.__workshopGenerationCalls > 0);
+        await page.waitForFunction(() => document.querySelector('[data-workshop-messages]').textContent.includes('Workshop answer text.'));
+        const workshopPrompt = await page.evaluate(() => window.__lastWorkshopPrompt);
+        assert.ok(workshopPrompt.includes('Ada remembers every route'), 'workshop prompt should include referenced compendium context');
+        await page.click('[data-workshop-to-compendium]');
+        await page.waitForFunction(() => document.querySelector('[data-workshop-status]').textContent.includes('已转为资料条目'));
+        await page.click('[data-workshop-to-summary]');
+        await page.waitForFunction(() => document.querySelector('[data-workshop-status]').textContent.includes('已写入当前场景摘要'));
+        await page.click('[data-workshop-insert-draft]');
+        await page.waitForFunction(() => document.querySelector('[data-workshop-status]').textContent.includes('已插入当前正文'));
+        await page.click('[data-view-target="writer"]');
+        await page.click('[data-native-focus-mode]');
+        await page.waitForFunction(() => document.querySelector('[data-native-writer]').classList.contains('is-focus-mode'));
+        await page.click('[data-native-focus-mode]');
+        await page.waitForFunction(() => !document.querySelector('[data-native-writer]').classList.contains('is-focus-mode'));
+        await page.click('[data-native-panel-tab="generate"]');
+        await page.evaluate(() => {
+            window.__writingwayNativeGenerationStub = async (prompt, onToken, config) => {
+                window.__nativeGenerationCalls += 1;
+                window.__lastNativePrompt = prompt && prompt.asString ? prompt.asString() : String(prompt);
+                window.__lastNativeGenerationConfig = config;
+                for (const token of [' Generated', ' native', ' prose.']) {
+                    await new Promise((resolve) => setTimeout(resolve, 5));
+                    onToken(token);
+                }
+            };
+        });
+        const generationStart = await page.evaluate(() => window.WritingwayDesktopShell.startNativeGeneration());
+        assert.ok(generationStart && generationStart.ok, `native generation should start: ${JSON.stringify(generationStart)}`);
+        await page.waitForFunction(() => window.__nativeGenerationCalls > 0);
+        const generationConfig = await page.evaluate(() => window.__lastNativeGenerationConfig);
+        assert.strictEqual(generationConfig.mode, 'api', 'native generation should use settings provider mode');
+        assert.strictEqual(generationConfig.endpoint, 'https://example.test/v1/chat/completions', 'native generation should use settings endpoint');
+        assert.strictEqual(generationConfig.model, 'desktop-test-model', 'native generation should use settings model');
+        assert.strictEqual(generationConfig.temperature, 0.55, 'native generation should use settings temperature');
+        assert.strictEqual(generationConfig.maxTokens, 444, 'native generation should use settings max tokens');
+        await page.waitForFunction(() => document.querySelector('[data-native-generation-result]').textContent.includes('Generated native prose.'));
+        await page.selectOption('[data-native-generation-insert-mode]', 'append');
+        await page.click('[data-native-accept-generation]');
+        await page.waitForFunction(() => document.querySelector('[data-native-scene-editor]').value.includes('Generated native prose.'));
+        await page.click('[data-native-save-scene]');
+        await page.waitForFunction(() => document.querySelector('[data-native-save-status]').textContent.includes('已保存'));
+
+        await page.click('[data-view-target="workflow"]');
+        await page.waitForSelector('[data-workflow-start]:not([disabled])');
+        await page.fill('[data-workflow-brief]', 'A storm-road novel about Ada following a dangerous map.');
+        await page.evaluate(() => {
+            window.__workflowGenerationCalls = 0;
+            window.__writingwayNativeGenerationStub = async (prompt, onToken, config) => {
+                window.__workflowGenerationCalls += 1;
+                window.__lastWorkflowPrompt = prompt && prompt.promptText ? prompt.promptText : JSON.stringify(prompt);
+                window.__lastWorkflowConfig = config;
+                const text = window.__workflowGenerationCalls === 1
+                    ? 'Chapter 1: Ada finds the storm road.'
+                    : 'Workflow drafted scene text with a storm-road clue.';
+                for (const token of text.split(/(?= )/)) {
+                    await new Promise((resolve) => setTimeout(resolve, 5));
+                    onToken(token);
+                }
+            };
+        });
+        await page.click('[data-workflow-start]');
+        await page.waitForFunction(() => document.querySelector('[data-workflow-status]').textContent.includes('工作流已启动'));
+        await page.click('[data-workflow-generate]');
+        await page.waitForFunction(() => document.querySelector('[data-workflow-artifacts]').textContent.includes('Ada finds the storm road.'));
+        await page.click('[data-workflow-approve]');
+        await page.waitForFunction(() => document.querySelector('[data-workflow-title]').textContent.includes('scene-draft'));
+        await page.click('[data-workflow-generate]');
+        await page.waitForFunction(() => document.querySelector('[data-workflow-artifacts]').textContent.includes('Workflow drafted scene text'));
+        await page.waitForSelector('[data-workflow-apply-artifact]:not([disabled])');
+        await page.click('[data-workflow-apply-artifact]');
+        await page.waitForFunction(() => document.querySelector('[data-workflow-status]').textContent.includes('草稿已采纳'));
+        const partialApplyProject = await page.evaluate(async () => {
+            const listResponse = await fetch('/api/list-projects', { cache: 'no-store' });
+            const listBody = await listResponse.json();
+            const projectId = listBody.projects.find((project) => project.name === 'Desktop Draft').id;
+            const response = await fetch(`/api/get-project?projectId=${projectId}`, { cache: 'no-store' });
+            return response.json();
+        });
+        assert.ok(
+            Object.values(partialApplyProject.project.sceneContents || {}).some((content) => String(content || '').includes('Workflow drafted scene text')),
+            'workflow artifact adoption should write the draft before final approval'
+        );
+        await page.click('[data-workflow-approve]');
+        await page.waitForFunction(() => document.querySelector('[data-workflow-title]').textContent.includes('user-confirmation'));
+        await page.click('[data-workflow-approve]');
+        await page.waitForFunction(() => document.querySelector('[data-workflow-status]').textContent.includes('工作流已完成'));
+        assert.strictEqual(await page.evaluate(() => window.__workflowGenerationCalls), 2, 'workflow should generate outline and draft steps');
+        const workflowPrompt = await page.evaluate(() => window.__lastWorkflowPrompt);
+        assert.ok(workflowPrompt.includes('storm-road novel'), 'workflow prompt should include project brief');
+        assert.ok(workflowPrompt.includes('Ada remembers every route'), 'workflow prompt should include compendium context');
 
         const createdListResponse = await fetch('http://127.0.0.1:8000/api/list-projects');
         const createdListBody = await createdListResponse.json();
         assert.ok(createdListResponse.ok && createdListBody.ok, 'project list should remain readable after create');
-        assert.ok(createdListBody.projects.some((project) => project.name === 'Desktop Draft'), 'created project should be saved to the desktop library');
+        const createdSummary = createdListBody.projects.find((project) => project.name === 'Desktop Draft');
+        assert.ok(createdSummary, 'created project should be saved to the desktop library');
+        assert.strictEqual(createdSummary.source, 'project-directory', 'created project should use the new directory format');
+        const nativeSavedResponse = await fetch(`http://127.0.0.1:8000/api/get-project?projectId=${createdSummary.id}`);
+        const nativeSavedBody = await nativeSavedResponse.json();
+        assert.ok(nativeSavedResponse.ok && nativeSavedBody.ok, 'native editor saved project should be readable');
+        assert.ok(
+            Object.values(nativeSavedBody.project.sceneContents).some((text) => text.includes('Native editor saved prose.')),
+            'native editor should save scene prose through the project directory API'
+        );
+        assert.ok(
+            Object.values(nativeSavedBody.project.sceneContents).some((text) => text.includes('Replaced native scene.')),
+            'native editor should replace text in the active scene'
+        );
+        assert.ok(
+            Object.values(nativeSavedBody.project.sceneContents).some((text) => text.includes('Generated native prose.')),
+            'native generation should append accepted prose to the active scene'
+        );
+        assert.ok(
+            Object.values(nativeSavedBody.project.sceneContents).some((text) => text.includes('Workflow drafted scene text')),
+            'workflow final approval should write draft text into the project'
+        );
+        assert.ok(
+            (nativeSavedBody.project.promptHistory || []).some((record) => record.beat === '让主角发现一封旧信。' && record.resultText.includes('Generated native prose.')),
+            'native generation should save generation history records'
+        );
+        assert.ok(
+            (nativeSavedBody.project.promptHistory || []).some((record) => record.task === 'workflow:scene-draft' && record.resultText.includes('Workflow drafted scene text')),
+            'workflow generation should save generation history records'
+        );
+        assert.ok(
+            (nativeSavedBody.project.workflowRuns || []).some((run) => run.status === 'completed'),
+            'workflow runs should be stored in the project directory'
+        );
+        assert.ok(
+            (nativeSavedBody.project.compendium || []).some((entry) => entry.title === 'Ada Navigator' && entry.body.includes('storm belt')),
+            'native compendium entries should be stored in the project directory'
+        );
+        assert.ok(
+            nativeSavedBody.project.scenes.some((scene) => scene.title === 'Renamed Second Scene'),
+            'native editor should rename scenes'
+        );
+        const renamedScene = nativeSavedBody.project.scenes.find((scene) => scene.title === 'Renamed Second Scene');
+        assert.ok(renamedScene, 'renamed scene should be present');
+        assert.strictEqual(renamedScene.summary, 'A saved native scene summary.', 'native editor should save scene summary');
+        assert.deepStrictEqual(renamedScene.tags, ['draft', 'important'], 'native editor should save scene tags');
+        assert.strictEqual(renamedScene.povCharacter, 'Ada', 'native editor should save POV character');
+        assert.strictEqual(renamedScene.tense, 'present', 'native editor should save tense');
+        assert.strictEqual(
+            nativeSavedBody.project.chapters.some((chapter) => chapter.title === 'Opening Chapter'),
+            true,
+            'native editor should rename chapters'
+        );
+        assert.strictEqual(
+            nativeSavedBody.project.chapters.some((chapter) => chapter.title === 'Disposable Chapter'),
+            false,
+            'native editor should delete chapters and their scenes'
+        );
+        const openingChapter = nativeSavedBody.project.chapters.find((chapter) => chapter.title === 'Opening Chapter');
+        const openingScenes = nativeSavedBody.project.scenes
+            .filter((scene) => scene.chapterId === openingChapter.id)
+            .sort((a, b) => a.order - b.order);
+        assert.strictEqual(openingScenes[0].title, 'Renamed Second Scene', 'native editor should reorder scenes within a chapter');
+        assert.strictEqual(
+            nativeSavedBody.project.scenes.some((scene) => scene.title === 'Temporary Scene'),
+            false,
+            'native editor should delete scenes'
+        );
+        assert.strictEqual(await page.evaluate(() => !!window.WritingwayReaderDocument), true, 'desktop reader should load the core reader document module');
+
+        const backupResponse = await fetch('http://127.0.0.1:8000/api/create-backup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ...nativeSavedBody.project,
+                backupRequest: { reason: 'manual', note: 'desktop recovery list test' }
+            })
+        });
+        const backupBody = await backupResponse.json();
+        assert.ok(backupResponse.ok && backupBody.ok, 'test backup should be created');
+        await page.click('[data-view-target="recovery"]');
+        await page.click('[data-refresh-recovery]');
+        await page.waitForFunction(() => document.querySelectorAll('.desktop-recovery-item').length > 0);
+        await page.fill('[data-recovery-search]', 'Desktop Draft');
+        await page.waitForFunction(() => document.querySelectorAll('.desktop-recovery-item').length >= 1);
+        await page.click('.desktop-recovery-item');
+        await page.waitForFunction(() => !document.querySelector('[data-recovery-restore-new]').disabled);
+        await page.waitForFunction(() => document.querySelector('[data-recovery-diff]').textContent.includes('变更'));
+        page.once('dialog', async (dialog) => {
+            assert.strictEqual(dialog.type(), 'confirm');
+            await dialog.accept();
+        });
+        await page.click('[data-recovery-restore-scene]');
+        await page.waitForFunction(() => !document.querySelector('[data-recovery-status]').textContent.includes('正在恢复'));
+        page.once('dialog', async (dialog) => {
+            assert.strictEqual(dialog.type(), 'confirm');
+            await dialog.accept();
+        });
+        await page.click('[data-recovery-restore-new]');
+        await page.waitForFunction(() => document.querySelector('[data-recovery-status]').textContent.includes('已恢复为新项目'));
+        const restoredListResponse = await fetch('http://127.0.0.1:8000/api/list-projects');
+        const restoredListBody = await restoredListResponse.json();
+        assert.ok(
+            restoredListBody.projects.some((project) => project.name.includes('(Recovered)')),
+            'native recovery should restore a backup as a new project'
+        );
+
+        await page.click('[data-view-target="bookshelf"]');
+        await page.waitForFunction(() => {
+            return Array.from(document.querySelectorAll('.desktop-project-card'))
+                .some((card) => card.textContent.includes('Desktop Draft') && card.dataset.projectSource === 'project-directory');
+        });
 
         await page.evaluate(() => {
             window.postMessage({

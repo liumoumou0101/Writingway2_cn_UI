@@ -136,6 +136,45 @@ async function createBackup(payload, requestOptions) {
         assert.strictEqual(pinnedData.backup.backupMeta.pinned, true, 'pinned flag should be stored in backup metadata');
         assert.deepStrictEqual(Object.values(pinnedData.backup.sceneContents), ['first stable draft'], 'pinned backup contents should remain readable');
 
+        await api('/api/save-project', {
+            method: 'POST',
+            body: JSON.stringify(snapshot(projectId, 'Backup API Test', 'current changed draft', new Date(baseTime + 5000).toISOString()))
+        });
+        const diff = await api(`/api/backup-diff?projectId=${encodeURIComponent(projectId)}&backupId=${encodeURIComponent(first.backupId)}`);
+        assert.strictEqual(diff.hasCurrentProject, true, 'backup diff should detect current project directory');
+        assert.strictEqual(diff.diff.changed, 1, 'backup diff should report changed scene text');
+
+        const restored = await api('/api/restore-backup', {
+            method: 'POST',
+            body: JSON.stringify({ projectId, backupId: first.backupId, mode: 'replace' })
+        });
+        assert.strictEqual(restored.projectId, projectId, 'replace restore should keep original project id');
+        assert.ok(restored.preRestoreBackup && restored.preRestoreBackup.backupId, 'replace restore should create a pre-restore snapshot');
+        const restoredProject = await api(`/api/get-project?projectId=${encodeURIComponent(projectId)}`);
+        assert.deepStrictEqual(Object.values(restoredProject.project.sceneContents), ['first stable draft'], 'replace restore should restore backup text');
+
+        await api('/api/save-project', {
+            method: 'POST',
+            body: JSON.stringify(snapshot(projectId, 'Backup API Test', 'scene changed again', new Date(baseTime + 6000).toISOString()))
+        });
+        const backupSceneId = pinnedData.backup.scenes[0].id;
+        const sceneRestore = await api('/api/restore-backup-scene', {
+            method: 'POST',
+            body: JSON.stringify({ projectId, backupId: first.backupId, sceneId: backupSceneId })
+        });
+        assert.ok(sceneRestore.preRestoreBackup && sceneRestore.preRestoreBackup.backupId, 'scene restore should create a pre-restore snapshot');
+        const sceneRestoredProject = await api(`/api/get-project?projectId=${encodeURIComponent(projectId)}`);
+        assert.deepStrictEqual(Object.values(sceneRestoredProject.project.sceneContents), ['first stable draft'], 'scene restore should restore only the selected scene text');
+
+        const recovered = await api('/api/restore-backup', {
+            method: 'POST',
+            body: JSON.stringify({ projectId, backupId: first.backupId, mode: 'new-project' })
+        });
+        assert.notStrictEqual(recovered.projectId, projectId, 'new-project restore should create a new project id');
+        const recoveredProject = await api(`/api/get-project?projectId=${encodeURIComponent(recovered.projectId)}`);
+        assert.match(recoveredProject.project.project.name, /Recovered/, 'new-project restore should rename the recovered project');
+        assert.deepStrictEqual(Object.values(recoveredProject.project.sceneContents), ['first stable draft'], 'new-project restore should keep backup contents');
+
         const unpinned = await api('/api/update-backup', {
             method: 'POST',
             body: JSON.stringify({ projectId, backupId: first.backupId, pinned: false })
