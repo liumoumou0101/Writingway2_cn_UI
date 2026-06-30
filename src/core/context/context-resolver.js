@@ -49,6 +49,18 @@
         };
     }
 
+    function textMentionsTerm(text, term) {
+        const source = String(text || '');
+        const raw = String(term || '').trim();
+        if (!source || !raw) return false;
+        if (/^[A-Za-z0-9_-]+$/.test(raw)) {
+            const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const re = new RegExp('(^|[^A-Za-z0-9_-])' + escaped + '($|[^A-Za-z0-9_-])', 'i');
+            return re.test(source);
+        }
+        return source.toLowerCase().includes(raw.toLowerCase());
+    }
+
     function applyBudget(context, maxChars) {
         if (!Number.isFinite(Number(maxChars)) || Number(maxChars) <= 0) return context;
         let remaining = Number(maxChars);
@@ -100,12 +112,17 @@
             }
         };
 
+        const currentSceneObj = scenes.find((scene) => scene.id === currentSceneId);
+        const currentSceneContent = (currentSceneObj && currentSceneObj.content) || sceneContents[currentSceneId] || '';
+        const mentionText = [beat, currentSceneContent].filter(Boolean).join('\n\n');
+
         const entryMentionNames = mentionNames(beat, '@');
         for (const entry of compendium) {
             const selectedById = context.selected.compendiumIds.includes(entry.id);
             const selectedByTag = (entry.tags || []).some((tag) => context.selected.compendiumTags.includes(tag));
             const selectedByMention = entryMatchesMention(entry, entryMentionNames);
-            if (entry.alwaysInContext || selectedById || selectedByTag || selectedByMention) {
+            const selectedByTagMention = (entry.tags || []).some((tag) => textMentionsTerm(mentionText, tag));
+            if (entry.alwaysInContext || selectedById || selectedByTag || selectedByMention || selectedByTagMention) {
                 uniquePush(context.compendiumEntries, entry, (item) => item.id);
             }
         }
