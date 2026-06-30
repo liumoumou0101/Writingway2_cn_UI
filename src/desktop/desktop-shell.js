@@ -2652,7 +2652,8 @@
             send: document.querySelector('[data-workshop-send]'),
             toCompendium: document.querySelector('[data-workshop-to-compendium]'),
             toSummary: document.querySelector('[data-workshop-to-summary]'),
-            insertDraft: document.querySelector('[data-workshop-insert-draft]')
+            insertDraft: document.querySelector('[data-workshop-insert-draft]'),
+            outputActions: document.querySelector('[data-workshop-output-actions]')
         };
     }
 
@@ -2691,8 +2692,11 @@
         if (elements.input) elements.input.disabled = !session || workshopState.generating;
         if (elements.send) elements.send.disabled = !session || workshopState.generating || !workshopState.input.trim();
         [elements.toCompendium, elements.toSummary, elements.insertDraft].forEach((button) => {
-            if (button) button.disabled = !assistant || workshopState.generating;
+            if (button) {
+                button.disabled = !assistant || workshopState.generating;
+            }
         });
+        if (elements.outputActions) elements.outputActions.hidden = !assistant;
 
         if (elements.list) {
             elements.list.replaceChildren();

@@ -273,6 +273,12 @@ textarea {
     max-width: 1180px;
 }
 
+@media (min-width: 1600px) {
+    .desktop-placeholder-layout {
+        max-width: 1480px;
+    }
+}
+
 .desktop-placeholder-copy,
 .desktop-bookshelf-preview,
 .desktop-panel-placeholder {
@@ -369,6 +375,12 @@ textarea {
     margin: 0 auto 22px;
 }
 
+@media (min-width: 1600px) {
+    .desktop-settings-header {
+        max-width: 1280px;
+    }
+}
+
 .desktop-settings-header h2 {
     margin: 4px 0 8px;
     color: var(--desktop-text);
@@ -403,6 +415,13 @@ textarea {
     gap: 16px;
     max-width: 1040px;
     margin: 0 auto;
+}
+
+@media (min-width: 1600px) {
+    .desktop-settings-grid {
+        max-width: 1280px;
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 480px);
+    }
 }
 
 .desktop-settings-section {
@@ -477,6 +496,12 @@ textarea {
 .desktop-settings-legacy {
     max-width: 1040px;
     margin: 18px auto 0;
+}
+
+@media (min-width: 1600px) {
+    .desktop-settings-legacy {
+        max-width: 1280px;
+    }
 }
 
 .desktop-compendium-view.is-active {
@@ -670,6 +695,17 @@ textarea {
     line-height: 1.55;
 }
 
+.desktop-workflow-sidebar-note {
+    margin-top: 6px;
+    padding: 10px;
+    border: 1px solid var(--desktop-line);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--desktop-muted);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
 .desktop-workflow-sidebar label {
     display: grid;
     gap: 8px;
@@ -848,6 +884,10 @@ textarea {
     gap: 10px;
     padding: 12px 18px;
     border-top: 1px solid var(--desktop-line);
+}
+
+.desktop-workshop-output-actions[hidden] {
+    display: none;
 }
 
 .desktop-workshop-input-row {
@@ -2439,21 +2479,21 @@ textarea {
 
 .desktop-native-assistant-tabs {
     display: flex;
-    gap: 6px;
-    padding: 10px 12px;
-    overflow-x: auto;
-    scrollbar-width: thin;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 10px;
     background: #151820;
 }
 
 .desktop-native-assistant-tabs button {
     flex: 0 0 auto;
-    min-width: 58px;
-    min-height: 34px;
-    padding: 6px 10px;
-    border-radius: 7px;
+    min-width: 52px;
+    min-height: 30px;
+    padding: 4px 8px;
+    border-radius: 6px;
     color: #aeb9c8;
     white-space: nowrap;
+    font-size: 12px;
 }
 
 .desktop-native-assistant-tabs button.is-active {
@@ -2539,7 +2579,7 @@ textarea {
 }
 
 .desktop-native-writer.is-assistant-bottom .desktop-native-assistant-tabs {
-    padding-block: 8px;
+    padding: 6px 10px;
 }
 
 .desktop-native-writer.is-focus-mode .desktop-native-editor-body > textarea {
@@ -2702,6 +2742,12 @@ textarea {
     padding: 30px;
 }
 
+@media (min-width: 1600px) {
+    .desktop-panel-placeholder {
+        max-width: 1120px;
+    }
+}
+
 .desktop-recovery-list {
     display: grid;
     gap: 8px;
@@ -2817,6 +2863,12 @@ textarea {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+}
+
+.desktop-recovery-actions button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .desktop-view-reader {
