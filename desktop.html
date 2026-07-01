@@ -247,6 +247,26 @@
                         </div>
                         <section class="desktop-native-assistant-panel is-active" data-native-panel="generate">
                             <div class="desktop-native-generation" data-native-generation>
+                                <div class="desktop-native-model-control" data-native-model-control>
+                                    <div class="desktop-native-model-control-header">
+                                        <span>模型控制</span>
+                                        <span class="desktop-native-model-control-hint" data-native-model-control-hint></span>
+                                    </div>
+                                    <div class="desktop-native-model-control-row">
+                                        <label>
+                                            <span>模型选择</span>
+                                            <select data-native-model-select>
+                                                <option value="inherit">继承全局</option>
+                                                <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+                                                <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+                                            </select>
+                                        </label>
+                                        <label class="desktop-native-writer-check">
+                                            <input type="checkbox" data-native-thinking-toggle>
+                                            <span>深度思考</span>
+                                        </label>
+                                    </div>
+                                </div>
                                 <div class="desktop-native-task-group" data-native-gen-task-group>
                                     <button type="button" class="is-active" data-native-gen-task="continue">续写场景</button>
                                     <button type="button" data-native-gen-task="beat">按节拍生成</button>

@@ -5,6 +5,25 @@
         root.WritingwayProviderStream = factory(root);
     }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
+    var MODEL_CAPABILITIES = {
+        'deepseek-v4-flash': {
+            label: 'DeepSeek V4 Flash',
+            thinkingSupported: true,
+            contextNote: '1M 上下文，快速响应',
+            thinkingDisabledParams: ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty']
+        },
+        'deepseek-v4-pro': {
+            label: 'DeepSeek V4 Pro',
+            thinkingSupported: true,
+            contextNote: '1M 上下文，深度推理',
+            thinkingDisabledParams: ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty']
+        }
+    };
+
+    function getModelCapability(model) {
+        return MODEL_CAPABILITIES[model] || null;
+    }
+
     function messagesToChatML(messages) {
         if (!Array.isArray(messages)) return '';
         let result = '';
@@ -71,25 +90,66 @@
         return { realModel: selectedModel, enableThinking: false };
     }
 
+    function isThinkingParamDisabled(realModel, paramName) {
+        var cap = getModelCapability(realModel);
+        if (!cap) return false;
+        return cap.thinkingDisabledParams.indexOf(paramName) !== -1;
+    }
+
+    function sanitizeStreamBody(body, realModel, enableThinking) {
+        if (!enableThinking) return body;
+        var sanitized = {};
+        for (var key in body) {
+            if (!body.hasOwnProperty(key)) continue;
+            if (isThinkingParamDisabled(realModel, key)) continue;
+            sanitized[key] = body[key];
+        }
+        return sanitized;
+    }
+
     async function streamOpenAICompatible(messages, onToken, config = {}) {
         const isDeepSeek = config.provider === 'deepseek';
         const endpoint = config.endpoint || config.aiEndpoint || (isDeepSeek ? 'https://api.deepseek.com/chat/completions' : '');
         if (!endpoint) throw new Error('API endpoint is required.');
-        const deepSeekModel = isDeepSeek ? resolveDeepSeekModel(config.model || config.aiModel) : null;
-        const body = {
-            model: deepSeekModel ? deepSeekModel.realModel : (config.model || config.aiModel || 'gpt-4o-mini'),
-            messages,
-            stream: deepSeekModel ? !deepSeekModel.enableThinking : true
-        };
-        if (deepSeekModel) {
-            body.thinking = { type: deepSeekModel.enableThinking ? 'enabled' : 'disabled' };
-            if (deepSeekModel.enableThinking) body.reasoning_effort = 'high';
+
+        var enableThinking = false;
+        var realModel = null;
+
+        if (isDeepSeek) {
+            if (config.enableThinking !== undefined) {
+                enableThinking = !!config.enableThinking;
+                realModel = config.model || config.aiModel || 'deepseek-v4-pro';
+            } else {
+                var resolved = resolveDeepSeekModel(config.model || config.aiModel);
+                realModel = resolved.realModel;
+                enableThinking = resolved.enableThinking;
+            }
         }
-        if (!config.useProviderDefaults && !(deepSeekModel && deepSeekModel.enableThinking)) {
+
+        var body = {
+            model: realModel || (config.model || config.aiModel || 'gpt-4o-mini'),
+            messages: messages,
+            stream: true
+        };
+
+        if (isDeepSeek) {
+            if (enableThinking) {
+                body.thinking = { type: 'enabled' };
+            } else {
+                body.thinking = { type: 'disabled' };
+            }
+        }
+
+        if (!config.useProviderDefaults) {
             body.temperature = config.temperature || 0.8;
             body.max_tokens = config.maxTokens || 300;
         }
-        const response = await fetch(endpoint, {
+
+        if (isDeepSeek) {
+            body = sanitizeStreamBody(body, realModel, enableThinking);
+        }
+
+        var response = await fetch(endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -100,32 +160,47 @@
         });
         if (!response.ok) throw new Error(`API generation returned ${response.status}`);
 
-        if (deepSeekModel && deepSeekModel.enableThinking) {
-            const data = await response.json();
-            const message = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message : {};
-            const text = message.content || message.reasoning_content || '';
-            if (text) onToken(text);
+        var isThinking = isDeepSeek && enableThinking;
+
+        if (!response.body || !response.body.getReader) {
+            var data = await response.json();
+            var message = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message : {};
+            var reasoning = message.reasoning_content || '';
+            var text = message.content || '';
+            if (reasoning) onToken(reasoning, { type: 'reasoning' });
+            if (text) onToken(text, { type: 'content' });
             return;
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+        var hadReasoning = false;
+        var hadContent = false;
         while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
+            var readResult = await reader.read();
+            if (readResult.done) break;
+            buffer += decoder.decode(readResult.value, { stream: true });
+            var lines = buffer.split('\n');
             buffer = lines.pop();
-            for (const line of lines) {
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
                 if (!line.startsWith('data: ')) continue;
-                const payload = line.slice(6).trim();
+                var payload = line.slice(6).trim();
                 if (!payload || payload === '[DONE]') continue;
-                const data = JSON.parse(payload);
-                const token = data.choices && data.choices[0] && data.choices[0].delta
-                    ? (data.choices[0].delta.content || '')
-                    : '';
-                if (token) onToken(token);
+                var chunk = JSON.parse(payload);
+                var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta ? chunk.choices[0].delta : {};
+
+                if (isThinking && delta.reasoning_content) {
+                    hadReasoning = true;
+                    onToken(delta.reasoning_content, { type: 'reasoning' });
+                }
+
+                var content = delta.content || '';
+                if (content) {
+                    hadContent = true;
+                    onToken(content, isThinking ? { type: 'content' } : undefined);
+                }
             }
         }
     }
@@ -144,7 +219,9 @@
     }
 
     return {
-        messagesToChatML,
-        streamGeneration
+        MODEL_CAPABILITIES: MODEL_CAPABILITIES,
+        getModelCapability: getModelCapability,
+        messagesToChatML: messagesToChatML,
+        streamGeneration: streamGeneration
     };
 });

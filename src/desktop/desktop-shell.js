@@ -144,6 +144,11 @@
         loadPromise: null,
         saving: false
     };
+    const WRITER_MODEL_KEY = 'writingway:desktop:writerModelOverride';
+    const writerModelOverride = {
+        model: 'inherit',
+        thinking: false
+    };
     const shellUiState = {
         railCollapsed: false
     };
@@ -2059,7 +2064,11 @@
             nameLabel: document.querySelector('[data-native-name-label]'),
             nameInput: document.querySelector('[data-native-name-input]'),
             nameStatus: document.querySelector('[data-native-name-status]'),
-            nameCancelButtons: Array.from(document.querySelectorAll('[data-native-name-cancel]'))
+            nameCancelButtons: Array.from(document.querySelectorAll('[data-native-name-cancel]')),
+            modelControl: document.querySelector('[data-native-model-control]'),
+            modelControlHint: document.querySelector('[data-native-model-control-hint]'),
+            modelSelect: document.querySelector('[data-native-model-select]'),
+            thinkingToggle: document.querySelector('[data-native-thinking-toggle]')
         };
     }
 
@@ -2304,6 +2313,7 @@
         } finally {
             settingsState.saving = false;
             renderSettingsForm();
+            renderWriterModelControl();
             renderNativeGeneration();
         }
     }
@@ -3927,6 +3937,7 @@
         renderNativeRewrite();
         renderNativeCharacters();
         renderNativeContext();
+        renderWriterModelControl();
         renderNativeGeneration();
     }
 
@@ -5110,6 +5121,51 @@
         };
     }
 
+    function saveWriterModelOverride() {
+        try {
+            localStorage.setItem(WRITER_MODEL_KEY, JSON.stringify(writerModelOverride));
+        } catch (error) { /* ignore */ }
+    }
+
+    function loadWriterModelOverride() {
+        try {
+            var saved = JSON.parse(localStorage.getItem(WRITER_MODEL_KEY) || '{}');
+            if (saved && typeof saved === 'object') {
+                if (saved.model === 'inherit' || saved.model === 'deepseek-v4-flash' || saved.model === 'deepseek-v4-pro') {
+                    writerModelOverride.model = saved.model;
+                }
+                writerModelOverride.thinking = !!saved.thinking;
+            }
+        } catch (error) { /* ignore */ }
+    }
+
+    function renderWriterModelControl() {
+        var elements = nativeEditorElements();
+        if (!elements.modelSelect || !elements.modelControl) return;
+        var providerConfig = runtimeProviderConfig();
+        var isDeepSeek = providerConfig.mode === 'api' && providerConfig.provider === 'deepseek';
+
+        if (isDeepSeek) {
+            elements.modelControl.classList.remove('is-disabled');
+            elements.modelControlHint.textContent = '';
+            elements.modelSelect.disabled = false;
+            elements.modelSelect.value = writerModelOverride.model;
+            if (elements.thinkingToggle) {
+                elements.thinkingToggle.disabled = false;
+                elements.thinkingToggle.checked = writerModelOverride.thinking;
+            }
+        } else {
+            elements.modelControl.classList.add('is-disabled');
+            elements.modelControlHint.textContent = '当前 provider 使用全局模型设置';
+            elements.modelSelect.disabled = true;
+            elements.modelSelect.value = 'inherit';
+            if (elements.thinkingToggle) {
+                elements.thinkingToggle.disabled = true;
+                elements.thinkingToggle.checked = false;
+            }
+        }
+    }
+
     function renderNativeGeneration() {
         const elements = nativeEditorElements();
         const generation = nativeEditorState.generation;
@@ -5147,16 +5203,44 @@
         if (elements.generationOutput) elements.generationOutput.hidden = !showGenerationOutput;
         if (elements.generationOutputStatus) {
             if (generation.inProgress) {
-                elements.generationOutputStatus.textContent = '正在生成，完成后可保留、重试或撤回。';
+                if (generation.reasoning && !generation.text) {
+                    elements.generationOutputStatus.textContent = '正在思考...';
+                } else if (generation.inProgress && generation.text) {
+                    elements.generationOutputStatus.textContent = '正在成文...';
+                } else {
+                    elements.generationOutputStatus.textContent = '正在生成，完成后可保留、重试或撤回。';
+                }
             } else if (generation.task === 'rewrite' || generation.task === 'regenerate-selection') {
-                elements.generationOutputStatus.textContent = '预览结果后点击“保留”替换原文，撤回会保持原文。';
+                elements.generationOutputStatus.textContent = '预览结果后点击"保留"替换原文，撤回会保持原文。';
             } else {
                 elements.generationOutputStatus.textContent = '确认后写入正文，撤回会恢复原文。';
             }
         }
         if (elements.generationResult) elements.generationResult.textContent = generation.text || (generation.inProgress ? '生成中...' : '');
-        if (elements.reasoning) elements.reasoning.hidden = !generation.reasoning;
-        if (elements.reasoningText) elements.reasoningText.textContent = generation.reasoning || '';
+        if (elements.reasoning) {
+            var effectiveThinking = writerModelOverride.thinking;
+            if (writerModelOverride.model === 'inherit') {
+                var globalConfig = runtimeProviderConfig();
+                effectiveThinking = !!(globalConfig && globalConfig.enableThinking);
+            }
+            elements.reasoning.hidden = !(effectiveThinking && generation.inProgress) && !generation.reasoning;
+        }
+        if (elements.reasoningText) {
+            if (generation.reasoning) {
+                elements.reasoningText.textContent = generation.reasoning;
+            } else if (generation.inProgress && writerModelOverride.thinking) {
+                elements.reasoningText.textContent = '等待思考流...';
+            } else if (generation.inProgress && writerModelOverride.model === 'inherit') {
+                var globalConfig = runtimeProviderConfig();
+                if (globalConfig && globalConfig.enableThinking) {
+                    elements.reasoningText.textContent = '等待思考流...';
+                } else {
+                    elements.reasoningText.textContent = '';
+                }
+            } else {
+                elements.reasoningText.textContent = '';
+            }
+        }
         if (elements.acceptGeneration) elements.acceptGeneration.disabled = !generation.text || generation.inProgress;
         if (elements.retryGeneration) {
             const needsBeat = generation.genTask === 'beat';
@@ -5444,7 +5528,18 @@
     }
 
     function nativeGenerationConfig(signal) {
-        return runtimeProviderConfig({ signal });
+        var base = runtimeProviderConfig({ signal });
+        if (writerModelOverride.model !== 'inherit') {
+            base.model = writerModelOverride.model;
+        }
+        if (writerModelOverride.thinking) {
+            if (writerModelOverride.model !== 'inherit') {
+                base.enableThinking = true;
+            } else if (base.mode === 'api' && base.provider === 'deepseek') {
+                base.enableThinking = true;
+            }
+        }
+        return base;
     }
 
     function prepareInlineGeneration(task, prompt) {
@@ -5621,8 +5716,12 @@
             if (!window.WritingwayProviderStream || typeof window.WritingwayProviderStream.streamGeneration !== 'function') {
                 throw new Error('Native generation provider stream is not loaded.');
             }
-            await window.WritingwayProviderStream.streamGeneration(prompt, (token) => {
-                generation.text += token;
+            await window.WritingwayProviderStream.streamGeneration(prompt, (token, meta) => {
+                if (meta && meta.type === 'reasoning') {
+                    generation.reasoning += token;
+                } else {
+                    generation.text += token;
+                }
                 syncInlineGenerationToEditor();
                 renderNativeGeneration();
             }, nativeGenerationConfig(generation.abortController && generation.abortController.signal));
@@ -5634,6 +5733,7 @@
                 ? window.WritingwayGenerationResult.createGenerationResult({
                     task: 'fiction-prose',
                     text: generation.text,
+                    reasoning: generation.reasoning,
                     messages: prompt.messages || [],
                     startedAt,
                     finishedAt: new Date().toISOString()
@@ -5723,8 +5823,12 @@
         var startedAt = new Date().toISOString();
         var failureMessage = '';
         try {
-            await window.WritingwayProviderStream.streamGeneration(prompt, function (token) {
-                generation.text += token;
+            await window.WritingwayProviderStream.streamGeneration(prompt, function (token, meta) {
+                if (meta && meta.type === 'reasoning') {
+                    generation.reasoning += token;
+                } else {
+                    generation.text += token;
+                }
                 renderNativeGeneration();
             }, nativeGenerationConfig(generation.abortController && generation.abortController.signal));
             if (!generation.text.trim()) throw new Error('AI provider returned an empty response.');
@@ -5737,6 +5841,7 @@
                     messages: prompt.messages || [],
                     promptText: prompt.asString(),
                     resultText: generation.text,
+                    reasoning: generation.reasoning,
                     startedAt: startedAt,
                     finishedAt: new Date().toISOString()
                 })
@@ -5797,8 +5902,12 @@
         var startedAt = new Date().toISOString();
         var failureMessage = '';
         try {
-            await window.WritingwayProviderStream.streamGeneration(prompt, function (token) {
-                generation.text += token;
+            await window.WritingwayProviderStream.streamGeneration(prompt, function (token, meta) {
+                if (meta && meta.type === 'reasoning') {
+                    generation.reasoning += token;
+                } else {
+                    generation.text += token;
+                }
                 renderNativeGeneration();
             }, nativeGenerationConfig(generation.abortController && generation.abortController.signal));
             if (!generation.text.trim()) throw new Error('AI provider returned an empty response.');
@@ -5811,6 +5920,7 @@
                     messages: prompt.messages || [],
                     promptText: prompt.asString(),
                     resultText: generation.text,
+                    reasoning: generation.reasoning,
                     startedAt: startedAt,
                     finishedAt: new Date().toISOString()
                 })
@@ -6300,6 +6410,20 @@
                 renderNativeGeneration();
             });
         }
+        if (elements.modelSelect) {
+            elements.modelSelect.addEventListener('change', () => {
+                writerModelOverride.model = elements.modelSelect.value || 'inherit';
+                saveWriterModelOverride();
+                renderWriterModelControl();
+            });
+        }
+        if (elements.thinkingToggle) {
+            elements.thinkingToggle.addEventListener('change', () => {
+                writerModelOverride.thinking = !!elements.thinkingToggle.checked;
+                saveWriterModelOverride();
+                renderWriterModelControl();
+            });
+        }
         if (elements.closePrompt) {
             elements.closePrompt.addEventListener('click', () => {
                 if (elements.promptDialog && typeof elements.promptDialog.close === 'function') elements.promptDialog.close();
@@ -6481,6 +6605,7 @@
             const placement = window.localStorage.getItem('writingway:nativeAssistantPlacement');
             if (placement === 'bottom' || placement === 'right') nativeEditorState.assistantPlacement = placement;
         } catch (error) { /* ignore */ }
+        loadWriterModelOverride();
         loadNativeEditorPrefs();
         loadExportOptions();
         bindNavigation();

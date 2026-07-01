@@ -393,9 +393,72 @@ async function submitNativeName(page, value) {
     await page.waitForFunction(() => document.querySelector('[data-native-scene-editor]').value.includes('Auto \u2014 replace.'));
 
     await page.click('[data-native-panel-tab="generate"]');
+
+    // Configure provider to DeepSeek via settings so model control is enabled
+    await page.click('[data-view-target="settings"]');
+    await page.waitForSelector('[data-settings-mode]');
+    await page.selectOption('[data-settings-mode]', 'api');
+    await page.selectOption('[data-settings-provider]', 'deepseek');
+    await page.fill('[data-settings-endpoint]', 'https://api.deepseek.com/chat/completions');
+    await page.fill('[data-settings-model]', 'deepseek-v4-pro');
+    await page.fill('[data-settings-api-key]', 'writer-audit-test-key');
+    await page.click('[data-settings-form] button[type="submit"]');
+    await page.waitForFunction(() => {
+      const status = document.querySelector('[data-settings-status]');
+      return status && status.dataset.tone === 'ok';
+    });
+    await page.click('[data-view-target="writer"]');
+    // Programmatically set model select value to trigger change event; that calls
+    // renderWriterModelControl which reads the updated runtimeProvider and enables the control.
+    await page.evaluate(() => {
+      var select = document.querySelector('[data-native-model-select]');
+      if (select) {
+        select.value = 'deepseek-v4-pro';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    await page.waitForSelector('[data-native-model-select]:not([disabled])');
+    await page.waitForSelector('[data-native-thinking-toggle]:not([disabled])');
+
+    // Verify model options
+    var auditOptionCount = await page.evaluate(() => {
+      var select = document.querySelector('[data-native-model-select]');
+      return select ? select.options.length : 0;
+    });
+    assert.ok(auditOptionCount >= 3, 'model select should have at least 3 options, got ' + auditOptionCount);
+    var auditOptions = await page.evaluate(() => {
+      var select = document.querySelector('[data-native-model-select]');
+      return Array.from(select.options).map(function (o) { return { value: o.value, text: o.textContent }; });
+    });
+    assert.ok(auditOptions.some(function (o) { return o.text.includes('DeepSeek V4 Pro'); }), 'model select should include DeepSeek V4 Pro');
+    assert.ok(auditOptions.some(function (o) { return o.text.includes('DeepSeek V4 Flash'); }), 'model select should include DeepSeek V4 Flash');
+    assert.ok(auditOptions.some(function (o) { return o.text.includes('继承全局'); }), 'model select should include inherit option');
+
+    // Restore to inherit so we can select specific model again naturally
+    await page.selectOption('[data-native-model-select]', 'inherit');
+    await page.waitForFunction(() => {
+      var select = document.querySelector('[data-native-model-select]');
+      return select && select.value === 'inherit';
+    });
+
+    // Select specific model + thinking
+    await page.selectOption('[data-native-model-select]', 'deepseek-v4-pro');
+    await page.waitForFunction(() => {
+      var select = document.querySelector('[data-native-model-select]');
+      return select && select.value === 'deepseek-v4-pro';
+    });
+    await page.locator('[data-native-thinking-toggle]').check();
+    await page.waitForFunction(() => {
+      var toggle = document.querySelector('[data-native-thinking-toggle]');
+      return toggle && toggle.checked === true;
+    });
+
+    // Generate with specific model + thinking
     await page.fill('[data-native-beat-input]', 'A concise audit continuation.');
     await page.evaluate(() => {
-      window.__writingwayNativeGenerationStub = async (prompt, onToken) => {
+      window.__lastNativeGenerationConfig = null;
+      window.__writingwayNativeGenerationStub = async (prompt, onToken, config) => {
+        window.__lastNativeGenerationConfig = config && typeof config === 'object' ? Object.assign({}, config) : config;
         for (const token of [' Audit', ' generated', ' text.']) {
           await new Promise((resolve) => setTimeout(resolve, 2));
           onToken(token);
@@ -413,12 +476,64 @@ async function submitNativeName(page, value) {
 
     await page.click('[data-native-generate]');
     await page.waitForFunction(() => document.querySelector('[data-native-generation-result]').textContent.includes('Audit generated text.'));
+    var lastGenConfig = await page.evaluate(() => window.__lastNativeGenerationConfig);
+    assert.ok(lastGenConfig, 'generation stub should receive a config object');
+    assert.strictEqual(lastGenConfig.model, 'deepseek-v4-pro', 'generation config should use deepseek-v4-pro model');
+    assert.strictEqual(lastGenConfig.enableThinking, true, 'generation config should have enableThinking true');
     await page.waitForFunction(() => document.querySelector('[data-native-scene-editor]').value.includes('Audit generated text.'));
     await page.selectOption('[data-native-generation-insert-mode]', 'cursor');
     await page.click('[data-native-accept-generation]');
     await page.waitForFunction(() => document.querySelector('[data-native-scene-editor]').value.includes('Audit generated text.'));
 
+    // Test inherit + thinking: should pass enableThinking for DeepSeek
+    await page.selectOption('[data-native-model-select]', 'inherit');
+    await page.waitForFunction(() => {
+      var select = document.querySelector('[data-native-model-select]');
+      return select && select.value === 'inherit';
+    });
+    await page.locator('[data-native-thinking-toggle]').check();
+    await page.waitForFunction(() => {
+      var toggle = document.querySelector('[data-native-thinking-toggle]');
+      return toggle && toggle.checked === true;
+    });
+
+    await page.fill('[data-native-beat-input]', 'Inherit model with thinking.');
+    await page.evaluate(() => {
+      window.__lastNativeGenerationConfig = null;
+      window.__writingwayNativeGenerationStub = async (prompt, onToken, config) => {
+        window.__lastNativeGenerationConfig = config && typeof config === 'object' ? Object.assign({}, config) : config;
+        for (const token of [' Inherit', ' think', ' audit.']) {
+          await new Promise((resolve) => setTimeout(resolve, 2));
+          onToken(token);
+        }
+      };
+    });
+    await page.click('[data-native-generate]');
+    await page.waitForFunction(() => document.querySelector('[data-native-generation-result]').textContent.includes('Inherit think audit.'));
+    var inheritConfig = await page.evaluate(() => window.__lastNativeGenerationConfig);
+    assert.ok(inheritConfig, 'inherit generation stub should receive a config object');
+    assert.strictEqual(inheritConfig.model, 'deepseek-v4-pro', 'inherit config should keep global DeepSeek model');
+    assert.strictEqual(inheritConfig.enableThinking, true, 'inherit + thinking should pass enableThinking true');
+    await page.click('[data-native-discard-generation]');
+    await page.waitForFunction(() => document.querySelector('[data-native-generation-output]').hidden);
+
+    // Restore specific model for remaining tests
+    await page.selectOption('[data-native-model-select]', 'deepseek-v4-pro');
+    await page.waitForFunction(() => {
+      var select = document.querySelector('[data-native-model-select]');
+      return select && select.value === 'deepseek-v4-pro';
+    });
+
     await page.fill('[data-native-beat-input]', 'Retry and discard audit.');
+    await page.evaluate(() => {
+      window.__writingwayNativeGenerationStub = async (prompt, onToken, config) => {
+        window.__lastNativeGenerationConfig = config && typeof config === 'object' ? Object.assign({}, config) : config;
+        for (const token of [' Audit', ' generated', ' text.']) {
+          await new Promise((resolve) => setTimeout(resolve, 2));
+          onToken(token);
+        }
+      };
+    });
     await page.click('[data-native-generate]');
     await page.waitForFunction(() => document.querySelector('[data-native-generation-result]').textContent.includes('Audit generated text.'));
     await page.click('[data-native-retry-generation]');
@@ -580,8 +695,8 @@ async function submitNativeName(page, value) {
     await page.waitForFunction(() => !document.querySelector('[data-prompt-manager-dialog]').open);
 
     await page.click('[data-native-panel-tab="history"]');
-    await page.waitForFunction(() => document.querySelector('[data-native-generation-history]').textContent.includes('A concise audit continuation'));
-    const proseHistoryItem = page.locator('.desktop-native-history-item').filter({ hasText: 'A concise audit continuation' }).first();
+    await page.waitForFunction(() => document.querySelector('[data-native-generation-history]').textContent.includes('Retry and discard audit'));
+    const proseHistoryItem = page.locator('.desktop-native-history-item').filter({ hasText: 'Retry and discard audit' }).first();
     await proseHistoryItem.locator('[data-native-history-reuse]').click();
     await page.waitForFunction(() => document.querySelector('[data-native-generation-result]').textContent.length > 0);
 
@@ -592,7 +707,7 @@ async function submitNativeName(page, value) {
     const clipboardBeforeFilter = await page.evaluate(() => window.__writingwayAuditClipboard);
     assert.ok(clipboardBeforeFilter.includes('Audit generated text.'), 'copy should capture the generated text in audit clipboard');
 
-    const retryHistoryItem = page.locator('.desktop-native-history-item').filter({ hasText: 'A concise audit continuation' }).first();
+    const retryHistoryItem = page.locator('.desktop-native-history-item').filter({ hasText: 'Retry and discard audit' }).first();
     const editorBeforeHistoryRetry = await page.locator('[data-native-scene-editor]').inputValue();
     const oldHistoryTextCountBefore = (editorBeforeHistoryRetry.match(/Audit generated text\./g) || []).length;
     await page.evaluate(() => {
@@ -609,7 +724,7 @@ async function submitNativeName(page, value) {
     await retryHistoryItem.locator('[data-native-history-retry]').click();
     await page.waitForFunction(() => {
       const input = document.querySelector('[data-native-beat-input]');
-      return input && input.value === 'A concise audit continuation.';
+      return input && input.value === 'Retry and discard audit.';
     });
     await page.waitForFunction(() => {
       const panel = document.querySelector('[data-native-panel="generate"]');
@@ -621,7 +736,7 @@ async function submitNativeName(page, value) {
     });
     assert.strictEqual(await page.evaluate(() => window.__historyRetryGenerationCalls), 1, 'history retry should start one fresh generation');
     const retryPrompt = await page.evaluate(() => window.__lastHistoryRetryPrompt || '');
-    assert.ok(retryPrompt.includes('A concise audit continuation.'), 'history retry prompt should reuse the record beat');
+    assert.ok(retryPrompt.includes('Retry and discard audit.'), 'history retry prompt should reuse the record beat');
     const editorAfterRetry = await page.locator('[data-native-scene-editor]').inputValue();
     const oldHistoryTextCountAfter = (editorAfterRetry.match(/Audit generated text\./g) || []).length;
     assert.strictEqual(oldHistoryTextCountAfter, oldHistoryTextCountBefore, 'history retry should not insert the old stored result again');

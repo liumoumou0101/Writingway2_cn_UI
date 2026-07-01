@@ -1967,6 +1967,61 @@ input[type="file"]::file-selector-button:hover {
     font: 17px/1.85 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
 }
 
+.desktop-native-model-control {
+    grid-column: 1 / -1;
+    padding: 10px 12px;
+    border: 1px solid var(--desktop-line);
+    border-radius: var(--desktop-radius);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.desktop-native-model-control-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--desktop-muted);
+}
+
+.desktop-native-model-control-hint {
+    font-size: 11px;
+    color: var(--desktop-faint);
+}
+
+.desktop-native-model-control-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: end;
+}
+
+.desktop-native-model-control-row label {
+    display: grid;
+    gap: 5px;
+    color: var(--desktop-muted);
+    font-size: 11px;
+}
+
+.desktop-native-model-control-row select {
+    min-height: 32px;
+    padding: 4px 8px;
+    border: 1px solid var(--desktop-line);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--desktop-text);
+    outline: none;
+}
+
+.desktop-native-model-control.is-disabled {
+    opacity: 0.55;
+}
+
+.desktop-native-model-control.is-disabled select,
+.desktop-native-model-control.is-disabled input {
+    opacity: 0.6;
+}
+
 .desktop-native-generation {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
