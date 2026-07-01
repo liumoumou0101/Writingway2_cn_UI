@@ -590,6 +590,9 @@ input[type="file"]::file-selector-button:hover {
     .desktop-settings-header {
         max-width: 1280px;
     }
+    .desktop-settings-categories {
+        max-width: 1280px;
+    }
 }
 
 .desktop-settings-header h2 {
@@ -626,6 +629,47 @@ input[type="file"]::file-selector-button:hover {
     gap: 16px;
     max-width: 1040px;
     margin: 0 auto;
+}
+
+.desktop-settings-categories {
+    display: flex;
+    gap: 4px;
+    max-width: 1040px;
+    margin: 0 auto 16px;
+    padding: 8px;
+    border: 1px solid var(--desktop-line);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    backdrop-filter: blur(12px);
+}
+
+.desktop-settings-cat-item {
+    flex: 1;
+    min-height: 34px;
+    padding: 6px 16px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--desktop-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.desktop-settings-cat-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--desktop-text);
+}
+
+.desktop-settings-cat-item.is-active {
+    border-color: rgba(73, 166, 155, 0.42);
+    background: rgba(73, 166, 155, 0.14);
+    color: #dff9f5;
 }
 
 @media (min-width: 1600px) {
@@ -1058,6 +1102,117 @@ input[type="file"]::file-selector-button:hover {
     background: rgba(255, 255, 255, 0.015);
 }
 
+.desktop-workflow-steps-guide {
+    padding: 18px 20px;
+    border: 1px solid var(--desktop-line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.desktop-workflow-steps-guide .desktop-section-kicker {
+    margin-bottom: 12px;
+}
+
+.desktop-workflow-steps-timeline {
+    display: flex;
+    gap: 0;
+    position: relative;
+}
+
+.desktop-workflow-steps-timeline::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    right: 20px;
+    height: 2px;
+    background: var(--desktop-line-strong);
+    border-radius: 999px;
+}
+
+.desktop-workflow-milestone {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 12px;
+    flex: 1;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+}
+
+.desktop-workflow-milestone-mark {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto;
+    border-radius: 50%;
+    border: 2px solid var(--desktop-line-strong);
+    background: var(--desktop-panel);
+    color: var(--desktop-text);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.desktop-workflow-milestone strong {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--desktop-text);
+    font-size: 13px;
+}
+
+.desktop-workflow-milestone span {
+    display: block;
+    color: var(--desktop-muted);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.desktop-workflow-step-mark {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin-right: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--desktop-line-strong);
+    background: var(--desktop-panel);
+    color: var(--desktop-muted);
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.desktop-workflow-step.is-active .desktop-workflow-step-mark {
+    border-color: rgba(73, 166, 155, 0.68);
+    background: rgba(73, 166, 155, 0.22);
+    color: #dff9f5;
+}
+
+.desktop-workflow-step.is-done .desktop-workflow-step-mark {
+    border-color: rgba(73, 166, 155, 0.56);
+    background: rgba(73, 166, 155, 0.3);
+    color: #dff9f5;
+}
+
+.desktop-workflow-step.is-progress .desktop-workflow-step-mark {
+    border-color: rgba(73, 166, 155, 0.68);
+    background: rgba(73, 166, 155, 0.22);
+    color: #dff9f5;
+    animation: workflow-step-pulse 2s ease-in-out infinite;
+}
+
+.desktop-workflow-step.is-failed .desktop-workflow-step-mark {
+    border-color: rgba(239, 107, 115, 0.58);
+    background: rgba(239, 107, 115, 0.18);
+    color: #ffb6bb;
+}
+
+@keyframes workflow-step-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(73, 166, 155, 0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(73, 166, 155, 0); }
+}
+
 .desktop-workflow-main {
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) minmax(90px, 150px);
@@ -1080,6 +1235,13 @@ input[type="file"]::file-selector-button:hover {
     color: var(--desktop-muted);
     font-size: 13px;
     line-height: 1.55;
+}
+
+.desktop-workflow-run,
+.desktop-workflow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
 }
 
 .desktop-workflow-run {
@@ -1436,6 +1598,29 @@ input[type="file"]::file-selector-button:hover {
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 9px;
+    align-items: center;
+}
+
+.desktop-project-more-toggle.is-expanded {
+    border-color: rgba(73, 166, 155, 0.42);
+    background: rgba(73, 166, 155, 0.12);
+    color: #dff9f5;
+}
+
+.desktop-project-more-drawer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 10px;
+    margin-top: 4px;
+    border: 1px solid var(--desktop-line);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.desktop-project-more-drawer[hidden] {
+    display: none;
 }
 
 .desktop-mini-action {
@@ -3311,6 +3496,41 @@ input[type="file"]::file-selector-button:hover {
     min-width: 0;
 }
 
+.desktop-recovery-empty {
+    padding: 32px 16px;
+    border: 1px dashed var(--desktop-line-strong);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    text-align: center;
+}
+
+.desktop-recovery-empty strong {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--desktop-text);
+    font-size: 14px;
+}
+
+.desktop-recovery-empty span {
+    display: block;
+    color: var(--desktop-muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.desktop-recovery-preview-empty {
+    display: grid;
+    place-items: center;
+    min-height: 120px;
+    border: 1px dashed var(--desktop-line-strong);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.015);
+    color: var(--desktop-faint);
+    font-size: 12px;
+    text-align: center;
+    padding: 16px;
+}
+
 .desktop-recovery-preview h3 {
     margin: 0;
     color: var(--desktop-text);
@@ -3382,23 +3602,49 @@ input[type="file"]::file-selector-button:hover {
 
 .desktop-reader-sidebar {
     display: grid;
-    grid-template-rows: auto auto minmax(0, auto) auto minmax(0, 1fr);
-    gap: 14px;
-    padding: 20px;
+    grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
+    gap: 0;
+    padding: 0;
     overflow: hidden;
     background: rgba(23, 26, 32, 0.84);
 }
 
-.desktop-reader-sidebar h2 {
+.desktop-reader-sidebar-intro {
+    padding: 20px 20px 16px;
+}
+
+.desktop-reader-sidebar-intro h2 {
     margin: 0 0 8px;
     font-size: 24px;
 }
 
-.desktop-reader-sidebar p {
+.desktop-reader-sidebar-intro p {
     margin: 0;
     color: var(--desktop-muted);
     font-size: 13px;
     line-height: 1.6;
+}
+
+.desktop-reader-sidebar-group {
+    padding: 12px 20px;
+    border-top: 1px solid var(--desktop-line);
+}
+
+.desktop-reader-section-label {
+    margin: 0 0 8px;
+    color: var(--desktop-faint);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    user-select: none;
+}
+
+.desktop-reader-hint {
+    margin: 6px 0 0;
+    color: var(--desktop-faint);
+    font-size: 11px;
+    line-height: 1.45;
 }
 
 .desktop-reader-import,
@@ -3436,9 +3682,6 @@ input[type="file"]::file-selector-button:hover {
 .desktop-reader-controls {
     display: grid;
     gap: 10px;
-    max-height: min(42vh, 360px);
-    overflow: auto;
-    padding-right: 3px;
 }
 
 .desktop-reader-controls select option {
@@ -3462,7 +3705,7 @@ input[type="file"]::file-selector-button:hover {
 .desktop-reader-progress {
     display: grid;
     gap: 8px;
-    padding: 12px;
+    padding: 10px 12px;
     border: 1px solid var(--desktop-line);
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.035);
@@ -3473,7 +3716,7 @@ input[type="file"]::file-selector-button:hover {
     justify-content: space-between;
     gap: 12px;
     color: var(--desktop-muted);
-    font-size: 13px;
+    font-size: 12px;
 }
 
 .desktop-reader-progress strong {
@@ -3492,7 +3735,8 @@ input[type="file"]::file-selector-button:hover {
     gap: 7px;
     min-height: 0;
     overflow: auto;
-    padding-right: 2px;
+    padding: 12px 20px 20px;
+    border-top: 1px solid var(--desktop-line);
 }
 
 .desktop-reader-chapter {

@@ -275,6 +275,7 @@
 
         const actions = document.createElement('div');
         actions.className = 'desktop-project-actions';
+
         const editButton = document.createElement('button');
         editButton.type = 'button';
         editButton.className = 'desktop-mini-action';
@@ -283,6 +284,27 @@
             event.stopPropagation();
             openProjectEditor(project);
         });
+        actions.appendChild(editButton);
+
+        const moreButton = document.createElement('button');
+        moreButton.type = 'button';
+        moreButton.className = 'desktop-mini-action desktop-project-more-toggle';
+        moreButton.textContent = '更多';
+        moreButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const drawer = actions.querySelector('[data-project-more-drawer]');
+            if (drawer) {
+                const hidden = !drawer.hidden;
+                drawer.hidden = hidden;
+                moreButton.classList.toggle('is-expanded', !hidden);
+                moreButton.textContent = hidden ? '更多' : '收起';
+            }
+        });
+
+        const moreDrawer = document.createElement('div');
+        moreDrawer.className = 'desktop-project-more-drawer';
+        moreDrawer.hidden = true;
+        moreDrawer.dataset.projectMoreDrawer = '';
 
         const revealButton = document.createElement('button');
         revealButton.type = 'button';
@@ -320,6 +342,10 @@
             await openProjectBackupSettings(project);
         });
 
+        moreDrawer.append(revealButton, copyPathButton, exportPackageButton, backupButton);
+
+        actions.append(moreButton, moreDrawer);
+
         const removeButton = document.createElement('button');
         removeButton.type = 'button';
         removeButton.className = 'desktop-mini-action desktop-mini-action-danger';
@@ -328,8 +354,7 @@
             event.stopPropagation();
             await removeProjectFromLibrary(project);
         });
-
-        actions.append(editButton, revealButton, copyPathButton, exportPackageButton, backupButton, removeButton);
+        actions.appendChild(removeButton);
 
         body.append(name, badges, description, stats, time, path, actions);
         card.append(cover, body);
@@ -1279,6 +1304,13 @@
         }
         if (!elements.list) return;
         elements.list.replaceChildren();
+        if (recoveryState.backups.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'desktop-recovery-empty';
+            empty.innerHTML = '<strong>还没有本地备份</strong><span>使用书库中的备份按钮创建项目备份，或从文件导入。</span>';
+            elements.list.appendChild(empty);
+            return;
+        }
         let lastGroup = '';
         backups
             .sort((a, b) => {
@@ -1332,9 +1364,16 @@
         const diff = recoveryState.selectedDiff;
         if (!summary || !backup) {
             if (elements.previewTitle) elements.previewTitle.textContent = '选择一个备份';
-            if (elements.previewMeta) elements.previewMeta.textContent = '从左侧备份列表选择后查看内容和恢复选项。';
+            if (elements.previewMeta) {
+                elements.previewMeta.textContent = recoveryState.backups.length
+                    ? '从左侧备份列表选择后查看内容和恢复选项。'
+                    : '还没有任何项目备份。使用书库中的备份功能创建第一个。';
+            }
             if (elements.diff) elements.diff.replaceChildren();
-        if (elements.previewText) elements.previewText.textContent = '';
+            if (elements.previewText) {
+                elements.previewText.textContent = '';
+                elements.previewText.classList.add('desktop-recovery-preview-empty');
+            }
             if (elements.restoreScene) elements.restoreScene.disabled = true;
             if (elements.restoreNew) elements.restoreNew.disabled = true;
             if (elements.restoreReplace) elements.restoreReplace.disabled = true;
@@ -1358,7 +1397,10 @@
                 elements.diff.appendChild(item);
             });
         }
-        if (elements.previewText) elements.previewText.textContent = firstBackupPreviewText(backup);
+        if (elements.previewText) {
+            elements.previewText.textContent = firstBackupPreviewText(backup);
+            elements.previewText.classList.remove('desktop-recovery-preview-empty');
+        }
         if (elements.restoreScene) elements.restoreScene.disabled = summary.health !== 'ok' || !Object.keys(backup.sceneContents || {}).length;
         if (elements.restoreNew) elements.restoreNew.disabled = summary.health !== 'ok';
         if (elements.restoreReplace) elements.restoreReplace.disabled = summary.health !== 'ok';
@@ -2291,6 +2333,19 @@
         if (elements.form) elements.form.addEventListener('submit', saveSettings);
         if (elements.test) elements.test.addEventListener('click', testSettingsProvider);
         if (elements.refresh) elements.refresh.addEventListener('click', loadSettings);
+
+        document.querySelectorAll('[data-settings-cat-target]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const target = button.dataset.settingsCatTarget;
+                const section = document.querySelector(`[data-settings-section="${target}"]`);
+                if (section && typeof section.scrollIntoView === 'function') {
+                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                document.querySelectorAll('[data-settings-cat-target]').forEach((b) => b.classList.remove('is-active'));
+                button.classList.add('is-active');
+            });
+        });
+
         [elements.mode, elements.provider].forEach((field) => {
             if (!field) return;
             field.addEventListener('change', () => {
@@ -3051,11 +3106,50 @@
         }
         if (elements.steps) {
             elements.steps.replaceChildren();
-            (run && run.steps || []).forEach((item) => {
+            const hasSteps = run && run.steps && run.steps.length;
+            const guide = elements.steps.querySelector('[data-workflow-guide]');
+            if (!hasSteps) {
+                const guideDiv = document.createElement('div');
+                guideDiv.className = 'desktop-workflow-steps-guide';
+                guideDiv.dataset.workflowGuide = '';
+                const kicker = document.createElement('p');
+                kicker.className = 'desktop-section-kicker';
+                kicker.textContent = '工作流指引';
+                guideDiv.appendChild(kicker);
+
+                const timeline = document.createElement('div');
+                timeline.className = 'desktop-workflow-steps-timeline';
+                const milestones = [
+                    { num: 1, title: '设定 Brief', desc: '在左侧写下题材、主线、角色、限制和目标' },
+                    { num: 2, title: '启动工作流', desc: '点击「开始工作流」按钮进入引导步骤' },
+                    { num: 3, title: '逐步执行', desc: '按顺序批准、退回或重新生成每个步骤' },
+                    { num: 4, title: '采纳产物', desc: '将生成的正文草稿插入到当前场景' }
+                ];
+                milestones.forEach((m) => {
+                    const item = document.createElement('div');
+                    item.className = 'desktop-workflow-milestone';
+                    const mark = document.createElement('span');
+                    mark.className = 'desktop-workflow-milestone-mark';
+                    mark.textContent = String(m.num);
+                    const body = document.createElement('div');
+                    const strong = document.createElement('strong');
+                    strong.textContent = m.title;
+                    const span = document.createElement('span');
+                    span.textContent = m.desc;
+                    body.append(strong, span);
+                    item.append(mark, body);
+                    timeline.appendChild(item);
+                });
+                guideDiv.appendChild(timeline);
+                elements.steps.appendChild(guideDiv);
+            }
+            (run && run.steps || []).forEach((item, index) => {
                 const card = document.createElement('article');
                 card.className = 'desktop-workflow-step';
                 card.classList.toggle('is-active', item.id === (step && step.id));
-                card.innerHTML = `<strong>${item.title || item.id}</strong><span>${item.kind} / ${item.status}</span>`;
+                const statusClass = item.status === 'completed' ? 'is-done' : (item.status === 'failed' ? 'is-failed' : (item.status === 'in_progress' ? 'is-progress' : ''));
+                if (statusClass) card.classList.add(statusClass);
+                card.innerHTML = `<span class="desktop-workflow-step-mark">${index + 1}</span><div><strong>${item.title || item.id}</strong><span>${item.kind} / ${item.status}</span></div>`;
                 elements.steps.appendChild(card);
             });
         }

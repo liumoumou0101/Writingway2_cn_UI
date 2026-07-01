@@ -134,6 +134,7 @@ async function submitNativeName(page, value) {
                 }
             });
         });
+        await page.locator('.desktop-project-more-toggle').first().click();
         await page.locator('.desktop-mini-action', { hasText: '复制路径' }).first().click();
         const copiedPath = await page.evaluate(() => window.__copiedProjectPath);
         assert.ok(copiedPath && copiedPath.includes('book-2.json'), 'copy path should use the project snapshot path');

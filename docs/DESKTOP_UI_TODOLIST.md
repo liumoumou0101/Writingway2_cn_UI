@@ -1,57 +1,83 @@
-# Desktop UI Todolist
+# 桌面 UI 优化待办清单
 
-Last updated: 2026-06-30
+最后更新：2026-07-01
 
-This document tracks the desktop UI polish work after the feature rewrite. Codex owns design direction, task decomposition, and acceptance. OpenCode owns scoped implementation and test execution.
+这份文档用于跟踪功能重写完成后的桌面版 UI 收口工作。Codex 负责设计方向、任务拆解和验收；OpenCode 负责在明确范围内实现代码、运行测试并输出报告。
 
-## Phase 28 - First Desktop UI Polish Pass
+## 总体原则
 
-Goal: move the current desktop app from an engineering-console feel toward a calmer long-form writing tool without changing core business logic.
+- 保留当前暗色桌面工作台气质，但减少“工程后台 / 调试面板”的感觉。
+- 优先统一控件和信息层级，再做大模块重排。
+- 卡片圆角保持克制，重复卡片不超过 8px。
+- 不做营销式首页，不做大面积装饰背景。
+- 操作工具要紧凑、可扫描、适合长期写作。
+- 所有 UI 优化必须保留现有功能和数据行为。
 
-### Design Direction
+## 阶段 28：桌面 UI 第一轮视觉收口（已完成）
 
-- Keep the dark desktop identity, but reduce the "debug panel" feeling.
-- Standardize controls before redesigning whole workflows.
-- Keep repeated cards at 8px radius or less.
-- Avoid nested decorative cards.
-- Prefer compact, predictable operational UI over landing-page composition.
-- Preserve all current features and data behavior.
+目标：在不改动核心业务逻辑、不重做整体架构的前提下，把当前桌面版从“工程后台感”推进到“可长期使用的写作软件感”。
 
-### P0 Scope For First Pass
+### 已完成事项
 
-- [x] Codex captured current UI screenshots for bookshelf, writer panels, compendium, workshop, workflow, reader, recovery, and settings.
-- [x] Codex identified core issues: inconsistent controls, raw native selects, crowded writer assistant panel, weak empty states, action-heavy bookshelf cards, and oversized settings/compendium forms.
-- [x] OpenCode task `phase28_desktop_ui_polish_first_pass`: introduce a shared visual baseline for inputs, selects, textareas, buttons, checkboxes, and range sliders.
-- [x] OpenCode task `phase28_desktop_ui_polish_first_pass`: polish writer assistant tabs and panel content so generation/rewrite/context/metadata/search/history read as organized tool sections rather than button piles.
-- [x] OpenCode task `phase28_desktop_ui_polish_first_pass`: improve first-screen layout and empty states for bookshelf, compendium, workflow, recovery, reader, and settings.
-- [x] Codex acceptance: verify 1366x768 and 1920x1080 screenshots for no horizontal overflow, no incoherent overlap, readable select controls, and clearer primary/secondary action hierarchy.
+- [x] Codex 完成当前 UI 巡检：覆盖书库、写作页生成/改写/上下文/元数据/查找/历史、资料库、Workshop、Workflow、阅读、恢复、设置。
+- [x] Codex 识别第一轮高优先级问题：控件样式不统一、下拉框过于原生、写作右栏像调试面板、工作流/恢复空状态弱、书库卡片动作过多、设置/资料表单缺少产品化层级。
+- [x] OpenCode 任务 `phase28_desktop_ui_polish_first_pass`：统一输入框、下拉框、textarea、按钮、checkbox、range 等控件的视觉基线。
+- [x] OpenCode 任务 `phase28_desktop_ui_polish_first_pass`：优化写作页右侧辅助面板的 tab、分组、间距和按钮层级。
+- [x] OpenCode 任务 `phase28_desktop_ui_polish_first_pass`：初步收口书库、资料库、工作流、恢复、阅读、设置页的第一屏观感和空状态。
+- [x] Codex 验收：1366x768 和 1920x1080 下无横向溢出、无明显控件重叠、可见下拉框未裁切。
+- [x] OpenCode follow-up `phase28_desktop_ui_polish_followup_checkbox`：修复资料库“默认加入生成上下文”checkbox 被泛化 input 样式放大的问题。
 
-### Deferred To Later Passes
+### 阶段 28 验收记录
 
-- [ ] Bookshelf action-menu redesign to reduce per-card button clutter.
-- [ ] Settings page category navigation.
-- [ ] Workflow step timeline and artifact preview redesign.
-- [ ] Reader import/control redesign beyond basic control styling.
-- [ ] Recovery diff-detail redesign for dense backup lists.
-- [ ] Full typography scale and theme-token cleanup.
+- 截图复核：书库、写作页生成/上下文、资料库、工作流、恢复、设置。
+- 自动检查：1366x768 和 1920x1080 下 document 横向溢出为 0。
+- 测试通过：`npm run writer-audit`、`npm run desktop-mainline-test`、`npm run unit`。
+- release 已刷新并通过 `npm run packaged-smoke`。
 
-### Phase 28 Acceptance Notes
+## 阶段 29：桌面 UI 第二轮结构收口（已完成）
 
-- Screenshots reviewed: bookshelf, writer generate/context, compendium, workflow, recovery, settings at 1366x768; automated viewport screenshots also captured at 1366x768 and 1920x1080.
-- Tests passed: `npm run writer-audit`, `npm run desktop-mainline-test`, `npm run unit`.
-- Remaining UI risks: workflow still needs a deeper step/timeline redesign; bookshelf actions remain too numerous per card; settings would benefit from category navigation.
-- Follow-up completed: `phase28_desktop_ui_polish_followup_checkbox` fixed the oversized compendium checkbox regression.
+目标：在阶段 28 的控件统一基础上，继续处理“页面结构和操作组织”的问题，让常用模块更像成熟桌面软件。
 
-### Required Verification
+### 本轮优先范围
+
+- [x] 书库卡片动作菜单化：减少每张项目卡上直接暴露的按钮数量，保留“编辑信息”和独立危险动作，把定位文件、复制路径、导出包、备份收进“更多”折叠区。
+- [x] 设置页分类导航：增加 Provider、生成默认值、朗读分类导航，并为对应设置区增加稳定分组锚点。
+- [x] 工作流页步骤可视化：在空运行状态下展示 4 步工作流指引；有运行时显示带编号和状态的步骤卡片。
+- [x] 恢复页详情区优化：增加无备份空状态、未选择备份的预览空状态，并保持恢复按钮 disabled 语义。
+- [x] 阅读页导入和阅读设置区域继续精修：把导入、显示、进度拆成清晰分组，统一文件选择、range、select、checkbox 的工具面板感。
+
+### 本轮验收标准
+
+- [x] 1366x768 下各主页面不横向溢出。
+- [x] 1920x1080 下主要内容不再过度挤在左侧，也不出现大片无意义空白。
+- [x] 书库项目卡可扫描性提升，危险动作不再和常用动作混在同一视觉层级。
+- [x] 设置页分组清晰，用户能快速定位 Provider、生成参数、朗读设置。
+- [x] 工作流页即使没有运行，也能看出“下一步该做什么”。
+- [x] 恢复页即使没有备份，也不像空白报错页。
+
+### 阶段 29 验收记录
+
+- OpenCode 主任务：`phase29_desktop_ui_structure_second_pass`。
+- OpenCode follow-up：`phase29_fix_project_more_toggle_label`，修复书库“更多/收起”文案反转。
+- OpenCode follow-up：`phase29_fix_workflow_step_card_css`，修复工作流 run/step 卡片基础样式丢失风险。
+- Codex 独立测试通过：`npm run writer-audit`、`npm run desktop-mainline-test`、`npm run unit`。
+- release 已刷新并通过 `npm run packaged-smoke`。
+- Codex 视觉检查通过：1366x768 和 1920x1080 下，书库、设置、工作流、恢复、阅读页均无横向溢出。
+- Codex 行为检查通过：书库“更多”展开后显示“收起”，复制路径动作可用；设置分类导航可切换 active；工作流指引有 4 个步骤；恢复和阅读空状态/分组可见。
+
+### 验证命令
 
 - `npm run writer-audit`
 - `npm run desktop-mainline-test`
 - `npm run unit`
-- If release artifacts are refreshed: `npm run dist` and `npm run packaged-smoke`
+- 如刷新 release：`npm run dist` 和 `npm run packaged-smoke`
 
-### Acceptance Notes Template
+## 后续阶段候选
 
-- Screenshots reviewed:
-- Tests passed:
-- Remaining UI risks:
-- Follow-up tasks:
+- [ ] 写作页右栏第二轮：把生成、改写、上下文、历史做成更明确的任务工作台。
+- [ ] 资料库标签体验增强：标签 chip 化、自动上下文触发说明、相关场景统计。
+- [ ] 工作坊对话页精修：消息气泡、输入区、引用资料、输出转化动作重排。
+- [ ] 设置页第三轮：增加滚动联动高亮和兼容/路径类设置入口，进一步减少大表单感。
+- [ ] 书库卡片第三轮：为“更多”折叠区增加点击外部关闭或键盘可访问性增强。
+- [ ] 全局字体层级和主题 token 清理。
+- [ ] 更完整的 2K / 笔记本屏幕适配回归。

@@ -482,62 +482,72 @@
             <section class="desktop-view desktop-view-reader" data-view-panel="reader">
                 <div class="desktop-reader-shell">
                     <aside class="desktop-reader-sidebar">
-                        <div>
+                        <div class="desktop-reader-sidebar-intro">
                             <p class="desktop-section-kicker">Local Reader</p>
                             <h2>本地阅读</h2>
                             <p>导入 txt / md 后自动识别章节，并在本机保存阅读进度。</p>
                         </div>
 
-                        <label class="desktop-reader-import">
-                            <span>导入小说文件</span>
-                            <input type="file" data-reader-file accept=".txt,.md,text/plain,text/markdown">
-                        </label>
-
-                        <div class="desktop-reader-controls" aria-label="阅读设置">
-                            <label>
-                                <span>字号</span>
-                                <input type="range" data-reader-font-size min="15" max="26" step="1">
+                        <div class="desktop-reader-sidebar-group">
+                            <p class="desktop-reader-section-label">导入</p>
+                            <label class="desktop-reader-import">
+                                <span>选择小说文件</span>
+                                <input type="file" data-reader-file accept=".txt,.md,text/plain,text/markdown">
                             </label>
-                            <label>
-                                <span>行距</span>
-                                <input type="range" data-reader-line-height min="1.45" max="2.2" step="0.05">
-                            </label>
-                            <label>
-                                <span>版心宽度</span>
-                                <input type="range" data-reader-width min="620" max="980" step="20">
-                            </label>
-                            <label>
-                                <span>段落间距</span>
-                                <input type="range" data-reader-paragraph-spacing min="0.4" max="1.6" step="0.1">
-                            </label>
-                            <label>
-                                <span>字体</span>
-                                <select data-reader-font-family>
-                                    <option value="system">系统默认</option>
-                                    <option value="serif">宋体/衬线</option>
-                                    <option value="yahei">微软雅黑</option>
-                                </select>
-                            </label>
-                            <label>
-                                <span>主题</span>
-                                <select data-reader-theme>
-                                    <option value="dark">深色</option>
-                                    <option value="paper">纸张</option>
-                                    <option value="sepia">护眼</option>
-                                </select>
-                            </label>
-                            <label class="desktop-reader-check">
-                                <input type="checkbox" data-reader-indent>
-                                <span>段首缩进</span>
-                            </label>
+                            <p class="desktop-reader-hint">支持 .txt / .md 格式，文件不离开本机。</p>
                         </div>
 
-                        <div class="desktop-reader-progress">
-                            <div>
-                                <strong data-reader-progress-label>未导入</strong>
-                                <span data-reader-progress-percent>0%</span>
+                        <div class="desktop-reader-sidebar-group">
+                            <p class="desktop-reader-section-label">显示</p>
+                            <div class="desktop-reader-controls" aria-label="阅读设置">
+                                <label>
+                                    <span>字号</span>
+                                    <input type="range" data-reader-font-size min="15" max="26" step="1">
+                                </label>
+                                <label>
+                                    <span>行距</span>
+                                    <input type="range" data-reader-line-height min="1.45" max="2.2" step="0.05">
+                                </label>
+                                <label>
+                                    <span>版心宽度</span>
+                                    <input type="range" data-reader-width min="620" max="980" step="20">
+                                </label>
+                                <label>
+                                    <span>段落间距</span>
+                                    <input type="range" data-reader-paragraph-spacing min="0.4" max="1.6" step="0.1">
+                                </label>
+                                <label>
+                                    <span>字体</span>
+                                    <select data-reader-font-family>
+                                        <option value="system">系统默认</option>
+                                        <option value="serif">宋体/衬线</option>
+                                        <option value="yahei">微软雅黑</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>主题</span>
+                                    <select data-reader-theme>
+                                        <option value="dark">深色</option>
+                                        <option value="paper">纸张</option>
+                                        <option value="sepia">护眼</option>
+                                    </select>
+                                </label>
+                                <label class="desktop-reader-check">
+                                    <input type="checkbox" data-reader-indent>
+                                    <span>段首缩进</span>
+                                </label>
                             </div>
-                            <progress data-reader-progress value="0" max="100"></progress>
+                        </div>
+
+                        <div class="desktop-reader-sidebar-group">
+                            <p class="desktop-reader-section-label">进度</p>
+                            <div class="desktop-reader-progress">
+                                <div>
+                                    <strong data-reader-progress-label>未导入</strong>
+                                    <span data-reader-progress-percent>0%</span>
+                                </div>
+                                <progress data-reader-progress value="0" max="100"></progress>
+                            </div>
                         </div>
 
                         <div class="desktop-reader-chapters" data-reader-chapters aria-label="章节列表"></div>
@@ -707,7 +717,42 @@
                             <button class="desktop-secondary-action" type="button" data-workflow-cancel disabled>取消运行</button>
                         </div>
                     </header>
-                    <div class="desktop-workflow-steps" data-workflow-steps></div>
+
+                    <div class="desktop-workflow-steps" data-workflow-steps>
+                        <div class="desktop-workflow-steps-guide">
+                            <p class="desktop-section-kicker">工作流指引</p>
+                            <div class="desktop-workflow-steps-timeline">
+                                <div class="desktop-workflow-milestone">
+                                    <span class="desktop-workflow-milestone-mark">1</span>
+                                    <div>
+                                        <strong>设定 Brief</strong>
+                                        <span>在左侧写下题材、主线、角色、限制和目标</span>
+                                    </div>
+                                </div>
+                                <div class="desktop-workflow-milestone">
+                                    <span class="desktop-workflow-milestone-mark">2</span>
+                                    <div>
+                                        <strong>启动工作流</strong>
+                                        <span>点击「开始工作流」按钮进入引导步骤</span>
+                                    </div>
+                                </div>
+                                <div class="desktop-workflow-milestone">
+                                    <span class="desktop-workflow-milestone-mark">3</span>
+                                    <div>
+                                        <strong>逐步执行</strong>
+                                        <span>按顺序批准、退回或重新生成每个步骤</span>
+                                    </div>
+                                </div>
+                                <div class="desktop-workflow-milestone">
+                                    <span class="desktop-workflow-milestone-mark">4</span>
+                                    <div>
+                                        <strong>采纳产物</strong>
+                                        <span>将生成的正文草稿插入到当前场景</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="desktop-workflow-artifacts" data-workflow-artifacts></div>
                     <div class="desktop-workflow-events" data-workflow-events></div>
                 </section>
@@ -753,8 +798,14 @@
                     <span class="desktop-settings-status" data-settings-status>正在读取设置...</span>
                 </div>
 
+                <nav class="desktop-settings-categories" aria-label="设置分类导航">
+                    <button type="button" class="desktop-settings-cat-item is-active" data-settings-cat-target="provider">Provider</button>
+                    <button type="button" class="desktop-settings-cat-item" data-settings-cat-target="generation">生成默认值</button>
+                    <button type="button" class="desktop-settings-cat-item" data-settings-cat-target="tts">朗读</button>
+                </nav>
+
                 <form class="desktop-settings-grid" data-settings-form>
-                    <section class="desktop-settings-section">
+                    <section class="desktop-settings-section" data-settings-section="provider">
                         <h3>Provider</h3>
                         <label>
                             <span>模式</span>
@@ -792,7 +843,7 @@
                         </label>
                     </section>
 
-                    <section class="desktop-settings-section">
+                    <section class="desktop-settings-section" data-settings-section="generation">
                         <h3>生成默认值</h3>
                         <label>
                             <span>Temperature</span>
@@ -813,7 +864,7 @@
                         </div>
                     </section>
 
-                    <section class="desktop-settings-section">
+                    <section class="desktop-settings-section" data-settings-section="tts">
                         <h3>朗读</h3>
                         <label>
                             <span>声音</span>
