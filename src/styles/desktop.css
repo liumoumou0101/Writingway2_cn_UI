@@ -376,6 +376,8 @@ input[type="file"]::file-selector-button:hover {
     grid-template-rows: auto minmax(0, 1fr);
     min-width: 0;
     min-height: 0;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .desktop-topbar {
@@ -456,6 +458,7 @@ input[type="file"]::file-selector-button:hover {
     display: none;
     min-width: 0;
     min-height: 0;
+    height: 100%;
     overflow: hidden;
 }
 
@@ -2075,18 +2078,48 @@ input[type="file"]::file-selector-button:hover {
     gap: 8px;
 }
 
+.desktop-native-editor-body .desktop-native-generation-actions {
+    justify-content: flex-end;
+    align-items: center;
+}
+
 .desktop-native-generation-output {
     grid-column: 1 / -1;
     display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
     gap: 10px;
-    padding: 10px;
+    padding: 12px;
     border: 1px solid rgba(73, 166, 155, 0.22);
     border-radius: 8px;
     background: rgba(73, 166, 155, 0.07);
 }
 
+.desktop-native-generation-output-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.desktop-native-generation-output-header strong {
+    display: block;
+    color: var(--desktop-text);
+    font-size: 13px;
+}
+
+.desktop-native-generation-output-header span {
+    display: block;
+    margin-top: 3px;
+    color: var(--desktop-muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
 .desktop-native-generation-result {
     max-height: 150px;
+    min-height: 0;
     overflow: auto;
     white-space: pre-wrap;
     color: var(--desktop-text);
@@ -2235,7 +2268,7 @@ input[type="file"]::file-selector-button:hover {
 
 .desktop-native-writer {
     grid-template-columns: 272px minmax(520px, 1fr) 340px;
-    height: calc(100vh - 92px);
+    height: 100%;
     min-height: 0;
     border-radius: 8px;
     background: #151820;
@@ -2425,9 +2458,14 @@ input[type="file"]::file-selector-button:hover {
     right: clamp(18px, 4vw, 64px);
     bottom: 16px;
     z-index: 2;
-    max-height: min(34vh, 260px);
-    overflow: auto;
+    min-height: 150px;
+    max-height: min(30vh, 236px);
+    overflow: hidden;
     box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+}
+
+.desktop-native-editor-body.has-generation-output > textarea {
+    padding-bottom: max(250px, calc(34px + var(--native-editor-paragraph-spacing, 0em)));
 }
 
 .desktop-native-assistant {
@@ -3016,7 +3054,7 @@ input[type="file"]::file-selector-button:hover {
 .desktop-native-typography,
 .desktop-native-editor-body .desktop-native-generation-output {
     border-color: rgba(120, 137, 158, 0.22);
-    background: rgba(21, 25, 33, 0.98);
+    background: #151921;
     box-shadow: 0 18px 38px rgba(0, 0, 0, 0.32);
 }
 
@@ -3024,6 +3062,8 @@ input[type="file"]::file-selector-button:hover {
     left: max(28px, calc((100% - min(var(--native-editor-text-width, 780px), calc(100% - 68px))) / 2));
     right: max(28px, calc((100% - min(var(--native-editor-text-width, 780px), calc(100% - 68px))) / 2));
     bottom: 18px;
+    max-height: min(30vh, 236px);
+    overflow: hidden;
 }
 
 .desktop-native-assistant {

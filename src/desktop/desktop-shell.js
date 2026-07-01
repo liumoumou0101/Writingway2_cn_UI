@@ -1955,6 +1955,7 @@
             sceneList: document.querySelector('[data-native-scene-list]'),
             chapterTitle: document.querySelector('[data-native-chapter-title]'),
             sceneTitle: document.querySelector('[data-native-scene-title]'),
+            editorBody: document.querySelector('.desktop-native-editor-body'),
             editor: document.querySelector('[data-native-scene-editor]'),
             summary: document.querySelector('[data-native-scene-summary]'),
             generateSceneSummary: document.querySelector('[data-native-generate-scene-summary]'),
@@ -2010,6 +2011,7 @@
             generate: document.querySelector('[data-native-generate]'),
             cancelGeneration: document.querySelector('[data-native-cancel-generation]'),
             generationOutput: document.querySelector('[data-native-generation-output]'),
+            generationOutputStatus: document.querySelector('[data-native-generation-output-status]'),
             generationResult: document.querySelector('[data-native-generation-result]'),
             reasoning: document.querySelector('[data-native-reasoning]'),
             reasoningText: document.querySelector('[data-native-reasoning-text]'),
@@ -5140,7 +5142,18 @@
             elements.cancelGeneration.hidden = !generation.inProgress;
             elements.cancelGeneration.disabled = !generation.inProgress;
         }
-        if (elements.generationOutput) elements.generationOutput.hidden = !generation.text && !generation.inProgress;
+        const showGenerationOutput = !!generation.text || generation.inProgress;
+        if (elements.editorBody) elements.editorBody.classList.toggle('has-generation-output', showGenerationOutput);
+        if (elements.generationOutput) elements.generationOutput.hidden = !showGenerationOutput;
+        if (elements.generationOutputStatus) {
+            if (generation.inProgress) {
+                elements.generationOutputStatus.textContent = '正在生成，完成后可保留、重试或撤回。';
+            } else if (generation.task === 'rewrite' || generation.task === 'regenerate-selection') {
+                elements.generationOutputStatus.textContent = '预览结果后点击“保留”替换原文，撤回会保持原文。';
+            } else {
+                elements.generationOutputStatus.textContent = '确认后写入正文，撤回会恢复原文。';
+            }
+        }
         if (elements.generationResult) elements.generationResult.textContent = generation.text || (generation.inProgress ? '生成中...' : '');
         if (elements.reasoning) elements.reasoning.hidden = !generation.reasoning;
         if (elements.reasoningText) elements.reasoningText.textContent = generation.reasoning || '';
