@@ -968,7 +968,8 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
     jsonResponse(response, 200, {
       ok: true,
       settings: settingsService.publicSettings(settings),
-      runtimeProvider: settingsService.runtimeProviderConfig(settings)
+      runtimeProvider: settingsService.runtimeProviderConfig(settings),
+      runtimeProviderProfiles: settingsService.runtimeProviderProfiles(settings)
     });
     return true;
   }
@@ -980,7 +981,8 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       jsonResponse(response, 200, {
         ok: true,
         settings: settingsService.publicSettings(settings),
-        runtimeProvider: settingsService.runtimeProviderConfig(settings)
+        runtimeProvider: settingsService.runtimeProviderConfig(settings),
+        runtimeProviderProfiles: settingsService.runtimeProviderProfiles(settings)
       });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message });
@@ -994,6 +996,55 @@ async function handleAppApi(request, response, appRoot, dataRoot, parsedUrl, int
       const settings = payload.settings || await readSettings(dataRoot);
       const result = await settingsService.testProvider(settings, { live: !!payload.live });
       jsonResponse(response, 200, { ok: result.ok, result });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/settings/test-provider-profile') {
+    try {
+      const payload = await readJsonPayload(request).catch(() => ({}));
+      const profileId = String(payload.profileId || '').trim();
+      if (!profileId) {
+        jsonResponse(response, 400, { ok: false, error: 'profileId is required' });
+        return true;
+      }
+      const result = await settingsService.testProviderProfile(dataRoot, profileId, { live: !!payload.live });
+      jsonResponse(response, 200, { ok: result.ok, result });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/settings/provider-profiles') {
+    try {
+      const payload = await readJsonPayload(request);
+      const profile = payload.profile || payload;
+      const settings = await settingsService.updateProviderProfile(dataRoot, profile);
+      jsonResponse(response, 200, {
+        ok: true,
+        settings: settingsService.publicSettings(settings),
+        runtimeProviderProfiles: settingsService.runtimeProviderProfiles(settings)
+      });
+    } catch (error) {
+      jsonResponse(response, 500, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.method === 'POST' && parsedUrl.pathname === '/api/settings/delete-provider-profile') {
+    try {
+      const payload = await readJsonPayload(request);
+      const profileId = String(payload.profileId || '').trim();
+      if (!profileId) throw new Error('profileId is required');
+      const settings = await settingsService.deleteProviderProfile(dataRoot, profileId);
+      jsonResponse(response, 200, {
+        ok: true,
+        settings: settingsService.publicSettings(settings),
+        runtimeProviderProfiles: settingsService.runtimeProviderProfiles(settings)
+      });
     } catch (error) {
       jsonResponse(response, 500, { ok: false, error: error.message });
     }

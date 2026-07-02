@@ -1,8 +1,72 @@
 # Writingway Desktop Session Handoff
 
-Last updated: 2026-06-29
+Last updated: 2026-07-02
 
 This document summarizes the long development session around turning this fork into a desktop-first local fiction writing app. It is intended as the starting context for the next Codex session.
+
+## 2026-07-02 Current Handoff Snapshot
+
+The rewrite has moved from raw feature parity into a usable desktop-first app with active productization work. The current branch is `main`; push target for this fork is `myfork` (`liumoumou0101/Writingway2_cn_UI`). The upstream `origin` still points to the original project.
+
+Latest package artifacts were refreshed locally under `release/` at 2026-07-02 17:18:
+
+- `release/win-unpacked/Writingway.exe`
+- `release/Writingway Setup 1.0.0.exe`
+- `release/Writingway 1.0.0.exe`
+
+`release/` is gitignored, so these package artifacts are local test artifacts and are not included in normal git commits/pushes.
+
+### Latest Completed Work
+
+- Writer generation authentication bug fixed: global "inherit settings" generation now uses local runtime provider config instead of rebuilding from redacted public settings, preventing DeepSeek 401 caused by missing API key.
+- Real DeepSeek API validation was performed for `/models`, `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-v4-pro` Thinking, and a headless writer-page UI generation flow. Do not commit or print API keys; reports intentionally omit the key.
+- Writer model control now supports provider/profile selection, model selection, custom model id, DeepSeek Thinking toggle, quick temperature, quick max output length, and provider-default parameter toggle.
+- New default max output length is 2000 tokens instead of 300.
+- DeepSeek Thinking UI now disables temperature and explains that Thinking does not send temperature parameters. The provider stream still sanitizes unsupported DeepSeek Thinking sampling fields.
+- Prose/beat generation now streams directly into the editor only. The generated range remains selected/highlighted until the user clicks `保留`, `重试`, or `撤回`. Rewrite/regenerate-selection still use the preview result panel.
+- Character/compendium context injection is now materially stronger than the old baseline: each entry has injection policy controls, simple trigger rules, character profile fields, and structured prompt constraints.
+- Cross-module UI linkage exists: writer, compendium, workshop, and workflow share project/context awareness; writer can send material to Workshop and save selected text as compendium material.
+- Desktop UI productization completed for 37A/37B/37B-followup/37C:
+  - 37A design spec: `docs/DESKTOP_UI_PHASE37A_PRODUCTIZATION_SPEC.md`
+  - 37B bookshelf + compendium productization accepted
+  - 37B laptop visual follow-up accepted
+  - 37C Workshop + Workflow productization accepted
+- 37D Recovery + Settings productization is still pending.
+
+### Latest Verification
+
+Most recent verification passed before this handoff:
+
+```powershell
+node -c src\desktop\desktop-shell.js
+npm run writer-audit
+npm run desktop-mainline-test
+npm run unit
+git diff --check
+npm run dist
+npm run packaged-smoke
+```
+
+Additional Playwright checks passed for writer quick-parameter UI and inline confirmation at 1280x720, 1366x768, and 1920x1080. Screenshots are under `.ai_state/test_reports/phase39_writer_param_visual/`.
+
+Known testing caveat: tests that start the local desktop server use fixed port `127.0.0.1:8000`. Do not run `writer-audit`, `desktop-mainline-test`, `unit` storage tests, or packaged smoke in parallel unless the tests are changed to use separate ports. If `EADDRINUSE` appears, wait for the previous process to exit and rerun the failed command alone.
+
+### Recommended Next Session Start
+
+1. Read this file, `docs/DESKTOP_UI_TODOLIST.md`, and the latest reports under `.ai_state/test_reports/phase38_*` and `.ai_state/test_reports/phase39_*`.
+2. Ask the user for manual-test findings from the latest local package.
+3. If manual testing passes, continue with GitHub release/upload strategy if the user wants binaries published; normal git push does not upload ignored `release/` artifacts.
+4. Next likely implementation slice is Phase 37D: Recovery + Settings productization, unless manual testing reveals writer regressions.
+5. Keep complex semi-automatic/automatic workflow design postponed unless explicitly reprioritized.
+
+### High-Value Remaining Items
+
+- Phase 37D: Recovery center and Settings page productization.
+- Writer advanced parameter foldout: top_p, presence/frequency penalty, seed, stop sequences, model-specific capability explanations.
+- Intent-based writer model presets: 快速草稿 / 均衡写作 / 深度推理 / 长上下文整理.
+- Narrative-control assistant design: pre-generation mainline summary, previous-context summary, scene/chapter goals, unresolved hooks, and character state cards.
+- Workshop output confirmation flow polish.
+- Full 2K/laptop visual QA after 37D.
 
 ## 2026-06-29 Current Handoff Snapshot
 

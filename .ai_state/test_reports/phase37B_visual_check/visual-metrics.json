@@ -1,0 +1,68 @@
+[
+  {
+    "viewport": "laptop-1366",
+    "view": "bookshelf",
+    "bodyScrollWidth": 1366,
+    "bodyClientWidth": 1366,
+    "activePanel": "bookshelf",
+    "visibleForm": false,
+    "visibleCompendiumEmpty": true,
+    "visibleText": "作品工作台\n\n书库\n\n—\n\n保存位置：C:\\Users\\10937\\AppData\\Local\\Temp\\writingway-phase37b-visual\\projects\n\n创作入口\n\n新建作品\n打开写作器\n\n导入迁移\n\n导入旧 JSON\n导入项目包\n导入 W1 文件夹\n\n维护\n\n刷新书库\n打开项目目录\n最近保存\n书名\n字数\n章节数\n\n还没有作品。开始你的创作之旅吧。\n\n新建作品\n导入项目",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "laptop-1366",
+    "view": "compendium",
+    "bodyScrollWidth": 1366,
+    "bodyClientWidth": 1366,
+    "activePanel": "compendium",
+    "visibleForm": false,
+    "visibleCompendiumEmpty": true,
+    "visibleText": "KNOWLEDGE BASE\n\n资料库\n\n从书库打开项目后编辑资料。\n\n全部类型\n角色\n地点\n组织\n物品\n设定\n时间线\n笔记\n新资料\n未打开项目\n先从书库打开一个项目。\n\n📖\n\n未打开项目\n\n从书库打开一个项目，即可编辑该项目的资料。\n\n资料编辑\n\n选择资料条目\n删除\n保存资料\n\n资料内容\n\n类型\n角色\n地点\n组织\n物品\n设定\n时间线\n笔记\n标题\n摘要\n标签\n别名\n\n写作上下文 · 注入策略\n\n默认加入生成上下文\n注入策略\n模式\n不自动注入\n仅手动/明确提及\n提及时注入\n条件自动注入\n总是注入\n标题\n别名\n标签\nPOV 人物匹配\n场景人物匹配\n人物约束\n角色定位\n目标\n动机\n冲突\n语气/声音\n当前状态\n已知信息\n关系备注\n正文",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "desktop-1920",
+    "view": "bookshelf",
+    "bodyScrollWidth": 1920,
+    "bodyClientWidth": 1920,
+    "activePanel": "bookshelf",
+    "visibleForm": false,
+    "visibleCompendiumEmpty": true,
+    "visibleText": "作品工作台\n\n书库\n\n—\n\n保存位置：C:\\Users\\10937\\AppData\\Local\\Temp\\writingway-phase37b-visual\\projects\n\n创作入口\n\n新建作品\n打开写作器\n\n导入迁移\n\n导入旧 JSON\n导入项目包\n导入 W1 文件夹\n\n维护\n\n刷新书库\n打开项目目录\n最近保存\n书名\n字数\n章节数\n\n还没有作品。开始你的创作之旅吧。\n\n新建作品\n导入项目",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "desktop-1920",
+    "view": "compendium",
+    "bodyScrollWidth": 1920,
+    "bodyClientWidth": 1920,
+    "activePanel": "compendium",
+    "visibleForm": false,
+    "visibleCompendiumEmpty": true,
+    "visibleText": "KNOWLEDGE BASE\n\n资料库\n\n从书库打开项目后编辑资料。\n\n全部类型\n角色\n地点\n组织\n物品\n设定\n时间线\n笔记\n新资料\n未打开项目\n先从书库打开一个项目。\n\n📖\n\n未打开项目\n\n从书库打开一个项目，即可编辑该项目的资料。\n\n资料编辑\n\n选择资料条目\n删除\n保存资料\n\n资料内容\n\n类型\n角色\n地点\n组织\n物品\n设定\n时间线\n笔记\n标题\n摘要\n标签\n别名\n\n写作上下文 · 注入策略\n\n默认加入生成上下文\n注入策略\n模式\n不自动注入\n仅手动/明确提及\n提及时注入\n条件自动注入\n总是注入\n标题\n别名\n标签\nPOV 人物匹配\n场景人物匹配\n人物约束\n角色定位\n目标\n动机\n冲突\n语气/声音\n当前状态\n已知信息\n关系备注\n正文",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "qhd-2560",
+    "view": "bookshelf",
+    "bodyScrollWidth": 2560,
+    "bodyClientWidth": 2560,
+    "activePanel": "bookshelf",
+    "visibleForm": false,
+    "visibleCompendiumEmpty": true,
+    "visibleText": "作品工作台\n\n书库\n\n—\n\n保存位置：C:\\Users\\10937\\AppData\\Local\\Temp\\writingway-phase37b-visual\\projects\n\n创作入口\n\n新建作品\n打开写作器\n\n导入迁移\n\n导入旧 JSON\n导入项目包\n导入 W1 文件夹\n\n维护\n\n刷新书库\n打开项目目录\n最近保存\n书名\n字数\n章节数\n\n还没有作品。开始你的创作之旅吧。\n\n新建作品\n导入项目",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "qhd-2560",
+    "view": "compendium",
+    "bodyScrollWidth": 2560,
+    "bodyClientWidth": 2560,
+    "activePanel": "compendium",
+    "visibleForm": false,
+    "visibleCompendiumEmpty": true,
+    "visibleText": "KNOWLEDGE BASE\n\n资料库\n\n从书库打开项目后编辑资料。\n\n全部类型\n角色\n地点\n组织\n物品\n设定\n时间线\n笔记\n新资料\n未打开项目\n先从书库打开一个项目。\n\n📖\n\n未打开项目\n\n从书库打开一个项目，即可编辑该项目的资料。\n\n资料编辑\n\n选择资料条目\n删除\n保存资料\n\n资料内容\n\n类型\n角色\n地点\n组织\n物品\n设定\n时间线\n笔记\n标题\n摘要\n标签\n别名\n\n写作上下文 · 注入策略\n\n默认加入生成上下文\n注入策略\n模式\n不自动注入\n仅手动/明确提及\n提及时注入\n条件自动注入\n总是注入\n标题\n别名\n标签\nPOV 人物匹配\n场景人物匹配\n人物约束\n角色定位\n目标\n动机\n冲突\n语气/声音\n当前状态\n已知信息\n关系备注\n正文",
+    "horizontalOverflow": false
+  }
+]

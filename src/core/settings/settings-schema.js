@@ -19,8 +19,76 @@
         'custom'
     ]);
     const PROVIDER_DEFAULT_ENDPOINTS = Object.freeze({
-        deepseek: 'https://api.deepseek.com/chat/completions'
+        deepseek: 'https://api.deepseek.com/chat/completions',
+        openai: 'https://api.openai.com/v1/chat/completions',
+        openrouter: 'https://openrouter.ai/api/v1/chat/completions'
     });
+    const PROVIDER_DEFAULT_MODELS = Object.freeze({
+        deepseek: 'deepseek-v4-pro',
+        openai: 'gpt-4o-mini'
+    });
+    function getProviderMetadata(provider) {
+        ensureModelCatalog();
+        if (ModelCatalog && typeof ModelCatalog.getProviderMetadata === 'function') {
+            return ModelCatalog.getProviderMetadata(provider);
+        }
+        return { label: provider, defaultEndpoint: PROVIDER_DEFAULT_ENDPOINTS[provider] || '', defaultModelHint: PROVIDER_DEFAULT_MODELS[provider] || '', modelHint: '' };
+    }
+    function isKnownDefaultEndpoint(endpoint) {
+        ensureModelCatalog();
+        if (ModelCatalog && typeof ModelCatalog.isKnownDefaultEndpoint === 'function') {
+            return ModelCatalog.isKnownDefaultEndpoint(endpoint);
+        }
+        if (!endpoint) return false;
+        var trimmed = endpoint.trim();
+        if (!trimmed) return false;
+        var keys = Object.keys(PROVIDER_DEFAULT_ENDPOINTS);
+        for (var i = 0; i < keys.length; i++) {
+            if (PROVIDER_DEFAULT_ENDPOINTS[keys[i]] === trimmed) return true;
+        }
+        return false;
+    }
+    function isKnownDefaultModelHint(model) {
+        ensureModelCatalog();
+        if (ModelCatalog && typeof ModelCatalog.isKnownDefaultModelHint === 'function') {
+            return ModelCatalog.isKnownDefaultModelHint(model);
+        }
+        if (!model) return false;
+        var trimmed = model.trim();
+        if (!trimmed) return false;
+        var keys = Object.keys(PROVIDER_DEFAULT_MODELS);
+        for (var i = 0; i < keys.length; i++) {
+            if (PROVIDER_DEFAULT_MODELS[keys[i]] === trimmed) return true;
+        }
+        return false;
+    }
+    function providerDefaultEndpoint(provider) {
+        return PROVIDER_DEFAULT_ENDPOINTS[provider] || '';
+    }
+    function providerDefaultModel(provider) {
+        return PROVIDER_DEFAULT_MODELS[provider] || '';
+    }
+    var ModelCatalog = null;
+    try {
+        if (typeof require === 'function') {
+            ModelCatalog = require('./model-catalog');
+        }
+    } catch (e) {
+        ModelCatalog = (typeof WritingwayModelCatalog !== 'undefined') ? WritingwayModelCatalog : null;
+    }
+
+    function ensureModelCatalog() {
+        if (!ModelCatalog && typeof WritingwayModelCatalog !== 'undefined') {
+            ModelCatalog = WritingwayModelCatalog;
+        }
+    }
+
+    function isApiCompatibleProvider(provider) {
+        if (ModelCatalog && typeof ModelCatalog.isApiCompatibleProvider === 'function') {
+            return ModelCatalog.isApiCompatibleProvider(provider);
+        }
+        return ['deepseek','openai','openrouter','nanogpt','openai-compatible','custom'].indexOf(provider) >= 0;
+    }
 
     function cleanString(value, fallback = '') {
         const text = value === null || value === undefined ? fallback : String(value);
@@ -58,7 +126,7 @@
     function normalizeGenerationDefaults(input = {}) {
         return {
             temperature: finiteNumber(input.temperature, 0.8, 0, 2),
-            maxTokens: Math.round(finiteNumber(input.maxTokens, 300, 1, 200000)),
+            maxTokens: Math.round(finiteNumber(input.maxTokens, 2000, 1, 200000)),
             useProviderDefaults: !!input.useProviderDefaults
         };
     }
@@ -72,6 +140,28 @@
         };
     }
 
+    function normalizeProviderProfile(input = {}) {
+        var profileId = cleanString(input.id || input.profileId);
+        if (!profileId) profileId = String(Date.now());
+        var provider = PROVIDERS.includes(input.provider) ? input.provider : 'openai-compatible';
+        var defaultEndpoint = PROVIDER_DEFAULT_ENDPOINTS[provider] || '';
+        var endpointInput = cleanString(input.endpoint || '');
+        var shouldUseDefault = !!PROVIDER_DEFAULT_ENDPOINTS[provider]
+            && (!endpointInput || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(endpointInput));
+        return {
+            id: profileId,
+            name: cleanString(input.name || input.label) || provider,
+            provider: provider,
+            apiKey: cleanString(input.apiKey),
+            model: cleanString(input.model),
+            endpoint: shouldUseDefault ? defaultEndpoint : cleanString(endpointInput || defaultEndpoint),
+            baseUrl: cleanString(input.baseUrl),
+            organization: cleanString(input.organization),
+            hasApiKey: !!input.hasApiKey || !!input.apiKey,
+            updatedAt: input.updatedAt || ''
+        };
+    }
+
     function normalizeDesktopSettings(input = {}) {
         const providerInput = input.providerSettings || input.provider || input.ai || input;
         const generationInput = input.generationDefaults || input.generation || input;
@@ -81,6 +171,7 @@
             projectSaveLocation: cleanString(input.projectSaveLocation),
             backupLocation: cleanString(input.backupLocation),
             providerSettings: normalizeProviderSettings(providerInput),
+            providerProfiles: Array.isArray(input.providerProfiles) ? input.providerProfiles.map(normalizeProviderProfile) : [],
             generationDefaults: normalizeGenerationDefaults(generationInput),
             localModelSettings: normalizeLocalModelSettings(localInput),
             updatedAt: input.updatedAt || ''
@@ -88,11 +179,39 @@
     }
 
     function providerRuntimeConfig(settingsInput = {}, extras = {}) {
-        const settings = normalizeDesktopSettings(settingsInput);
-        const provider = settings.providerSettings;
-        const defaults = settings.generationDefaults;
-        const local = settings.localModelSettings;
-        const mode = provider.mode;
+        var settings = normalizeDesktopSettings(settingsInput);
+        var profiles = settings.providerProfiles || [];
+        var profileId = extras.profileId;
+        var selectedProfile = null;
+        if (profileId && profileId !== 'inherit') {
+            for (var i = 0; i < profiles.length; i++) {
+                if (profiles[i].id === profileId) {
+                    selectedProfile = profiles[i];
+                    break;
+                }
+            }
+        }
+        var provider = settings.providerSettings;
+        var defaults = settings.generationDefaults;
+        var local = settings.localModelSettings;
+        if (selectedProfile) {
+            return {
+                mode: 'api',
+                provider: selectedProfile.provider,
+                apiKey: selectedProfile.apiKey,
+                model: extras.model || selectedProfile.model || provider.model,
+                endpoint: selectedProfile.endpoint,
+                baseUrl: selectedProfile.baseUrl,
+                organization: selectedProfile.organization,
+                temperature: defaults.temperature,
+                maxTokens: defaults.maxTokens,
+                useProviderDefaults: defaults.useProviderDefaults,
+                profileId: selectedProfile.id,
+                ...extras,
+                profileId: selectedProfile.id
+            };
+        }
+        var mode = provider.mode;
         return {
             mode,
             provider: provider.provider,
@@ -109,25 +228,62 @@
     }
 
     function publicSettings(settingsInput = {}) {
-        const settings = normalizeDesktopSettings(settingsInput);
+        var settings = normalizeDesktopSettings(settingsInput);
         return {
             ...settings,
             providerSettings: {
                 ...settings.providerSettings,
                 hasApiKey: !!settings.providerSettings.apiKey,
                 apiKey: ''
-            }
+            },
+            providerProfiles: (settings.providerProfiles || []).map(function (profile) {
+                return {
+                    ...profile,
+                    hasApiKey: !!profile.apiKey,
+                    apiKey: ''
+                };
+            })
         };
+    }
+
+    function providerProfileRuntimeConfigs(settingsInput = {}) {
+        var settings = normalizeDesktopSettings(settingsInput);
+        var profiles = settings.providerProfiles || [];
+        ensureModelCatalog();
+        return profiles.filter(function (profile) {
+            return isApiCompatibleProvider(profile.provider);
+        }).map(function (profile) {
+            return {
+                id: profile.id,
+                name: profile.name,
+                provider: profile.provider,
+                apiKey: profile.apiKey,
+                model: profile.model,
+                endpoint: profile.endpoint,
+                baseUrl: profile.baseUrl,
+                organization: profile.organization,
+                hasApiKey: !!profile.apiKey,
+                updatedAt: profile.updatedAt
+            };
+        });
     }
 
     return {
         PROVIDER_MODES,
         PROVIDERS,
+        isApiCompatibleProvider,
+        getProviderMetadata,
+        isKnownDefaultEndpoint,
+        isKnownDefaultModelHint,
+        providerDefaultEndpoint,
+        providerDefaultModel,
         normalizeProviderSettings,
+        normalizeProviderProfile,
         normalizeGenerationDefaults,
         normalizeLocalModelSettings,
         normalizeDesktopSettings,
         providerRuntimeConfig,
-        publicSettings
+        publicSettings,
+        providerProfileRuntimeConfigs
     };
 });

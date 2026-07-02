@@ -140,13 +140,21 @@
     const settingsState = {
         settings: null,
         runtimeProvider: null,
+        runtimeProviderProfiles: null,
         loading: false,
         loadPromise: null,
         saving: false
     };
+    const profileEditState = {
+        editingId: '',
+        editingProfile: null
+    };
+    const profileTestState = {};
     const WRITER_MODEL_KEY = 'writingway:desktop:writerModelOverride';
     const writerModelOverride = {
+        profileId: 'inherit',
         model: 'inherit',
+        customModel: '',
         thinking: false
     };
     const shellUiState = {
@@ -180,6 +188,65 @@
         if (railToggle) railToggle.textContent = shellUiState.railCollapsed ? '显示导航' : '隐藏导航';
 
         if (state) state.saveView(nextView);
+        renderContextStrip();
+    }
+
+    function contextStripElements() {
+        return {
+            strip: document.querySelector('[data-context-strip]'),
+            projectTitle: document.querySelector('[data-context-project-title]'),
+            sceneTitle: document.querySelector('[data-context-scene-title]'),
+            wordCount: document.querySelector('[data-context-word-count]'),
+            compendiumSummary: document.querySelector('[data-context-compendium-summary]'),
+            gotoWriter: document.querySelector('[data-context-goto-writer]'),
+            gotoCompendium: document.querySelector('[data-context-goto-compendium]'),
+            gotoWorkshop: document.querySelector('[data-context-goto-workshop]'),
+            gotoBookshelf: document.querySelector('[data-context-goto-bookshelf]')
+        };
+    }
+
+    function contextPolicyMode(entry) {
+        if (entry && entry.alwaysInContext) return 'always';
+        const policy = entry && entry.contextPolicy;
+        const mode = policy && policy.mode;
+        return ['disabled', 'manual', 'mention', 'auto', 'always'].includes(mode) ? mode : 'manual';
+    }
+
+    function contextPolicyLabel(entry) {
+        return {
+            always: '总是注入',
+            auto: '条件注入',
+            mention: '提及时注入',
+            manual: '手动',
+            disabled: '不自动注入'
+        }[contextPolicyMode(entry)] || '手动';
+    }
+
+    function renderContextStrip() {
+        const elements = contextStripElements();
+        if (!elements.strip) return;
+        const root = document.getElementById('desktop-root');
+        const view = root && root.dataset.view ? root.dataset.view : 'bookshelf';
+        const coreViews = new Set(['writer', 'compendium', 'workshop', 'workflow']);
+        const projectId = currentProjectId();
+        const scene = currentNativeScene();
+        const content = scene ? nativeSceneContent(scene.id) : '';
+        const entries = compendiumState.entries || [];
+        const autoCount = entries.filter((entry) => !['manual', 'disabled'].includes(contextPolicyMode(entry))).length;
+
+        elements.strip.hidden = !coreViews.has(view);
+        if (elements.projectTitle) elements.projectTitle.textContent = projectId ? currentProjectName() : '未打开项目';
+        if (elements.sceneTitle) elements.sceneTitle.textContent = scene ? `场景：${scene.title || '未命名场景'}` : (projectId ? '未选择场景' : '从书库打开项目');
+        if (elements.wordCount) elements.wordCount.textContent = scene ? `${String(content || '').length} 字` : '';
+        if (elements.compendiumSummary) {
+            elements.compendiumSummary.textContent = projectId
+                ? `资料 ${entries.length} 张${autoCount ? ` / 自动上下文 ${autoCount} 张` : ''}`
+                : '请先打开项目';
+        }
+        if (elements.gotoBookshelf) elements.gotoBookshelf.hidden = !!projectId;
+        [elements.gotoWriter, elements.gotoCompendium, elements.gotoWorkshop].forEach((button) => {
+            if (button) button.disabled = !projectId;
+        });
     }
 
     function formatNumber(value) {
@@ -214,7 +281,22 @@
 
     function setProjectLibraryMeta(message) {
         const meta = document.querySelector('[data-project-library-meta]');
-        if (meta) meta.textContent = message || '';
+        if (meta) {
+            meta.textContent = message || '';
+            meta.title = message || '';
+        }
+    }
+
+    function setProjectLibraryCount(message) {
+        const count = document.querySelector('[data-project-library-count]');
+        if (count) count.textContent = message || '—';
+    }
+
+    function setShelfStatus(message) {
+        const status = document.querySelector('[data-project-library-meta-secondary]');
+        if (!status) return;
+        status.textContent = message || '';
+        status.hidden = !message;
     }
 
     function createProjectCard(project) {
@@ -235,13 +317,17 @@
             image.alt = '';
             cover.appendChild(image);
         } else {
-            cover.textContent = firstBookGlyph(project.name);
+            const glyph = document.createElement('span');
+            glyph.className = 'desktop-project-cover-glyph';
+            glyph.textContent = firstBookGlyph(project.name);
+            cover.appendChild(glyph);
         }
 
         const body = document.createElement('div');
         body.className = 'desktop-project-card-body';
 
         const name = document.createElement('strong');
+        name.className = 'desktop-project-card-name';
         name.textContent = project.name || '未命名项目';
 
         const badges = document.createElement('div');
@@ -268,18 +354,49 @@
         description.className = 'desktop-project-description';
         description.textContent = project.description || '还没有简介。';
 
-        const stats = document.createElement('span');
-        stats.textContent = `${formatNumber(project.wordCount)} 字 / ${formatNumber(project.chapterCount)} 章 / ${formatNumber(project.sceneCount)} 场`;
+        const stats = document.createElement('div');
+        stats.className = 'desktop-project-stats';
+        stats.innerHTML = [
+            `<span class="desktop-project-stat"><span class="desktop-project-stat-value">${formatNumber(project.wordCount)}</span><span class="desktop-project-stat-label">字</span></span>`,
+            `<span class="desktop-project-stat"><span class="desktop-project-stat-value">${formatNumber(project.chapterCount)}</span><span class="desktop-project-stat-label">章</span></span>`,
+            `<span class="desktop-project-stat"><span class="desktop-project-stat-value">${formatNumber(project.sceneCount)}</span><span class="desktop-project-stat-label">场</span></span>`
+        ].join('');
 
-        const time = document.createElement('span');
-        time.textContent = `最近保存 ${formatDate(project.timestamp)}`;
+        const time = document.createElement('time');
+        time.className = 'desktop-project-time';
+        time.textContent = formatDate(project.timestamp);
+        time.dateTime = project.timestamp || '';
 
         const path = document.createElement('small');
+        path.className = 'desktop-project-path';
         path.textContent = project.health === 'invalid' ? `文件异常：${project.healthMessage || '无法读取'}` : (project.filename || project.path || '');
         if (project.health === 'invalid') path.dataset.tone = 'error';
 
         const actions = document.createElement('div');
         actions.className = 'desktop-project-actions';
+
+        const continueButton = document.createElement('button');
+        continueButton.type = 'button';
+        continueButton.className = 'desktop-project-continue';
+        continueButton.textContent = '继续写作';
+        continueButton.dataset.projectContinue = '';
+        continueButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            card.setAttribute('aria-disabled', 'true');
+            try {
+                openDesktopProject(project).catch((error) => {
+                    console.error('Failed to open desktop project:', error);
+                    setProjectLibraryStatus(`打开失败：${error.message || error}`, 'error');
+                }).finally(() => {
+                    card.removeAttribute('aria-disabled');
+                });
+            } catch (error) {
+                console.error('Failed to open desktop project:', error);
+                setProjectLibraryStatus(`打开失败：${error.message || error}`, 'error');
+                card.removeAttribute('aria-disabled');
+            }
+        });
+        actions.appendChild(continueButton);
 
         const editButton = document.createElement('button');
         editButton.type = 'button';
@@ -315,6 +432,7 @@
         revealButton.type = 'button';
         revealButton.className = 'desktop-mini-action';
         revealButton.textContent = '定位文件';
+        revealButton.dataset.action = 'reveal-file';
         revealButton.addEventListener('click', async (event) => {
             event.stopPropagation();
             await revealProjectFile(project);
@@ -324,6 +442,7 @@
         copyPathButton.type = 'button';
         copyPathButton.className = 'desktop-mini-action';
         copyPathButton.textContent = '复制路径';
+        copyPathButton.dataset.action = 'copy-path';
         copyPathButton.addEventListener('click', async (event) => {
             event.stopPropagation();
             await copyProjectPath(project);
@@ -347,10 +466,6 @@
             await openProjectBackupSettings(project);
         });
 
-        moreDrawer.append(revealButton, copyPathButton, exportPackageButton, backupButton);
-
-        actions.append(moreButton, moreDrawer);
-
         const removeButton = document.createElement('button');
         removeButton.type = 'button';
         removeButton.className = 'desktop-mini-action desktop-mini-action-danger';
@@ -359,9 +474,16 @@
             event.stopPropagation();
             await removeProjectFromLibrary(project);
         });
-        actions.appendChild(removeButton);
 
-        body.append(name, badges, description, stats, time, path, actions);
+        moreDrawer.append(revealButton, copyPathButton, exportPackageButton, backupButton);
+
+        actions.append(moreButton, moreDrawer);
+
+        const removeRow = document.createElement('div');
+        removeRow.className = 'desktop-project-remove-row';
+        removeRow.appendChild(removeButton);
+
+        body.append(name, badges, description, stats, time, path, actions, removeRow);
         card.append(cover, body);
 
         const openProject = async () => {
@@ -428,21 +550,52 @@
         const total = projectLibraryState.projects.length;
         const projectSaveLocation = projectLibraryState.projectSaveLocation;
 
+        setProjectLibraryCount(total === 0 ? '—' : `${total} 本作品`);
+        setProjectLibraryMeta(projectSaveLocation ? `保存位置：${projectSaveLocation}` : '项目目录尚未建立');
+
         if (total === 0) {
-            setProjectLibraryStatus('还没有保存到磁盘的项目。进入写作器后点击保存，书库就会显示作品卡片。', 'empty');
-            setProjectLibraryMeta(projectSaveLocation ? `项目目录：${projectSaveLocation}` : '项目目录尚未建立');
+            const status = document.querySelector('[data-project-library-status]');
+            if (status) {
+                status.dataset.tone = 'empty';
+                status.hidden = false;
+                status.replaceChildren();
+                const msg = document.createElement('p');
+                msg.className = 'desktop-library-status-text';
+                msg.textContent = '还没有作品。开始你的创作之旅吧。';
+                status.appendChild(msg);
+                const actions = document.createElement('div');
+                actions.className = 'desktop-library-status-actions';
+                const newBtn = document.createElement('button');
+                newBtn.className = 'desktop-primary-action';
+                newBtn.type = 'button';
+                newBtn.textContent = '新建作品';
+                newBtn.addEventListener('click', (e) => { e.stopPropagation(); openProjectCreator(); });
+                const importBtn = document.createElement('button');
+                importBtn.className = 'desktop-secondary-action';
+                importBtn.type = 'button';
+                importBtn.textContent = '导入项目';
+                importBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const input = document.querySelector('[data-import-project-snapshot-file]');
+                    if (input) input.click();
+                });
+                actions.appendChild(newBtn);
+                actions.appendChild(importBtn);
+                status.appendChild(actions);
+            }
+            setShelfStatus('');
             return;
         }
 
         if (projects.length === 0) {
             setProjectLibraryStatus('没有找到匹配的作品。换个关键词试试，或者清空搜索框。', 'empty');
-            setProjectLibraryMeta(`${total} 本书 / 项目目录：${projectSaveLocation || '默认目录'}`);
+            setShelfStatus(`共 ${total} 本 · 已筛选`);
             return;
         }
 
         setProjectLibraryStatus('', 'ok');
-        const shownText = projects.length === total ? `${total} 本书` : `显示 ${projects.length} / ${total} 本书`;
-        setProjectLibraryMeta(`${shownText} / 项目目录：${projectSaveLocation || '默认目录'}`);
+        const shownText = projects.length === total ? `共 ${total} 本作品` : `显示 ${projects.length} / ${total} 本`;
+        setShelfStatus(shownText);
         projects.forEach((project) => {
             grid.appendChild(createProjectCard(project));
         });
@@ -465,6 +618,7 @@
             projectLibraryState.projectSaveLocation = '';
             renderProjectLibrary();
             setProjectLibraryStatus(`读取书库失败：${error.message || error}`, 'error');
+            setProjectLibraryCount('—');
             setProjectLibraryMeta('请确认桌面本地服务正在运行。');
         }
     }
@@ -1969,6 +2123,8 @@
             pov: document.querySelector('[data-native-scene-pov]'),
             tense: document.querySelector('[data-native-scene-tense]'),
             stats: document.querySelector('[data-native-editor-stats]'),
+            sendToWorkshop: document.querySelector('[data-native-send-to-workshop]'),
+            saveToCompendium: document.querySelector('[data-native-save-to-compendium]'),
             saveStatus: document.querySelector('[data-native-save-status]'),
             saveButton: document.querySelector('[data-native-save-scene]'),
             readAloud: document.querySelector('[data-native-read-aloud]'),
@@ -2068,7 +2224,14 @@
             modelControl: document.querySelector('[data-native-model-control]'),
             modelControlHint: document.querySelector('[data-native-model-control-hint]'),
             modelSelect: document.querySelector('[data-native-model-select]'),
-            thinkingToggle: document.querySelector('[data-native-thinking-toggle]')
+            profileSelect: document.querySelector('[data-native-profile-select]'),
+            customModelInput: document.querySelector('[data-native-custom-model]'),
+            customModelGroup: document.querySelector('[data-native-custom-model-group]'),
+            thinkingToggle: document.querySelector('[data-native-thinking-toggle]'),
+            writerTemperature: document.querySelector('[data-native-temperature]'),
+            writerMaxTokens: document.querySelector('[data-native-max-tokens]'),
+            writerProviderDefaults: document.querySelector('[data-native-provider-defaults]'),
+            writerSamplingHint: document.querySelector('[data-native-sampling-hint]')
         };
     }
 
@@ -2095,7 +2258,18 @@
             ttsVoice: document.querySelector('[data-settings-tts-voice]'),
             ttsRate: document.querySelector('[data-settings-tts-rate]'),
             ttsRateValue: document.querySelector('[data-settings-tts-rate-value]'),
-            ttsRefreshVoices: document.querySelector('[data-settings-tts-refresh-voices]')
+            ttsRefreshVoices: document.querySelector('[data-settings-tts-refresh-voices]'),
+            profilesList: document.querySelector('[data-settings-profiles-list]'),
+            profileEditor: document.querySelector('[data-settings-profile-editor]'),
+            profileName: document.querySelector('[data-settings-profile-name]'),
+            profileProvider: document.querySelector('[data-settings-profile-provider]'),
+            profileEndpoint: document.querySelector('[data-settings-profile-endpoint]'),
+            profileModel: document.querySelector('[data-settings-profile-model]'),
+            profileApiKey: document.querySelector('[data-settings-profile-api-key]'),
+            profileSave: document.querySelector('[data-settings-profile-save]'),
+            profileCancel: document.querySelector('[data-settings-profile-cancel]'),
+            profileDelete: document.querySelector('[data-settings-profile-delete]'),
+            profileAdd: document.querySelector('[data-settings-profile-add]')
         };
     }
 
@@ -2107,6 +2281,10 @@
     }
 
     function runtimeProviderConfig(extras = {}) {
+        if (extras && extras.profileId && extras.profileId !== 'inherit'
+            && window.WritingwaySettingsSchema && typeof window.WritingwaySettingsSchema.providerRuntimeConfig === 'function') {
+            return window.WritingwaySettingsSchema.providerRuntimeConfig(settingsWithRuntimeProfiles(), extras);
+        }
         if (settingsState.runtimeProvider) {
             return {
                 ...settingsState.runtimeProvider,
@@ -2120,7 +2298,7 @@
             mode: 'local',
             endpoint: 'http://localhost:8080',
             temperature: 0.8,
-            maxTokens: 300,
+            maxTokens: 2000,
             ...extras
         };
     }
@@ -2157,6 +2335,196 @@
         [elements.mode, elements.provider, elements.endpoint, elements.model, elements.apiKey, elements.temperature, elements.maxTokens, elements.providerDefaults, elements.test, elements.refresh].forEach((field) => {
             if (field) field.disabled = isBusy || (field === elements.apiKey && provider.mode === 'local');
         });
+        renderSettingsProfiles();
+    }
+
+    function modelCatalog() {
+        if (window.WritingwayModelCatalog) return window.WritingwayModelCatalog;
+        return {
+            getProviderModels: function () { return [{ id: '__custom__', label: '自定义模型...' }]; },
+            getProviderMetadata: function (provider) { return { label: provider, defaultEndpoint: '', defaultModelHint: '' }; },
+            isThinkingSupported: function () { return false; },
+            isKnownDefaultEndpoint: function () { return false; },
+            isKnownDefaultModelHint: function () { return false; },
+            isApiCompatibleProvider: function (provider) {
+                return ['deepseek', 'openai', 'openrouter', 'nanogpt', 'openai-compatible', 'custom'].indexOf(provider) >= 0;
+            }
+        };
+    }
+
+    function settingsWithRuntimeProfiles() {
+        const settings = normalizeDesktopSettings(settingsState.settings || {});
+        const runtimeProfiles = Array.isArray(settingsState.runtimeProviderProfiles)
+            ? settingsState.runtimeProviderProfiles
+            : [];
+        if (!runtimeProfiles.length) return settings;
+        const profileMap = new Map((settings.providerProfiles || []).map((profile) => [profile.id, { ...profile }]));
+        runtimeProfiles.forEach((runtimeProfile) => {
+            if (!runtimeProfile || !runtimeProfile.id) return;
+            profileMap.set(runtimeProfile.id, {
+                ...(profileMap.get(runtimeProfile.id) || {}),
+                ...runtimeProfile,
+                hasApiKey: !!(runtimeProfile.apiKey || runtimeProfile.hasApiKey)
+            });
+        });
+        return {
+            ...settings,
+            providerProfiles: Array.from(profileMap.values())
+        };
+    }
+
+    function renderSettingsProfiles() {
+        const elements = settingsElements();
+        if (!elements.profilesList) return;
+        const settings = normalizeDesktopSettings(settingsState.settings);
+        const profiles = settings.providerProfiles || [];
+        elements.profilesList.replaceChildren();
+        if (!profiles.length) {
+            const empty = document.createElement('div');
+            empty.className = 'desktop-settings-profile-empty';
+            empty.textContent = '还没有额外的 API 配置组。';
+            elements.profilesList.appendChild(empty);
+        } else {
+            profiles.forEach((profile) => {
+                const item = document.createElement('div');
+                item.className = 'desktop-settings-profile-item';
+                const info = document.createElement('div');
+                info.className = 'desktop-settings-profile-info';
+                const name = document.createElement('strong');
+                name.textContent = profile.name || profile.provider || 'API 配置组';
+                const meta = document.createElement('span');
+                meta.textContent = `${profile.provider || 'custom'} · ${profile.endpoint || '未设置 endpoint'}${profile.hasApiKey ? ' · 已配密钥' : ''}`;
+                info.append(name, meta);
+                const testState = profileTestState[profile.id];
+                if (testState) {
+                    const status = document.createElement('span');
+                    status.className = 'desktop-settings-profile-status';
+                    status.dataset.tone = testState.tone || 'info';
+                    status.textContent = testState.message || '';
+                    info.appendChild(status);
+                }
+                const actions = document.createElement('div');
+                actions.className = 'desktop-settings-profile-actions';
+                const test = document.createElement('button');
+                test.type = 'button';
+                test.className = 'desktop-secondary-action';
+                test.textContent = testState && testState.running ? '测试中...' : '测试';
+                test.disabled = !!(testState && testState.running);
+                test.addEventListener('click', () => testProviderProfile(profile.id));
+                const edit = document.createElement('button');
+                edit.type = 'button';
+                edit.className = 'desktop-secondary-action';
+                edit.textContent = '编辑';
+                edit.addEventListener('click', () => openProviderProfileEditor(profile));
+                actions.append(test, edit);
+                item.append(info, actions);
+                elements.profilesList.appendChild(item);
+            });
+        }
+        if (elements.profileEditor) elements.profileEditor.hidden = !profileEditState.editingProfile;
+        if (profileEditState.editingProfile) {
+            const profile = profileEditState.editingProfile;
+            if (elements.profileName) elements.profileName.value = profile.name || '';
+            if (elements.profileProvider) elements.profileProvider.value = profile.provider || 'deepseek';
+            if (elements.profileEndpoint) elements.profileEndpoint.value = profile.endpoint || '';
+            if (elements.profileModel) elements.profileModel.value = profile.model || '';
+            if (elements.profileApiKey) {
+                elements.profileApiKey.value = '';
+                elements.profileApiKey.placeholder = profile.hasApiKey ? '已保存密钥，留空表示保持现有密钥' : 'API Key';
+            }
+            if (elements.profileDelete) elements.profileDelete.hidden = !profileEditState.editingId;
+        }
+    }
+
+    function profileDefaults(provider) {
+        const meta = modelCatalog().getProviderMetadata(provider || 'deepseek');
+        return {
+            endpoint: meta.defaultEndpoint || '',
+            model: meta.defaultModelHint || ''
+        };
+    }
+
+    function openProviderProfileEditor(profile) {
+        const provider = (profile && profile.provider) || 'deepseek';
+        const defaults = profileDefaults(provider);
+        profileEditState.editingId = (profile && profile.id) || '';
+        profileEditState.editingProfile = {
+            id: (profile && profile.id) || '',
+            name: (profile && profile.name) || '',
+            provider,
+            endpoint: (profile && profile.endpoint) || defaults.endpoint,
+            model: (profile && profile.model) || defaults.model,
+            hasApiKey: !!(profile && profile.hasApiKey)
+        };
+        renderSettingsProfiles();
+    }
+
+    function closeProviderProfileEditor() {
+        profileEditState.editingId = '';
+        profileEditState.editingProfile = null;
+        renderSettingsProfiles();
+    }
+
+    async function saveProviderProfile() {
+        const elements = settingsElements();
+        const profile = {
+            id: profileEditState.editingId || undefined,
+            name: elements.profileName ? elements.profileName.value.trim() : '',
+            provider: elements.profileProvider ? elements.profileProvider.value : 'deepseek',
+            endpoint: elements.profileEndpoint ? elements.profileEndpoint.value.trim() : '',
+            model: elements.profileModel ? elements.profileModel.value.trim() : '',
+            apiKey: elements.profileApiKey ? elements.profileApiKey.value : ''
+        };
+        const response = await fetch('/api/settings/provider-profiles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profile })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        settingsState.settings = normalizeDesktopSettings(result.settings || {});
+        settingsState.runtimeProviderProfiles = result.runtimeProviderProfiles || null;
+        closeProviderProfileEditor();
+        setSettingsStatus('配置组已保存', 'ok');
+        renderWriterModelControl();
+    }
+
+    async function deleteProviderProfile() {
+        if (!profileEditState.editingId) return;
+        const response = await fetch('/api/settings/delete-provider-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profileId: profileEditState.editingId })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        settingsState.settings = normalizeDesktopSettings(result.settings || {});
+        settingsState.runtimeProviderProfiles = result.runtimeProviderProfiles || null;
+        closeProviderProfileEditor();
+        setSettingsStatus('配置组已删除', 'ok');
+        renderWriterModelControl();
+    }
+
+    async function testProviderProfile(profileId) {
+        profileTestState[profileId] = { running: true, tone: 'info', message: '测试中...' };
+        renderSettingsProfiles();
+        try {
+            const response = await fetch('/api/settings/test-provider-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profileId, live: false })
+            });
+            const result = await response.json().catch(() => ({}));
+            const detail = result.result || result;
+            profileTestState[profileId] = {
+                running: false,
+                tone: result.ok ? 'ok' : 'error',
+                message: result.ok ? '配置可用' : (detail.error || result.error || '测试失败')
+            };
+        } catch (error) {
+            profileTestState[profileId] = { running: false, tone: 'error', message: error.message || String(error) };
+        }
+        renderSettingsProfiles();
     }
 
     function getTtsVoices() {
@@ -2230,7 +2598,7 @@
             },
             generationDefaults: {
                 temperature: elements.temperature ? Number(elements.temperature.value) : 0.8,
-                maxTokens: elements.maxTokens ? Number(elements.maxTokens.value) : 300,
+                maxTokens: elements.maxTokens ? Number(elements.maxTokens.value) : 2000,
                 useProviderDefaults: !!(elements.providerDefaults && elements.providerDefaults.checked)
             },
             localModelSettings: {
@@ -2269,6 +2637,7 @@
             }
             settingsState.settings = normalizeDesktopSettings(result.settings || {});
             settingsState.runtimeProvider = result.runtimeProvider || runtimeProviderConfig();
+            settingsState.runtimeProviderProfiles = result.runtimeProviderProfiles || null;
             setSettingsStatus('设置已读取', 'ok');
             return settingsState.settings;
         })();
@@ -2278,12 +2647,14 @@
             console.warn('Failed to load settings:', error);
             settingsState.settings = normalizeDesktopSettings();
             settingsState.runtimeProvider = runtimeProviderConfig();
+            settingsState.runtimeProviderProfiles = null;
             setSettingsStatus(`读取设置失败：${error.message || error}`, 'error');
             return settingsState.settings;
         } finally {
             settingsState.loading = false;
             settingsState.loadPromise = null;
             renderSettingsForm();
+            renderWriterModelControl();
             renderNativeGeneration();
         }
     }
@@ -2306,6 +2677,7 @@
             }
             settingsState.settings = normalizeDesktopSettings(result.settings || {});
             settingsState.runtimeProvider = result.runtimeProvider || runtimeProviderConfig();
+            settingsState.runtimeProviderProfiles = result.runtimeProviderProfiles || null;
             setSettingsStatus('设置已保存', 'ok');
         } catch (error) {
             console.warn('Failed to save settings:', error);
@@ -2315,6 +2687,36 @@
             renderSettingsForm();
             renderWriterModelControl();
             renderNativeGeneration();
+        }
+    }
+
+    async function saveWriterGenerationDefaults(patch) {
+        const current = normalizeDesktopSettings(settingsState.settings || {});
+        const defaults = {
+            ...(current.generationDefaults || {}),
+            ...(patch || {})
+        };
+        try {
+            const response = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ settings: { generationDefaults: defaults } })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            settingsState.settings = normalizeDesktopSettings(result.settings || {});
+            settingsState.runtimeProvider = result.runtimeProvider || runtimeProviderConfig();
+            settingsState.runtimeProviderProfiles = result.runtimeProviderProfiles || null;
+            renderSettingsForm();
+            renderWriterModelControl();
+            renderNativeGeneration();
+            setNativeSaveStatus('生成参数已更新', 'ok');
+        } catch (error) {
+            console.warn('Failed to save writer generation defaults:', error);
+            setNativeSaveStatus(`生成参数保存失败：${error.message || error}`, 'error');
+            renderWriterModelControl();
         }
     }
 
@@ -2388,6 +2790,38 @@
                 populateTtsVoiceSelect();
             });
         }
+        if (elements.profileAdd) elements.profileAdd.addEventListener('click', () => openProviderProfileEditor(null));
+        if (elements.profileCancel) elements.profileCancel.addEventListener('click', closeProviderProfileEditor);
+        if (elements.profileSave) {
+            elements.profileSave.addEventListener('click', async () => {
+                try {
+                    await saveProviderProfile();
+                } catch (error) {
+                    setSettingsStatus(`配置组保存失败：${error.message || error}`, 'error');
+                }
+            });
+        }
+        if (elements.profileDelete) {
+            elements.profileDelete.addEventListener('click', async () => {
+                try {
+                    await deleteProviderProfile();
+                } catch (error) {
+                    setSettingsStatus(`配置组删除失败：${error.message || error}`, 'error');
+                }
+            });
+        }
+        if (elements.profileProvider) {
+            elements.profileProvider.addEventListener('change', () => {
+                const provider = elements.profileProvider.value || 'deepseek';
+                const defaults = profileDefaults(provider);
+                if (elements.profileEndpoint && (!elements.profileEndpoint.value.trim() || modelCatalog().isKnownDefaultEndpoint(elements.profileEndpoint.value.trim()))) {
+                    elements.profileEndpoint.value = defaults.endpoint;
+                }
+                if (elements.profileModel && (!elements.profileModel.value.trim() || modelCatalog().isKnownDefaultModelHint(elements.profileModel.value.trim()))) {
+                    elements.profileModel.value = defaults.model;
+                }
+            });
+        }
         if (window.speechSynthesis) {
             window.speechSynthesis.addEventListener('voiceschanged', function () {
                 populateTtsVoiceSelect();
@@ -2413,6 +2847,21 @@
             tags: document.querySelector('[data-compendium-tags]'),
             aliases: document.querySelector('[data-compendium-aliases]'),
             always: document.querySelector('[data-compendium-always]'),
+            policyMode: document.querySelector('[data-compendium-policy-mode]'),
+            triggerTitle: document.querySelector('[data-compendium-trigger-title]'),
+            triggerAliases: document.querySelector('[data-compendium-trigger-aliases]'),
+            triggerTags: document.querySelector('[data-compendium-trigger-tags]'),
+            triggerPov: document.querySelector('[data-compendium-trigger-pov]'),
+            triggerSceneCharacters: document.querySelector('[data-compendium-trigger-scene-characters]'),
+            character: document.querySelector('[data-compendium-character]'),
+            characterRole: document.querySelector('[data-compendium-character-role]'),
+            characterGoal: document.querySelector('[data-compendium-character-goal]'),
+            characterMotivation: document.querySelector('[data-compendium-character-motivation]'),
+            characterConflict: document.querySelector('[data-compendium-character-conflict]'),
+            characterVoice: document.querySelector('[data-compendium-character-voice]'),
+            characterCurrentState: document.querySelector('[data-compendium-character-current-state]'),
+            characterKnowledge: document.querySelector('[data-compendium-character-knowledge]'),
+            characterRelationship: document.querySelector('[data-compendium-character-relationship]'),
             body: document.querySelector('[data-compendium-body]'),
             save: document.querySelector('[data-compendium-save]'),
             deleteButton: document.querySelector('[data-compendium-delete]')
@@ -2483,6 +2932,55 @@
         });
     }
 
+    function normalizedContextPolicy(entry) {
+        if (window.WritingwayCompendiumSchema && typeof window.WritingwayCompendiumSchema.normalizeContextPolicy === 'function') {
+            return window.WritingwayCompendiumSchema.normalizeContextPolicy(
+                entry && entry.contextPolicy
+                    ? entry.contextPolicy
+                    : { mode: entry && entry.alwaysInContext ? 'always' : 'manual' }
+            );
+        }
+        const policy = entry && entry.contextPolicy && typeof entry.contextPolicy === 'object'
+            ? entry.contextPolicy
+            : {};
+        const mode = ['disabled', 'manual', 'mention', 'auto', 'always'].includes(policy.mode) ? policy.mode : (entry && entry.alwaysInContext ? 'always' : 'manual');
+        const triggers = policy.triggers && typeof policy.triggers === 'object' ? policy.triggers : {};
+        return {
+            mode,
+            triggers: {
+                title: triggers.title !== false,
+                aliases: triggers.aliases !== false,
+                tags: triggers.tags !== false,
+                pov: triggers.pov !== false,
+                sceneCharacters: triggers.sceneCharacters !== false
+            }
+        };
+    }
+
+    function compendiumCharacterFields(elements) {
+        return [
+            elements.characterRole,
+            elements.characterGoal,
+            elements.characterMotivation,
+            elements.characterConflict,
+            elements.characterVoice,
+            elements.characterCurrentState,
+            elements.characterKnowledge,
+            elements.characterRelationship
+        ];
+    }
+
+    function compendiumPolicyFields(elements) {
+        return [
+            elements.policyMode,
+            elements.triggerTitle,
+            elements.triggerAliases,
+            elements.triggerTags,
+            elements.triggerPov,
+            elements.triggerSceneCharacters
+        ];
+    }
+
     function renderCompendium() {
         const elements = compendiumElements();
         const projectId = currentProjectId();
@@ -2496,6 +2994,9 @@
         if (elements.search && elements.search.value !== compendiumState.query) elements.search.value = compendiumState.query;
         if (elements.typeFilter && elements.typeFilter.value !== compendiumState.type) elements.typeFilter.value = compendiumState.type;
         if (elements.newButton) elements.newButton.disabled = !hasProject || compendiumState.loading;
+
+        const compendiumTools = document.querySelector('.desktop-compendium-tools');
+        if (compendiumTools) compendiumTools.hidden = !hasProject;
 
         if (elements.list) {
             elements.list.replaceChildren();
@@ -2520,9 +3021,13 @@
                     title.textContent = entry.title || '未命名资料';
                     const meta = document.createElement('span');
                     meta.textContent = `${typeLabel(entry.type)}${entry.tags && entry.tags.length ? ` / ${entry.tags.slice(0, 3).join(', ')}` : ''}`;
+                    const badge = document.createElement('span');
+                    badge.className = 'desktop-compendium-injection-badge';
+                    badge.dataset.mode = contextPolicyMode(entry);
+                    badge.textContent = contextPolicyLabel(entry);
                     const summary = document.createElement('small');
                     summary.textContent = entry.summary || String(entry.body || '').slice(0, 80) || '没有摘要';
-                    item.append(title, meta, summary);
+                    item.append(title, meta, badge, summary);
                     item.addEventListener('click', () => {
                         compendiumState.selectedId = entry.id;
                         compendiumState.dirty = false;
@@ -2534,27 +3039,81 @@
         }
 
         if (elements.editorTitle) elements.editorTitle.textContent = selected ? selected.title : '选择资料条目';
-        const fields = [elements.entryType, elements.title, elements.summary, elements.tags, elements.aliases, elements.always, elements.body];
+
+        const editorEmpty = document.querySelector('[data-compendium-editor-empty]');
+        const compendiumForm = document.querySelector('[data-compendium-form]');
+        const emptyTitle = document.querySelector('[data-compendium-empty-title]');
+        const emptyDesc = document.querySelector('[data-compendium-empty-desc]');
+        if (!hasProject) {
+            if (compendiumForm) compendiumForm.hidden = true;
+            if (editorEmpty) {
+                editorEmpty.hidden = false;
+                if (emptyTitle) emptyTitle.textContent = '未打开项目';
+                if (emptyDesc) emptyDesc.textContent = '从书库打开一个项目，即可编辑该项目的资料。';
+            }
+        } else if (!selected) {
+            if (compendiumForm) compendiumForm.hidden = true;
+            if (editorEmpty) {
+                editorEmpty.hidden = false;
+                if (emptyTitle) emptyTitle.textContent = '选择资料条目';
+                if (emptyDesc) emptyDesc.textContent = '从左侧列表中选择资料卡进行编辑，或点击「新资料」创建资料卡。';
+            }
+        } else {
+            if (editorEmpty) editorEmpty.hidden = true;
+            if (compendiumForm) compendiumForm.hidden = false;
+        }
+
+        const fields = [
+            elements.entryType,
+            elements.title,
+            elements.summary,
+            elements.tags,
+            elements.aliases,
+            elements.always,
+            elements.body,
+            ...compendiumPolicyFields(elements),
+            ...compendiumCharacterFields(elements)
+        ];
         fields.forEach((field) => {
             if (field) field.disabled = !selected;
         });
         if (elements.save) elements.save.disabled = !selected;
         if (elements.deleteButton) elements.deleteButton.disabled = !selected;
         if (selected) {
+            const policy = normalizedContextPolicy(selected);
+            const triggers = policy.triggers || {};
+            const characterProfile = selected.characterProfile || {};
             if (elements.entryType) elements.entryType.value = selected.type || 'lore';
             if (elements.title) elements.title.value = selected.title || '';
             if (elements.summary) elements.summary.value = selected.summary || '';
             if (elements.tags) elements.tags.value = (selected.tags || []).join(', ');
             if (elements.aliases) elements.aliases.value = (selected.aliases || []).join(', ');
-            if (elements.always) elements.always.checked = !!selected.alwaysInContext;
+            if (elements.always) elements.always.checked = policy.mode === 'always';
+            if (elements.policyMode) elements.policyMode.value = policy.mode || 'manual';
+            if (elements.triggerTitle) elements.triggerTitle.checked = triggers.title !== false;
+            if (elements.triggerAliases) elements.triggerAliases.checked = triggers.aliases !== false;
+            if (elements.triggerTags) elements.triggerTags.checked = triggers.tags !== false;
+            if (elements.triggerPov) elements.triggerPov.checked = triggers.pov !== false;
+            if (elements.triggerSceneCharacters) elements.triggerSceneCharacters.checked = triggers.sceneCharacters !== false;
+            if (elements.character) elements.character.hidden = (selected.type || 'lore') !== 'character';
+            if (elements.characterRole) elements.characterRole.value = characterProfile.role || '';
+            if (elements.characterGoal) elements.characterGoal.value = characterProfile.goal || '';
+            if (elements.characterMotivation) elements.characterMotivation.value = characterProfile.motivation || '';
+            if (elements.characterConflict) elements.characterConflict.value = characterProfile.conflict || '';
+            if (elements.characterVoice) elements.characterVoice.value = characterProfile.voice || '';
+            if (elements.characterCurrentState) elements.characterCurrentState.value = characterProfile.currentState || '';
+            if (elements.characterKnowledge) elements.characterKnowledge.value = characterProfile.knowledge || '';
+            if (elements.characterRelationship) elements.characterRelationship.value = characterProfile.relationshipNotes || '';
             if (elements.body) elements.body.value = selected.body || '';
         } else {
+            if (elements.character) elements.character.hidden = true;
             fields.forEach((field) => {
                 if (!field) return;
                 if (field.type === 'checkbox') field.checked = false;
                 else field.value = '';
             });
         }
+        renderContextStrip();
     }
 
     async function loadCompendium() {
@@ -2596,15 +3155,38 @@
     function collectCompendiumForm() {
         const elements = compendiumElements();
         const selected = selectedCompendiumEntry();
+        const mode = elements.policyMode ? (elements.policyMode.value || 'manual') : (elements.always && elements.always.checked ? 'always' : 'manual');
+        const type = elements.entryType ? elements.entryType.value : 'lore';
+        const characterProfile = {
+            role: elements.characterRole ? elements.characterRole.value.trim() : '',
+            goal: elements.characterGoal ? elements.characterGoal.value.trim() : '',
+            motivation: elements.characterMotivation ? elements.characterMotivation.value.trim() : '',
+            conflict: elements.characterConflict ? elements.characterConflict.value.trim() : '',
+            voice: elements.characterVoice ? elements.characterVoice.value.trim() : '',
+            currentState: elements.characterCurrentState ? elements.characterCurrentState.value.trim() : '',
+            knowledge: elements.characterKnowledge ? elements.characterKnowledge.value.trim() : '',
+            relationshipNotes: elements.characterRelationship ? elements.characterRelationship.value.trim() : ''
+        };
         return {
             id: selected && selected.id,
-            type: elements.entryType ? elements.entryType.value : 'lore',
-            category: elements.entryType ? elements.entryType.value : 'lore',
+            type,
+            category: type,
             title: elements.title ? elements.title.value : '',
             summary: elements.summary ? elements.summary.value : '',
             tags: elements.tags ? parseCommaList(elements.tags.value) : [],
             aliases: elements.aliases ? parseCommaList(elements.aliases.value) : [],
-            alwaysInContext: !!(elements.always && elements.always.checked),
+            alwaysInContext: mode === 'always',
+            contextPolicy: {
+                mode,
+                triggers: {
+                    title: !elements.triggerTitle || elements.triggerTitle.checked,
+                    aliases: !elements.triggerAliases || elements.triggerAliases.checked,
+                    tags: !elements.triggerTags || elements.triggerTags.checked,
+                    pov: !elements.triggerPov || elements.triggerPov.checked,
+                    sceneCharacters: !elements.triggerSceneCharacters || elements.triggerSceneCharacters.checked
+                }
+            },
+            characterProfile: type === 'character' ? characterProfile : undefined,
             body: elements.body ? elements.body.value : ''
         };
     }
@@ -2698,24 +3280,55 @@
         if (elements.newButton) elements.newButton.addEventListener('click', createCompendiumEntry);
         if (elements.form) elements.form.addEventListener('submit', saveCompendiumEntry);
         if (elements.deleteButton) elements.deleteButton.addEventListener('click', deleteCompendiumEntry);
-        [elements.entryType, elements.title, elements.summary, elements.tags, elements.aliases, elements.always, elements.body].forEach((field) => {
+        [
+            elements.entryType,
+            elements.title,
+            elements.summary,
+            elements.tags,
+            elements.aliases,
+            elements.always,
+            elements.body,
+            ...compendiumPolicyFields(elements),
+            ...compendiumCharacterFields(elements)
+        ].forEach((field) => {
             if (!field) return;
             field.addEventListener('input', () => { compendiumState.dirty = true; });
             field.addEventListener('change', () => { compendiumState.dirty = true; });
         });
+        if (elements.policyMode) {
+            elements.policyMode.addEventListener('change', () => {
+                if (elements.always) elements.always.checked = elements.policyMode.value === 'always';
+            });
+        }
+        if (elements.always) {
+            elements.always.addEventListener('change', () => {
+                if (elements.policyMode) elements.policyMode.value = elements.always.checked ? 'always' : 'manual';
+            });
+        }
+        if (elements.entryType) {
+            elements.entryType.addEventListener('change', () => {
+                if (elements.character) elements.character.hidden = elements.entryType.value !== 'character';
+            });
+        }
         renderCompendium();
     }
 
     function workshopElements() {
         return {
             projectLabel: document.querySelector('[data-workshop-project-label]'),
+            projectSummary: document.querySelector('[data-workshop-project-summary]'),
+            projectName: document.querySelector('[data-workshop-project-name]'),
+            projectStats: document.querySelector('[data-workshop-project-stats]'),
             status: document.querySelector('[data-workshop-status]'),
             newButton: document.querySelector('[data-workshop-new]'),
             list: document.querySelector('[data-workshop-session-list]'),
             title: document.querySelector('[data-workshop-title]'),
             deleteButton: document.querySelector('[data-workshop-delete]'),
             messages: document.querySelector('[data-workshop-messages]'),
+            emptyState: document.querySelector('[data-workshop-empty]'),
+            emptyContent: document.querySelector('[data-workshop-empty-content]'),
             input: document.querySelector('[data-workshop-input]'),
+            inputRow: document.querySelector('.desktop-workshop-input-row'),
             send: document.querySelector('[data-workshop-send]'),
             toCompendium: document.querySelector('[data-workshop-to-compendium]'),
             toSummary: document.querySelector('[data-workshop-to-summary]'),
@@ -2751,12 +3364,22 @@
         const projectName = currentProjectName();
         const session = selectedWorkshopSession();
         const assistant = selectedAssistantMessage();
-        if (elements.projectLabel) elements.projectLabel.textContent = projectId ? `当前项目：${projectName}` : '从书库打开项目后开始讨论。';
+        if (elements.projectLabel) elements.projectLabel.textContent = projectId ? `当前项目：${projectName}` : '请先在书库打开或新建一个项目。';
+        if (elements.projectSummary) {
+            elements.projectSummary.hidden = !projectId;
+            if (projectId) {
+                if (elements.projectName) elements.projectName.textContent = projectName;
+                const scene = currentNativeScene();
+                const entries = compendiumState.entries || [];
+                if (elements.projectStats) elements.projectStats.textContent = `${workshopState.sessions.length} 个对话${entries.length ? ` · ${entries.length} 张资料` : ''}${scene ? ` · 当前场景：${scene.title || '未命名'}` : ''}`;
+            }
+        }
         if (elements.newButton) elements.newButton.disabled = !projectId || workshopState.generating;
         if (elements.deleteButton) elements.deleteButton.disabled = !session || workshopState.generating;
         if (elements.title) elements.title.textContent = session ? session.title : '选择或新建对话';
         if (elements.input && elements.input.value !== workshopState.input) elements.input.value = workshopState.input;
         if (elements.input) elements.input.disabled = !session || workshopState.generating;
+        if (elements.inputRow) elements.inputRow.hidden = !session;
         if (elements.send) elements.send.disabled = !session || workshopState.generating || !workshopState.input.trim();
         [elements.toCompendium, elements.toSummary, elements.insertDraft].forEach((button) => {
             if (button) {
@@ -2770,7 +3393,7 @@
             if (!projectId) {
                 const empty = document.createElement('div');
                 empty.className = 'desktop-workshop-session';
-                empty.textContent = '先打开一个项目。';
+                empty.textContent = '打开项目后创建对话。';
                 elements.list.appendChild(empty);
             } else if (!workshopState.sessions.length) {
                 const empty = document.createElement('div');
@@ -2798,26 +3421,100 @@
             }
         }
 
+        if (elements.emptyState && elements.emptyContent) {
+            const hasMessages = session && (session.messages || []).length > 0;
+            if (!projectId) {
+                elements.emptyState.hidden = false;
+                elements.emptyContent.replaceChildren();
+                const icon = document.createElement('p');
+                icon.className = 'desktop-workshop-empty-icon';
+                icon.textContent = '\uD83D\uDCAC';
+                const heading = document.createElement('h3');
+                heading.textContent = '创作讨论空间';
+                const desc = document.createElement('p');
+                desc.textContent = '在 Workshop 中与 AI 讨论角色、情节、设定，并将讨论结果转化为资料、摘要或正文。';
+                const action = document.createElement('button');
+                action.className = 'desktop-primary-action';
+                action.type = 'button';
+                action.textContent = '去书库打开项目';
+                action.addEventListener('click', () => setView('bookshelf'));
+                elements.emptyContent.append(icon, heading, desc, action);
+            } else if (!workshopState.sessions.length) {
+                elements.emptyState.hidden = false;
+                elements.emptyContent.replaceChildren();
+                const icon = document.createElement('p');
+                icon.className = 'desktop-workshop-empty-icon';
+                icon.textContent = '\u270D\uFE0F';
+                const heading = document.createElement('h3');
+                heading.textContent = '创建第一场讨论';
+                const desc = document.createElement('p');
+                desc.textContent = `在《${projectName}》的创作讨论中，与 AI 协作推进故事。`;
+                const action = document.createElement('button');
+                action.className = 'desktop-primary-action';
+                action.type = 'button';
+                action.textContent = '开始新对话';
+                action.addEventListener('click', () => createWorkshopSession());
+                action.disabled = workshopState.generating;
+                elements.emptyContent.append(icon, heading, desc, action);
+            } else if (!session) {
+                elements.emptyState.hidden = false;
+                elements.emptyContent.replaceChildren();
+                const icon = document.createElement('p');
+                icon.className = 'desktop-workshop-empty-icon';
+                icon.textContent = '\uD83D\uDCDD';
+                const heading = document.createElement('h3');
+                heading.textContent = '选择对话';
+                const desc = document.createElement('p');
+                const count = workshopState.sessions.length;
+                desc.textContent = `共有 ${count} 个对话。从左侧列表选择或新建。`;
+                const action = document.createElement('button');
+                action.className = 'desktop-primary-action';
+                action.type = 'button';
+                action.textContent = '新建对话';
+                action.addEventListener('click', () => createWorkshopSession());
+                action.disabled = workshopState.generating;
+                elements.emptyContent.append(icon, heading, desc, action);
+            } else {
+                elements.emptyState.hidden = true;
+            }
+        }
+
         if (elements.messages) {
             elements.messages.replaceChildren();
             if (!session || !(session.messages || []).length) {
-                const empty = document.createElement('div');
-                empty.className = 'desktop-workshop-message';
-                empty.textContent = session ? '输入一个问题开始讨论。' : '选择或新建对话。';
-                elements.messages.appendChild(empty);
+                if (elements.emptyState && !elements.emptyState.hidden) {
+                    /* empty state is already shown */
+                } else {
+                    const empty = document.createElement('div');
+                    empty.className = 'desktop-workshop-message';
+                    empty.textContent = '输入一个问题开始讨论。';
+                    elements.messages.appendChild(empty);
+                }
             } else {
                 (session.messages || []).forEach((message) => {
                     const item = document.createElement('button');
                     item.type = 'button';
                     item.className = 'desktop-workshop-message';
                     item.dataset.role = message.role;
+                    const isAssistant = message.role === 'assistant';
+                    if (isAssistant && message.id === workshopState.selectedAssistantMessageId) {
+                        item.classList.add('is-selected');
+                    }
+                    const avatar = document.createElement('span');
+                    avatar.className = 'desktop-workshop-message-avatar';
+                    avatar.textContent = isAssistant ? '助' : '我';
+                    const body = document.createElement('div');
+                    body.className = 'desktop-workshop-message-body';
                     const role = document.createElement('strong');
-                    role.textContent = message.role === 'user' ? '你' : '助手';
-                    const content = document.createElement('span');
-                    content.textContent = message.content || (message.role === 'assistant' && workshopState.generating ? '生成中...' : '');
-                    item.append(role, content);
+                    role.className = 'desktop-workshop-message-role';
+                    role.textContent = isAssistant ? '助手' : '你';
+                    const content = document.createElement('div');
+                    content.className = 'desktop-workshop-message-text';
+                    content.textContent = message.content || (isAssistant && workshopState.generating ? '生成中...' : '');
+                    body.append(role, content);
+                    item.append(avatar, body);
                     item.addEventListener('click', () => {
-                        if (message.role === 'assistant') {
+                        if (isAssistant) {
                             workshopState.selectedAssistantMessageId = message.id;
                             renderWorkshop();
                         }
@@ -2828,6 +3525,7 @@
             }
         }
         if (projectId && !workshopState.generating) setWorkshopStatus(`${workshopState.sessions.length} 个对话`, 'ok');
+        renderContextStrip();
     }
 
     async function loadWorkshopSessions() {
@@ -2957,6 +3655,9 @@
         const message = selectedAssistantMessage();
         const projectId = currentProjectId();
         if (!message || !projectId) return;
+        const scene = currentNativeScene();
+        const sceneTitle = scene && scene.title ? scene.title : '';
+        const title = sceneTitle ? `Workshop 讨论：${sceneTitle}` : `Workshop 讨论 ${new Date().toLocaleDateString('zh-CN')}`;
         const response = await fetch('/api/compendium', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2964,9 +3665,12 @@
                 projectId,
                 entry: {
                     type: 'note',
-                    title: 'Workshop note',
+                    title,
                     summary: message.content.slice(0, 140),
-                    body: message.content
+                    body: message.content,
+                    tags: ['workshop', sceneTitle].filter(Boolean),
+                    contextPolicy: { mode: 'manual' },
+                    alwaysInContext: false
                 }
             })
         });
@@ -2976,7 +3680,7 @@
             return;
         }
         await loadCompendium();
-        setWorkshopStatus('已转为资料条目', 'ok');
+        setWorkshopStatus(`已转为资料条目：${title}`, 'ok');
     }
 
     function workshopOutputToSummary() {
@@ -3000,6 +3704,84 @@
         renderNativeEditor();
         markNativeDirty('已插入正文，未保存');
         setWorkshopStatus('已插入当前正文', 'ok');
+    }
+
+    function nativeSelectedOrSceneExcerpt() {
+        const elements = nativeEditorElements();
+        const scene = currentNativeScene();
+        const text = elements.editor ? String(elements.editor.value || '') : (scene ? nativeSceneContent(scene.id) : '');
+        let selected = '';
+        if (elements.editor && elements.editor.selectionStart !== elements.editor.selectionEnd) {
+            selected = text.slice(elements.editor.selectionStart, elements.editor.selectionEnd).trim();
+        }
+        const fallback = (scene && scene.summary ? scene.summary : text).trim();
+        return {
+            scene,
+            selected,
+            text: selected || fallback.slice(0, 1200),
+            fullText: text
+        };
+    }
+
+    async function ensureWorkshopSession() {
+        let session = selectedWorkshopSession();
+        if (session) return session;
+        await createWorkshopSession();
+        return selectedWorkshopSession();
+    }
+
+    async function sendNativeSelectionToWorkshop() {
+        const projectId = currentProjectId();
+        const payload = nativeSelectedOrSceneExcerpt();
+        if (!projectId || !payload.scene || !payload.text) return;
+        const session = await ensureWorkshopSession();
+        if (!session) return;
+        const sceneTitle = payload.scene.title || '当前场景';
+        workshopState.input = [
+            `请基于《${sceneTitle}》帮我讨论这段内容的下一步处理。`,
+            '',
+            payload.selected ? '选中片段：' : '场景片段：',
+            payload.text
+        ].join('\n');
+        setView('workshop');
+        renderWorkshop();
+        const elements = workshopElements();
+        if (elements.input) {
+            elements.input.focus();
+            elements.input.setSelectionRange(elements.input.value.length, elements.input.value.length);
+        }
+    }
+
+    async function saveNativeSelectionToCompendium() {
+        const projectId = currentProjectId();
+        const payload = nativeSelectedOrSceneExcerpt();
+        if (!projectId || !payload.scene || !payload.text) return;
+        const sceneTitle = payload.scene.title || '当前场景';
+        const title = `来自《${sceneTitle}》的片段`;
+        const response = await fetch('/api/compendium', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                projectId,
+                entry: {
+                    type: 'note',
+                    title,
+                    summary: payload.text.slice(0, 140),
+                    body: payload.text,
+                    tags: ['writer-fragment', sceneTitle].filter(Boolean),
+                    contextPolicy: { mode: 'manual' },
+                    alwaysInContext: false
+                }
+            })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+            setNativeSaveStatus(`保存资料失败：${result.error || response.status}`, 'error');
+            return;
+        }
+        await loadCompendium();
+        setNativeSaveStatus(`片段已保存为资料：${title}`, 'ok');
+        setView('compendium');
     }
 
     function bindWorkshop() {
@@ -3039,8 +3821,12 @@
             reject: document.querySelector('[data-workflow-reject]'),
             cancel: document.querySelector('[data-workflow-cancel]'),
             steps: document.querySelector('[data-workflow-steps]'),
+            stageActions: document.querySelector('[data-workflow-stage-actions]'),
             artifacts: document.querySelector('[data-workflow-artifacts]'),
-            events: document.querySelector('[data-workflow-events]')
+            events: document.querySelector('[data-workflow-events]'),
+            eventsDetails: document.querySelector('[data-workflow-events-details]'),
+            eventsSummary: document.querySelector('[data-workflow-events-summary]'),
+            eventsCount: document.querySelector('[data-workflow-events-count]')
         };
     }
 
@@ -3077,28 +3863,30 @@
         const draftArtifact = latestWorkflowArtifact(run, 'draft_text');
         if (elements.projectLabel) {
             const project = nativeEditorState.snapshot && nativeEditorState.snapshot.project;
-            elements.projectLabel.textContent = project ? `当前项目：${project.name || project.title || project.id}` : '从书库打开项目后启动。';
+            elements.projectLabel.textContent = project ? `当前项目：${project.name || project.title || project.id}` : '请先在书库打开或新建一个项目。';
         }
         if (elements.start) elements.start.disabled = !projectId || workflowState.generating;
-        if (elements.generate) elements.generate.disabled = !run || !step || isTerminalRun || step.kind !== 'generation' || workflowState.generating || step.status === 'completed';
-        if (elements.applyArtifact) elements.applyArtifact.disabled = !projectId || !run || isTerminalRun || !draftArtifact || workflowState.generating;
-        if (elements.approve) elements.approve.disabled = !run || !step || isTerminalRun || workflowState.generating || !['waiting_user', 'ready'].includes(step.status);
-        if (elements.reject) elements.reject.disabled = !run || !step || isTerminalRun || workflowState.generating || step.status === 'completed';
-        if (elements.cancel) elements.cancel.disabled = !run || isTerminalRun || workflowState.generating;
         if (elements.title) {
-            elements.title.textContent = run ? `${run.title || '半自动工作流'} / ${run.status} / ${run.activeStepId || '完成'}` : '选择或开始一个工作流';
+            if (!projectId) {
+                elements.title.textContent = '请先打开项目';
+            } else if (!run) {
+                elements.title.textContent = '创建你的第一个创作流程';
+            } else {
+                const stepTitle = step ? (step.id || step.title || '当前步骤') : '完成';
+                elements.title.textContent = `${run.title || '创作流程'} · ${stepTitle}`;
+            }
         }
         if (elements.runList) {
             elements.runList.replaceChildren();
             if (!projectId) {
                 const empty = document.createElement('div');
                 empty.className = 'desktop-workflow-run';
-                empty.textContent = '未打开项目。';
+                empty.textContent = '打开项目后启动创作流程。';
                 elements.runList.appendChild(empty);
             } else if (!workflowState.runs.length) {
                 const empty = document.createElement('div');
                 empty.className = 'desktop-workflow-run';
-                empty.textContent = '还没有工作流运行。';
+                empty.textContent = '还没有创作流程。在下方写出你的想法。';
                 elements.runList.appendChild(empty);
             } else {
                 workflowState.runs.forEach((item) => {
@@ -3106,7 +3894,9 @@
                     button.type = 'button';
                     button.className = 'desktop-workflow-run';
                     button.classList.toggle('is-active', item.id === workflowState.selectedId);
-                    button.innerHTML = `<strong>${item.title || '半自动工作流'}</strong><span>${item.status} / ${item.activeStepId || '完成'}</span>`;
+                    const statusLabels = { completed: '已完成', cancelled: '已取消', failed: '异常', in_progress: '进行中' };
+                    const statusText = statusLabels[item.status] || item.status;
+                    button.innerHTML = `<strong>${item.title || '创作流程'}</strong><span>${statusText}${item.activeStepId ? ` · ${item.activeStepId}` : ''}</span>`;
                     button.addEventListener('click', async () => {
                         workflowState.selectedId = item.id;
                         await loadWorkflowEvents();
@@ -3119,23 +3909,40 @@
         if (elements.steps) {
             elements.steps.replaceChildren();
             const hasSteps = run && run.steps && run.steps.length;
-            const guide = elements.steps.querySelector('[data-workflow-guide]');
-            if (!hasSteps) {
+            if (!projectId) {
+                const guideDiv = document.createElement('div');
+                guideDiv.className = 'desktop-workflow-steps-guide';
+                guideDiv.dataset.workflowGuide = '';
+                const icon = document.createElement('p');
+                icon.className = 'desktop-workshop-empty-icon';
+                icon.textContent = '\uD83D\uDCCB';
+                const heading = document.createElement('h3');
+                heading.textContent = '创作流程看板';
+                const desc = document.createElement('p');
+                desc.textContent = '打开项目后，在这里设置创作 Brief，启动按步骤引导的写作流程。';
+                const action = document.createElement('button');
+                action.className = 'desktop-primary-action';
+                action.type = 'button';
+                action.textContent = '去书库打开项目';
+                action.addEventListener('click', () => setView('bookshelf'));
+                guideDiv.append(icon, heading, desc, action);
+                elements.steps.appendChild(guideDiv);
+            } else if (!hasSteps) {
                 const guideDiv = document.createElement('div');
                 guideDiv.className = 'desktop-workflow-steps-guide';
                 guideDiv.dataset.workflowGuide = '';
                 const kicker = document.createElement('p');
                 kicker.className = 'desktop-section-kicker';
-                kicker.textContent = '工作流指引';
+                kicker.textContent = '创作流程指引';
                 guideDiv.appendChild(kicker);
 
                 const timeline = document.createElement('div');
                 timeline.className = 'desktop-workflow-steps-timeline';
                 const milestones = [
                     { num: 1, title: '设定 Brief', desc: '在左侧写下题材、主线、角色、限制和目标' },
-                    { num: 2, title: '启动工作流', desc: '点击「开始工作流」按钮进入引导步骤' },
+                    { num: 2, title: '启动流程', desc: '点击「开始创作流程」按钮进入引导步骤' },
                     { num: 3, title: '逐步执行', desc: '按顺序批准、退回或重新生成每个步骤' },
-                    { num: 4, title: '采纳产物', desc: '将生成的正文草稿插入到当前场景' }
+                    { num: 4, title: '采纳产物', desc: '将生成的正文草稿写入当前项目' }
                 ];
                 milestones.forEach((m) => {
                     const item = document.createElement('div');
@@ -3157,34 +3964,124 @@
             }
             (run && run.steps || []).forEach((item, index) => {
                 const card = document.createElement('article');
-                card.className = 'desktop-workflow-step';
+                card.className = 'desktop-workflow-step-card';
                 card.classList.toggle('is-active', item.id === (step && step.id));
                 const statusClass = item.status === 'completed' ? 'is-done' : (item.status === 'failed' ? 'is-failed' : (item.status === 'in_progress' ? 'is-progress' : ''));
                 if (statusClass) card.classList.add(statusClass);
-                card.innerHTML = `<span class="desktop-workflow-step-mark">${index + 1}</span><div><strong>${item.title || item.id}</strong><span>${item.kind} / ${item.status}</span></div>`;
+
+                const header = document.createElement('div');
+                header.className = 'desktop-workflow-step-card-header';
+                const mark = document.createElement('span');
+                mark.className = 'desktop-workflow-step-mark';
+                mark.textContent = String(index + 1);
+                const meta = document.createElement('div');
+                meta.className = 'desktop-workflow-step-card-meta';
+                const title = document.createElement('strong');
+                title.textContent = item.title || item.id;
+                const statusText = document.createElement('span');
+                const stepStatusLabels = { completed: '已完成', failed: '失败', in_progress: '生成中', waiting_user: '等待审批', ready: '准备执行', pending: '待处理' };
+                statusText.textContent = `${stepStatusLabels[item.status] || item.status} · ${item.kind || ''}`;
+                meta.append(title, statusText);
+                header.append(mark, meta);
+                card.appendChild(header);
+
+                if (item.description) {
+                    const desc = document.createElement('p');
+                    desc.className = 'desktop-workflow-step-card-desc';
+                    desc.textContent = item.description;
+                    card.appendChild(desc);
+                }
                 elements.steps.appendChild(card);
             });
         }
+
+        if (elements.stageActions) {
+            elements.stageActions.replaceChildren();
+            elements.stageActions.hidden = !run;
+            if (run) {
+                const hasActiveStep = step && !isTerminalRun;
+                const generateActionBtn = document.createElement('button');
+                generateActionBtn.className = 'desktop-primary-action';
+                generateActionBtn.type = 'button';
+                generateActionBtn.dataset.workflowGenerate = '';
+                generateActionBtn.textContent = `生成：${step ? (step.title || step.id) : '当前步骤'}`;
+                generateActionBtn.disabled = !hasActiveStep || step.kind !== 'generation' || workflowState.generating || step.status === 'completed';
+                generateActionBtn.addEventListener('click', generateWorkflowStep);
+
+                const approveBtn = document.createElement('button');
+                approveBtn.className = 'desktop-secondary-action';
+                approveBtn.type = 'button';
+                approveBtn.dataset.workflowApprove = '';
+                approveBtn.textContent = '批准';
+                approveBtn.disabled = !hasActiveStep || workflowState.generating || !['waiting_user', 'ready'].includes(step.status);
+                approveBtn.addEventListener('click', () => approveWorkflowStep().catch((error) => setWorkflowStatus(`批准失败：${error.message || error}`, 'error')));
+
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'desktop-secondary-action';
+                rejectBtn.type = 'button';
+                rejectBtn.dataset.workflowReject = '';
+                rejectBtn.textContent = '退回';
+                rejectBtn.disabled = !hasActiveStep || workflowState.generating || step.status === 'completed';
+                rejectBtn.addEventListener('click', () => rejectWorkflowStep().catch((error) => setWorkflowStatus(`退回失败：${error.message || error}`, 'error')));
+
+                const adoptBtn = document.createElement('button');
+                adoptBtn.className = 'desktop-secondary-action';
+                adoptBtn.type = 'button';
+                adoptBtn.dataset.workflowApplyArtifact = '';
+                adoptBtn.textContent = '采纳草稿';
+                adoptBtn.disabled = !projectId || isTerminalRun || !draftArtifact || workflowState.generating;
+                adoptBtn.addEventListener('click', () => applyWorkflowArtifact().catch((error) => setWorkflowStatus(`采纳失败：${error.message || error}`, 'error')));
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.className = 'desktop-mini-action';
+                cancelBtn.type = 'button';
+                cancelBtn.dataset.workflowCancel = '';
+                cancelBtn.textContent = '取消流程';
+                cancelBtn.disabled = isTerminalRun || workflowState.generating;
+                cancelBtn.addEventListener('click', () => cancelWorkflowRun().catch((error) => setWorkflowStatus(`取消失败：${error.message || error}`, 'error')));
+
+                elements.stageActions.append(generateActionBtn, approveBtn, rejectBtn, adoptBtn, cancelBtn);
+            }
+        }
+
         if (elements.artifacts) {
             elements.artifacts.replaceChildren();
-            (run && run.artifacts || []).slice().reverse().forEach((artifact) => {
-                const card = document.createElement('article');
-                card.className = 'desktop-workflow-artifact';
-                const content = document.createElement('pre');
-                content.textContent = artifact.content || '';
-                card.innerHTML = `<strong>${artifact.title || artifact.type}</strong><span>${artifact.type} / ${artifact.stepId || ''}</span>`;
-                card.appendChild(content);
-                elements.artifacts.appendChild(card);
-            });
+            const hasArtifacts = run && run.artifacts && run.artifacts.length > 0;
+            elements.artifacts.hidden = !hasArtifacts;
+            if (hasArtifacts) {
+                const label = document.createElement('p');
+                label.className = 'desktop-workflow-artifacts-label';
+                label.textContent = '最新产物';
+                elements.artifacts.appendChild(label);
+                (run.artifacts || []).slice().reverse().slice(0, 1).forEach((artifact) => {
+                    const card = document.createElement('article');
+                    card.className = 'desktop-workflow-artifact';
+                    const content = document.createElement('pre');
+                    content.textContent = artifact.content || '';
+                    card.innerHTML = `<strong>${artifact.title || artifact.type}</strong><span>${artifact.type} / ${artifact.stepId || ''}</span>`;
+                    card.appendChild(content);
+                    elements.artifacts.appendChild(card);
+                });
+            }
         }
         if (elements.events) {
             elements.events.replaceChildren();
+            const eventCount = workflowState.events.length;
+            if (elements.eventsCount) elements.eventsCount.textContent = eventCount ? `${eventCount} 条` : '';
             workflowState.events.slice().reverse().forEach((event) => {
                 const card = document.createElement('div');
                 card.className = 'desktop-workflow-event';
                 card.textContent = `${formatDate(event.createdAt)} / ${event.type}${event.stepId ? ` / ${event.stepId}` : ''}`;
                 elements.events.appendChild(card);
             });
+            if (elements.eventsDetails && !run) {
+                elements.eventsDetails.hidden = true;
+            } else if (elements.eventsDetails) {
+                elements.eventsDetails.hidden = false;
+                if (eventCount === 0) {
+                    elements.eventsDetails.open = false;
+                }
+            }
         }
         if (projectId && !workflowState.generating) setWorkflowStatus(`${workflowState.runs.length} 个运行`, 'ok');
     }
@@ -3409,11 +4306,6 @@
     function bindWorkflow() {
         const elements = workflowElements();
         if (elements.start) elements.start.addEventListener('click', () => startWorkflowRun().catch((error) => setWorkflowStatus(`启动失败：${error.message || error}`, 'error')));
-        if (elements.generate) elements.generate.addEventListener('click', generateWorkflowStep);
-        if (elements.applyArtifact) elements.applyArtifact.addEventListener('click', () => applyWorkflowArtifact().catch((error) => setWorkflowStatus(`采纳失败：${error.message || error}`, 'error')));
-        if (elements.approve) elements.approve.addEventListener('click', () => approveWorkflowStep().catch((error) => setWorkflowStatus(`批准失败：${error.message || error}`, 'error')));
-        if (elements.reject) elements.reject.addEventListener('click', () => rejectWorkflowStep().catch((error) => setWorkflowStatus(`退回失败：${error.message || error}`, 'error')));
-        if (elements.cancel) elements.cancel.addEventListener('click', () => cancelWorkflowRun().catch((error) => setWorkflowStatus(`取消失败：${error.message || error}`, 'error')));
         renderWorkflow();
     }
 
@@ -3727,6 +4619,11 @@
                 delete elements.stats.dataset.tone;
             }
             if (elements.saveButton) elements.saveButton.disabled = true;
+            [elements.sendToWorkshop, elements.saveToCompendium].forEach((button) => {
+                if (!button) return;
+                button.hidden = true;
+                button.disabled = true;
+            });
             if (elements.readAloud) {
                 elements.readAloud.disabled = true;
                 elements.readAloud.hidden = false;
@@ -3909,6 +4806,11 @@
         }
         updateNativeStats();
         if (elements.saveButton) elements.saveButton.disabled = !activeScene;
+        [elements.sendToWorkshop, elements.saveToCompendium].forEach((button) => {
+            if (!button) return;
+            button.hidden = !activeScene;
+            button.disabled = !activeScene;
+        });
         if (elements.readAloud) {
             elements.readAloud.disabled = !activeScene;
             elements.readAloud.hidden = nativeEditorState.tts.reading;
@@ -3939,6 +4841,7 @@
         renderNativeContext();
         renderWriterModelControl();
         renderNativeGeneration();
+        renderContextStrip();
     }
 
     function loadNativeProjectEditor(snapshot, projectSummary = {}) {
@@ -5123,7 +6026,12 @@
 
     function saveWriterModelOverride() {
         try {
-            localStorage.setItem(WRITER_MODEL_KEY, JSON.stringify(writerModelOverride));
+            localStorage.setItem(WRITER_MODEL_KEY, JSON.stringify({
+                profileId: writerModelOverride.profileId || 'inherit',
+                model: writerModelOverride.model || 'inherit',
+                customModel: writerModelOverride.customModel || '',
+                thinking: !!writerModelOverride.thinking
+            }));
         } catch (error) { /* ignore */ }
     }
 
@@ -5131,7 +6039,14 @@
         try {
             var saved = JSON.parse(localStorage.getItem(WRITER_MODEL_KEY) || '{}');
             if (saved && typeof saved === 'object') {
-                if (saved.model === 'inherit' || saved.model === 'deepseek-v4-flash' || saved.model === 'deepseek-v4-pro') {
+                writerModelOverride.profileId = saved.profileId || 'inherit';
+                writerModelOverride.customModel = String(saved.customModel || '').trim();
+                if (saved.model === '__custom__') {
+                    writerModelOverride.model = '__custom__';
+                } else if (saved.model && saved.model !== 'inherit' && saved.model !== 'deepseek-v4-flash' && saved.model !== 'deepseek-v4-pro') {
+                    writerModelOverride.model = '__custom__';
+                    writerModelOverride.customModel = String(saved.model || '').trim();
+                } else if (saved.model === 'inherit' || saved.model === 'deepseek-v4-flash' || saved.model === 'deepseek-v4-pro') {
                     writerModelOverride.model = saved.model;
                 }
                 writerModelOverride.thinking = !!saved.thinking;
@@ -5139,29 +6054,141 @@
         } catch (error) { /* ignore */ }
     }
 
+    function writerApiProfiles() {
+        const settings = settingsWithRuntimeProfiles();
+        return (settings.providerProfiles || []).filter((profile) => {
+            return profile && profile.id && profile.hasApiKey && modelCatalog().isApiCompatibleProvider(profile.provider);
+        });
+    }
+
+    function writerEffectiveProfile() {
+        const settings = settingsWithRuntimeProfiles();
+        const profiles = writerApiProfiles();
+        const selectedProfile = profiles.find((profile) => profile.id === writerModelOverride.profileId);
+        if (selectedProfile) {
+            return {
+                id: selectedProfile.id,
+                label: selectedProfile.name || selectedProfile.provider || 'API 配置组',
+                mode: 'api',
+                provider: selectedProfile.provider,
+                model: selectedProfile.model || ''
+            };
+        }
+        const provider = settings.providerSettings || {};
+        return {
+            id: 'inherit',
+            label: '继承全局',
+            mode: provider.mode || 'local',
+            provider: provider.provider || (provider.mode === 'local' ? 'lmstudio' : 'openai-compatible'),
+            model: provider.model || ''
+        };
+    }
+
+    function writerSelectedModelId(effectiveProfile) {
+        if (writerModelOverride.model === '__custom__') return writerModelOverride.customModel || '';
+        if (writerModelOverride.model && writerModelOverride.model !== 'inherit') return writerModelOverride.model;
+        return effectiveProfile.model || '';
+    }
+
     function renderWriterModelControl() {
         var elements = nativeEditorElements();
         if (!elements.modelSelect || !elements.modelControl) return;
-        var providerConfig = runtimeProviderConfig();
-        var isDeepSeek = providerConfig.mode === 'api' && providerConfig.provider === 'deepseek';
+        var catalog = modelCatalog();
+        var profiles = writerApiProfiles();
+        var effectiveProfile = writerEffectiveProfile();
+        if (writerModelOverride.profileId !== 'inherit' && !profiles.some((profile) => profile.id === writerModelOverride.profileId)) {
+            writerModelOverride.profileId = 'inherit';
+            writerModelOverride.model = 'inherit';
+            writerModelOverride.customModel = '';
+            writerModelOverride.thinking = false;
+            saveWriterModelOverride();
+            effectiveProfile = writerEffectiveProfile();
+        }
 
-        if (isDeepSeek) {
-            elements.modelControl.classList.remove('is-disabled');
-            elements.modelControlHint.textContent = '';
-            elements.modelSelect.disabled = false;
-            elements.modelSelect.value = writerModelOverride.model;
-            if (elements.thinkingToggle) {
-                elements.thinkingToggle.disabled = false;
-                elements.thinkingToggle.checked = writerModelOverride.thinking;
-            }
-        } else {
-            elements.modelControl.classList.add('is-disabled');
-            elements.modelControlHint.textContent = '当前 provider 使用全局模型设置';
-            elements.modelSelect.disabled = true;
+        if (elements.profileSelect) {
+            elements.profileSelect.replaceChildren();
+            const inherit = document.createElement('option');
+            inherit.value = 'inherit';
+            inherit.textContent = '继承全局设置';
+            elements.profileSelect.appendChild(inherit);
+            profiles.forEach((profile) => {
+                const option = document.createElement('option');
+                option.value = profile.id;
+                option.textContent = `${profile.name || profile.provider} · ${catalog.getProviderMetadata(profile.provider).label || profile.provider}`;
+                elements.profileSelect.appendChild(option);
+            });
+            elements.profileSelect.value = writerModelOverride.profileId || 'inherit';
+        }
+
+        const canSelectModel = effectiveProfile.mode === 'api' && catalog.isApiCompatibleProvider(effectiveProfile.provider);
+        elements.modelControl.classList.toggle('is-disabled', !canSelectModel);
+        if (elements.modelControlHint) {
+            elements.modelControlHint.textContent = canSelectModel
+                ? `${catalog.getProviderMetadata(effectiveProfile.provider).label || effectiveProfile.provider} · 只显示已添加 API 可用的模型`
+                : '当前继承的是本地模型；如需切换云端模型，请先在设置中添加 API 配置组';
+        }
+
+        elements.modelSelect.replaceChildren();
+        const inheritModel = document.createElement('option');
+        inheritModel.value = 'inherit';
+        inheritModel.textContent = '继承该配置默认模型';
+        elements.modelSelect.appendChild(inheritModel);
+        if (canSelectModel) {
+            catalog.getProviderModels(effectiveProfile.provider).forEach((model) => {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.label || model.id;
+                elements.modelSelect.appendChild(option);
+            });
+        }
+        elements.modelSelect.disabled = !canSelectModel;
+        elements.modelSelect.value = writerModelOverride.model || 'inherit';
+        if (elements.modelSelect.value !== (writerModelOverride.model || 'inherit')) {
             elements.modelSelect.value = 'inherit';
-            if (elements.thinkingToggle) {
-                elements.thinkingToggle.disabled = true;
-                elements.thinkingToggle.checked = false;
+            writerModelOverride.model = 'inherit';
+            writerModelOverride.customModel = '';
+            writerModelOverride.thinking = false;
+            saveWriterModelOverride();
+        }
+
+        if (elements.customModelGroup) elements.customModelGroup.hidden = writerModelOverride.model !== '__custom__';
+        if (elements.customModelInput) {
+            elements.customModelInput.value = writerModelOverride.customModel || '';
+            elements.customModelInput.disabled = !canSelectModel || writerModelOverride.model !== '__custom__';
+        }
+
+        const selectedModel = writerSelectedModelId(effectiveProfile);
+        const thinkingAllowed = canSelectModel && catalog.isThinkingSupported(effectiveProfile.provider, selectedModel);
+        if (elements.thinkingToggle) {
+            elements.thinkingToggle.disabled = !thinkingAllowed;
+            if (!thinkingAllowed) writerModelOverride.thinking = false;
+            elements.thinkingToggle.checked = !!writerModelOverride.thinking && thinkingAllowed;
+        }
+
+        const settings = normalizeDesktopSettings(settingsState.settings || {});
+        const defaults = settings.generationDefaults || {};
+        const useProviderDefaults = !!defaults.useProviderDefaults;
+        const thinkingActive = !!writerModelOverride.thinking && canSelectModel && catalog.isThinkingSupported(effectiveProfile.provider, selectedModel || effectiveProfile.model);
+        const temperatureDisabled = useProviderDefaults || (effectiveProfile.provider === 'deepseek' && thinkingActive);
+        if (elements.writerTemperature) {
+            elements.writerTemperature.value = defaults.temperature === undefined ? 0.8 : defaults.temperature;
+            elements.writerTemperature.disabled = temperatureDisabled;
+        }
+        if (elements.writerMaxTokens) {
+            elements.writerMaxTokens.value = defaults.maxTokens || 2000;
+            elements.writerMaxTokens.disabled = useProviderDefaults;
+        }
+        if (elements.writerProviderDefaults) {
+            elements.writerProviderDefaults.checked = useProviderDefaults;
+        }
+        if (elements.writerSamplingHint) {
+            if (useProviderDefaults) {
+                elements.writerSamplingHint.textContent = '已交给服务商默认参数';
+            } else if (effectiveProfile.provider === 'deepseek' && thinkingActive) {
+                elements.writerSamplingHint.textContent = 'DeepSeek Thinking 不发送温度参数';
+            } else {
+                const maxTokens = defaults.maxTokens || 2000;
+                elements.writerSamplingHint.textContent = maxTokens <= 800 ? '输出偏短，适合短句测试' : `约 ${maxTokens} tokens`;
             }
         }
     }
@@ -5170,6 +6197,7 @@
         const elements = nativeEditorElements();
         const generation = nativeEditorState.generation;
         const scene = currentNativeScene();
+        const isPreviewTask = generation.task === 'rewrite' || generation.task === 'regenerate-selection';
         if (elements.genTaskButtons && elements.genTaskButtons.length) {
             elements.genTaskButtons.forEach((btn) => {
                 const task = btn.getAttribute('data-native-gen-task');
@@ -5200,23 +6228,31 @@
         }
         const showGenerationOutput = !!generation.text || generation.inProgress;
         if (elements.editorBody) elements.editorBody.classList.toggle('has-generation-output', showGenerationOutput);
-        if (elements.generationOutput) elements.generationOutput.hidden = !showGenerationOutput;
+        if (elements.generationOutput) {
+            elements.generationOutput.hidden = !showGenerationOutput;
+            elements.generationOutput.classList.toggle('is-inline-confirmation', showGenerationOutput && !isPreviewTask);
+        }
         if (elements.generationOutputStatus) {
             if (generation.inProgress) {
                 if (generation.reasoning && !generation.text) {
                     elements.generationOutputStatus.textContent = '正在思考...';
+                } else if (generation.inProgress && generation.text && !isPreviewTask) {
+                    elements.generationOutputStatus.textContent = '正在正文中生成，生成段落已选中。';
                 } else if (generation.inProgress && generation.text) {
-                    elements.generationOutputStatus.textContent = '正在成文...';
+                    elements.generationOutputStatus.textContent = '正在生成预览...';
                 } else {
                     elements.generationOutputStatus.textContent = '正在生成，完成后可保留、重试或撤回。';
                 }
-            } else if (generation.task === 'rewrite' || generation.task === 'regenerate-selection') {
+            } else if (isPreviewTask) {
                 elements.generationOutputStatus.textContent = '预览结果后点击"保留"替换原文，撤回会保持原文。';
             } else {
-                elements.generationOutputStatus.textContent = '确认后写入正文，撤回会恢复原文。';
+                elements.generationOutputStatus.textContent = '生成内容已在正文中选中，保留后会变为普通正文。';
             }
         }
-        if (elements.generationResult) elements.generationResult.textContent = generation.text || (generation.inProgress ? '生成中...' : '');
+        if (elements.generationResult) {
+            elements.generationResult.hidden = !isPreviewTask;
+            elements.generationResult.textContent = generation.text || (generation.inProgress && isPreviewTask ? '生成中...' : '');
+        }
         if (elements.reasoning) {
             var effectiveThinking = writerModelOverride.thinking;
             if (writerModelOverride.model === 'inherit') {
@@ -5528,18 +6564,19 @@
     }
 
     function nativeGenerationConfig(signal) {
-        var base = runtimeProviderConfig({ signal });
-        if (writerModelOverride.model !== 'inherit') {
-            base.model = writerModelOverride.model;
+        const effectiveProfile = writerEffectiveProfile();
+        const selectedModel = writerSelectedModelId(effectiveProfile);
+        const extras = { signal };
+        if (writerModelOverride.profileId && writerModelOverride.profileId !== 'inherit') {
+            extras.profileId = writerModelOverride.profileId;
         }
-        if (writerModelOverride.thinking) {
-            if (writerModelOverride.model !== 'inherit') {
-                base.enableThinking = true;
-            } else if (base.mode === 'api' && base.provider === 'deepseek') {
-                base.enableThinking = true;
-            }
+        if (writerModelOverride.model !== 'inherit' && selectedModel) {
+            extras.model = selectedModel;
         }
-        return base;
+        if (writerModelOverride.thinking && modelCatalog().isThinkingSupported(effectiveProfile.provider, selectedModel || effectiveProfile.model)) {
+            extras.enableThinking = true;
+        }
+        return runtimeProviderConfig(extras);
     }
 
     function prepareInlineGeneration(task, prompt) {
@@ -5594,8 +6631,14 @@
         const nextValue = `${generation.inlineBaseText.slice(0, generation.insertionStart)}${inserted}${generation.inlineBaseText.slice(generation.insertionEnd)}`;
         elements.editor.value = nextValue;
         const cursor = generation.insertionStart + inserted.length;
-        elements.editor.selectionStart = cursor;
-        elements.editor.selectionEnd = cursor;
+        if (generation.task === 'rewrite' || generation.task === 'regenerate-selection') {
+            elements.editor.selectionStart = cursor;
+            elements.editor.selectionEnd = cursor;
+        } else {
+            elements.editor.selectionStart = generation.insertionStart;
+            elements.editor.selectionEnd = cursor;
+        }
+        elements.editor.focus();
         updateNativeStats();
     }
 
@@ -6028,6 +7071,8 @@
         const generation = nativeEditorState.generation;
         if (!scene || !generation.text || !elements.editor) return;
         syncInlineGenerationToEditor();
+        elements.editor.selectionStart = generation.insertionStart + formatInlineGeneratedText(generation.text || '').length;
+        elements.editor.selectionEnd = elements.editor.selectionStart;
         generation.lastAcceptedSceneId = scene.id;
         generation.text = '';
         generation.reasoning = '';
@@ -6228,6 +7273,8 @@
                 saveNativeScene();
             });
         }
+        if (elements.sendToWorkshop) elements.sendToWorkshop.addEventListener('click', sendNativeSelectionToWorkshop);
+        if (elements.saveToCompendium) elements.saveToCompendium.addEventListener('click', saveNativeSelectionToCompendium);
         if (elements.readAloud) elements.readAloud.addEventListener('click', readNativeSceneAloud);
         if (elements.stopReading) elements.stopReading.addEventListener('click', stopNativeReading);
         if (elements.toggleOutline) {
@@ -6413,6 +7460,26 @@
         if (elements.modelSelect) {
             elements.modelSelect.addEventListener('change', () => {
                 writerModelOverride.model = elements.modelSelect.value || 'inherit';
+                if (writerModelOverride.model !== '__custom__') writerModelOverride.customModel = '';
+                writerModelOverride.thinking = false;
+                saveWriterModelOverride();
+                renderWriterModelControl();
+            });
+        }
+        if (elements.profileSelect) {
+            elements.profileSelect.addEventListener('change', () => {
+                writerModelOverride.profileId = elements.profileSelect.value || 'inherit';
+                writerModelOverride.model = 'inherit';
+                writerModelOverride.customModel = '';
+                writerModelOverride.thinking = false;
+                saveWriterModelOverride();
+                renderWriterModelControl();
+                renderNativeGeneration();
+            });
+        }
+        if (elements.customModelInput) {
+            elements.customModelInput.addEventListener('input', () => {
+                writerModelOverride.customModel = elements.customModelInput.value.trim();
                 saveWriterModelOverride();
                 renderWriterModelControl();
             });
@@ -6489,6 +7556,21 @@
         if (elements.regenerateUseContext) {
             elements.regenerateUseContext.addEventListener('change', function () {
                 nativeEditorState.rewrite.regenerateUseContext = elements.regenerateUseContext.checked !== false;
+            });
+        }
+        if (elements.writerTemperature) {
+            elements.writerTemperature.addEventListener('change', function () {
+                saveWriterGenerationDefaults({ temperature: Number(elements.writerTemperature.value || 0.8) });
+            });
+        }
+        if (elements.writerMaxTokens) {
+            elements.writerMaxTokens.addEventListener('change', function () {
+                saveWriterGenerationDefaults({ maxTokens: Number(elements.writerMaxTokens.value || 2000) });
+            });
+        }
+        if (elements.writerProviderDefaults) {
+            elements.writerProviderDefaults.addEventListener('change', function () {
+                saveWriterGenerationDefaults({ useProviderDefaults: !!elements.writerProviderDefaults.checked });
             });
         }
         if (elements.previewRewrite) elements.previewRewrite.addEventListener('click', showNativeRewritePreview);
@@ -6600,6 +7682,23 @@
         renderNativeEditor();
     }
 
+    function bindContextStrip() {
+        const elements = contextStripElements();
+        if (elements.gotoWriter) elements.gotoWriter.addEventListener('click', () => setView('writer'));
+        if (elements.gotoCompendium) elements.gotoCompendium.addEventListener('click', () => {
+            setView('compendium');
+            renderCompendium();
+        });
+        if (elements.gotoWorkshop) elements.gotoWorkshop.addEventListener('click', async () => {
+            if (currentProjectId() && !selectedWorkshopSession()) {
+                await createWorkshopSession();
+            }
+            setView('workshop');
+            renderWorkshop();
+        });
+        if (elements.gotoBookshelf) elements.gotoBookshelf.addEventListener('click', () => setView('bookshelf'));
+    }
+
     function init() {
         try {
             const placement = window.localStorage.getItem('writingway:nativeAssistantPlacement');
@@ -6613,6 +7712,7 @@
         bindProjectLibrary();
         bindProjectCreator();
         bindProjectEditor();
+        bindContextStrip();
         bindNativeEditor();
         bindRecovery();
         bindReader();
@@ -6629,6 +7729,7 @@
         renderCompendium();
         renderWorkshop();
         renderWorkflow();
+        renderContextStrip();
     }
 
     if (document.readyState === 'loading') {

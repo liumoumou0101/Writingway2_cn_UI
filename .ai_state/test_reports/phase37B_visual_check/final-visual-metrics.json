@@ -1,0 +1,68 @@
+[
+  {
+    "viewport": "laptop-1366",
+    "view": "bookshelf",
+    "viewportWidth": 1366,
+    "bodyScrollWidth": 1366,
+    "panelTop": 89,
+    "panelHeight": 679,
+    "compendiumFormDisplay": "none",
+    "compendiumEmptyDisplay": "flex",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "laptop-1366",
+    "view": "compendium",
+    "viewportWidth": 1366,
+    "bodyScrollWidth": 1366,
+    "panelTop": 145,
+    "panelHeight": 623,
+    "compendiumFormDisplay": "none",
+    "compendiumEmptyDisplay": "flex",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "desktop-1920",
+    "view": "bookshelf",
+    "viewportWidth": 1920,
+    "bodyScrollWidth": 1920,
+    "panelTop": 89,
+    "panelHeight": 775,
+    "compendiumFormDisplay": "none",
+    "compendiumEmptyDisplay": "flex",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "desktop-1920",
+    "view": "compendium",
+    "viewportWidth": 1920,
+    "bodyScrollWidth": 1920,
+    "panelTop": 145,
+    "panelHeight": 935,
+    "compendiumFormDisplay": "none",
+    "compendiumEmptyDisplay": "flex",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "qhd-2560",
+    "view": "bookshelf",
+    "viewportWidth": 2560,
+    "bodyScrollWidth": 2560,
+    "panelTop": 89,
+    "panelHeight": 775,
+    "compendiumFormDisplay": "none",
+    "compendiumEmptyDisplay": "flex",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "qhd-2560",
+    "view": "compendium",
+    "viewportWidth": 2560,
+    "bodyScrollWidth": 2560,
+    "panelTop": 145,
+    "panelHeight": 1295,
+    "compendiumFormDisplay": "none",
+    "compendiumEmptyDisplay": "flex",
+    "horizontalOverflow": false
+  }
+]

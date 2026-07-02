@@ -24,6 +24,49 @@
         return text.trim();
     }
 
+    function defaultContextPolicy(existingAlwaysInContext) {
+        return {
+            mode: existingAlwaysInContext ? 'always' : 'manual',
+            triggers: {
+                title: true,
+                aliases: true,
+                tags: true,
+                pov: true,
+                sceneCharacters: true
+            }
+        };
+    }
+
+    function defaultCharacterProfile() {
+        return {
+            role: '',
+            goal: '',
+            motivation: '',
+            conflict: '',
+            voice: '',
+            currentState: '',
+            knowledge: '',
+            relationshipNotes: ''
+        };
+    }
+
+    function normalizeContextPolicy(input) {
+        const raw = input && typeof input === 'object' ? input : {};
+        const validModes = ['disabled', 'manual', 'mention', 'auto', 'always'];
+        const mode = validModes.includes(raw.mode) ? raw.mode : 'manual';
+        const triggersRaw = raw.triggers && typeof raw.triggers === 'object' ? raw.triggers : {};
+        return {
+            mode,
+            triggers: {
+                title: triggersRaw.title !== false,
+                aliases: triggersRaw.aliases !== false,
+                tags: triggersRaw.tags !== false,
+                pov: triggersRaw.pov !== false,
+                sceneCharacters: triggersRaw.sceneCharacters !== false
+            }
+        };
+    }
+
     function normalizeTimestamp(value, fallback) {
         if (!value) return fallback;
         const date = new Date(value);
@@ -75,6 +118,23 @@
         const now = nowIso();
         const type = ENTRY_TYPES.includes(input.type) ? input.type : typeFromCategory(input.category);
         const id = cleanString(input.id, makeId(type));
+        const rawPolicy = input.contextPolicy;
+        const policyFromInput = rawPolicy && typeof rawPolicy === 'object';
+        const alwaysFromInput = !!(input.alwaysInContext);
+        const contextPolicy = normalizeContextPolicy(
+            policyFromInput
+                ? rawPolicy
+                : alwaysFromInput
+                    ? { mode: 'always' }
+                    : defaultContextPolicy(false)
+        );
+        const alwaysInContext = alwaysFromInput || contextPolicy.mode === 'always';
+        const characterProfile = type === 'character'
+            ? {
+                ...defaultCharacterProfile(),
+                ...(input.characterProfile && typeof input.characterProfile === 'object' ? input.characterProfile : {})
+            }
+            : undefined;
         return {
             id,
             projectId: cleanString(input.projectId),
@@ -87,7 +147,9 @@
             aliases: uniqueStrings(input.aliases).slice(0, 40),
             relatedSceneIds: uniqueStrings(input.relatedSceneIds || input.sceneIds).slice(0, 80),
             imageUrl: cleanString(input.imageUrl),
-            alwaysInContext: !!input.alwaysInContext,
+            alwaysInContext,
+            contextPolicy,
+            characterProfile,
             order: Number.isFinite(Number(input.order)) ? Number(input.order) : 0,
             createdAt: normalizeTimestamp(input.createdAt || input.created, now),
             updatedAt: normalizeTimestamp(input.updatedAt || input.modified, now)
@@ -126,6 +188,8 @@
             tags: normalized.tags,
             aliases: normalized.aliases,
             alwaysInContext: normalized.alwaysInContext,
+            contextPolicy: normalized.contextPolicy,
+            characterProfile: normalized.characterProfile,
             updatedAt: normalized.updatedAt
         };
     }
@@ -135,6 +199,7 @@
         createCompendiumEntry,
         normalizeCompendiumEntries,
         compendiumEntrySummary,
-        typeFromCategory
+        typeFromCategory,
+        normalizeContextPolicy
     };
 });

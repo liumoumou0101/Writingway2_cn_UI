@@ -114,4 +114,103 @@ This file records Codex orchestration events, OpenCode task dispatches, executio
 - The `phase31_fix_writer_model_select_options` OpenCode wrapper timed out and left residual processes. Codex stopped them and reviewed the partial changes: options were added, but `npm run writer-audit` failed because the test bypassed disabled UI while provider was still local, and `inherit + thinking` did not pass `enableThinking`. Created diagnosis/fix task `phase31_fix_writer_model_control_audit_and_inherit_thinking`.
 - The second phase31 follow-up wrapper also timed out. Codex stopped residual OpenCode processes and took over under the closed-loop rule. Codex accepted the partial implementation after fixing `inherit + thinking`, ensuring settings save refreshes writer model controls, adjusting writer audit to configure DeepSeek through the real settings UI, and updating the history-test anchor after additional generation records. Verification passed: `npm run writer-audit`, `node tests/provider-stream.js`, `npm run desktop-mainline-test`, `npm run unit`, plus a Playwright writer model-control check. Review saved as `.ai_state/test_reports/phase31_writer_model_capability_thinking_stream_codex_review.md`.
 - Codex refreshed release artifacts with `npm run dist` and verified the packaged build with `npm run packaged-smoke` after phase31.
+- Created OpenCode task `phase32_writer_provider_profile_model_switch` for the writer-page multi-provider/model first pass: settings-side API-compatible provider profiles, writer-side profile/model/custom-model controls, DeepSeek Thinking compatibility, and tests.
+- OpenCode initial phase32 execution timed out after applying a broad partial implementation without writing the required report. Codex stopped residual OpenCode processes, reviewed the partial diff, and found a malformed Settings generation section plus writer-audit failure around DeepSeek Thinking enablement.
+- Created and dispatched OpenCode follow-up `phase32_fix_writer_provider_profile_followup` using `deepseek/deepseek-reasoner`. OpenCode restored the Settings generation section wrapper, enabled Thinking based on the effective inherited DeepSeek model, filtered unconfigured profiles from writer selection, and got the required test set passing.
+- Codex acceptance review found a reload/runtime issue: profile save/delete temporarily returned raw settings, and after a fresh `/api/settings` load, public profile API keys would be blank, causing selected provider profiles to generate with an empty key.
+- Created and dispatched OpenCode follow-up `phase32_fix_runtime_provider_profiles_after_reload` using `deepseek/deepseek-reasoner`. OpenCode added a `runtimeProviderProfiles` channel, kept public settings API keys hidden, loaded runtime profiles in the renderer, and added reload coverage to writer audit.
+- Codex independently verified phase32 with `node tests/settings-service.js`, `node tests/provider-stream.js`, `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`; all passed. Codex accepted phase32. Review saved as `.ai_state/test_reports/phase32_writer_provider_profile_model_switch_codex_review.md`.
+- Created OpenCode task `phase33_provider_profile_manager_usability` to improve provider-profile usability with per-profile testing, inline status, and provider endpoint/model defaults.
+- Initial phase33 OpenCode invocation failed before execution during an environment/path issue under restricted sandboxing (`EEXIST` on `C:\Users\10937\.config\opencode`). Codex diagnosed the bridge: OpenCode itself and DeepSeek credentials worked once unrestricted permissions returned. A later invocation failed mid-task due to `unknown certificate verification error`, leaving only partial provider metadata/default helper edits.
+- After the user reported network recovery, Codex retried `phase33_provider_profile_manager_usability`; OpenCode completed the endpoint/UI/tests and saved `.ai_state/test_reports/phase33_provider_profile_manager_usability_opencode_report.md`.
+- Codex review found one acceptance gap: provider editor defaults did not switch when the field still contained the previous provider's known default endpoint/model. Created and dispatched `phase33_fix_provider_default_switching`; OpenCode added known-default detection and preserved custom user values.
+- Codex independently verified phase33 with `node tests/settings-service.js`, `npm run writer-audit`, `npm run desktop-mainline-test`, and `npm run unit`; all passed. Temporary `.opencode-home` and `.opencode-config` directories created during bridge troubleshooting were removed. Review saved as `.ai_state/test_reports/phase33_provider_profile_manager_usability_codex_review.md`.
+- Created OpenCode task `phase34_character_compendium_context_policy` for per-card character/compendium context injection policies, simple trigger rules, first-pass structured character fields, and prompt/context tests.
+- OpenCode completed phase34 and reported passing `node tests/context-prompt-core.js`, `node tests/compendium-service.js`, `node tests/unit-context-tags.js`, `node tests/writer-button-audit.js`, `npm run desktop-mainline-test`, and `npm run unit`.
+- Codex review found a trigger correctness gap: title and alias switches were not fully independent and plain title/alias matching for `mention`/`auto` modes was missing. Created and dispatched follow-up `phase34_fix_title_alias_injection_policy`; OpenCode fixed the resolver and expanded context tests. Report saved as `.ai_state/test_reports/phase34_fix_title_alias_injection_policy_opencode_report.md`.
+- Codex review found a legacy compatibility bug: stale `alwaysInContext: true` could override a newly selected non-always policy. Created and dispatched follow-up `phase34_fix_always_policy_mapping`; OpenCode made policy mode the source of truth and updated writer audit. Report saved as `.ai_state/test_reports/phase34_fix_always_policy_mapping_opencode_report.md`.
+- Codex accepted phase34 after follow-ups. Verification included OpenCode test reports plus Codex UTF-8/source syntax/diff review (`node -c tests/writer-button-audit.js`, `node -c src/desktop/desktop-shell.js`, `git diff --check`). Review saved as `.ai_state/test_reports/phase34_character_compendium_context_policy_codex_review.md`.
+- User requested a first pass to make Bookshelf, Writer, Compendium, Workshop, and Workflow feel more smoothly connected. Codex created phase35 TODO items and OpenCode task `phase35_cross_module_linkage_ui_first_pass`.
+- OpenCode timed out after 900 seconds without writing the required report and left residual OpenCode processes plus a partial HTML/CSS/test diff. Codex stopped the residual processes and took over the incomplete implementation.
+- Codex completed the phase35 first usable pass: cross-module context strip, Writer "发送到讨论" and "保存为资料" actions, Compendium injection-status badges, Workshop output-to-compendium title/tag/status polish, and desktop mainline coverage.
+- Verification passed: `node -c src/desktop/desktop-shell.js`, `node -c tests/desktop-library.js`, `node -c tests/writer-button-audit.js`, `npm run desktop-mainline-test`, `npm run unit`, and focused `git diff --check`. `npm run writer-audit` remains blocked in the older Phase 32 provider-profile section because provider-profile HTML is present but this working tree's `src/desktop/desktop-shell.js` lacks the corresponding profile manager implementation. Review saved as `.ai_state/test_reports/phase35_cross_module_linkage_ui_first_pass_codex_review.md`.
+- User requested a Bookshelf UI polish pass after sharing a screenshot. Codex created phase36 TODO items and OpenCode task `phase36_bookshelf_ui_polish_workbench`, scoped to Bookshelf visual/layout polish and tests.
+- OpenCode timed out after 600 seconds without writing the required report. Codex stopped residual OpenCode processes, reviewed the partial implementation, and accepted after takeover fixes.
+- Phase36 first pass implemented: Bookshelf left panel changed into a compact works-dashboard area, project shelf toolbar improved, project cards gained stronger cover/stat hierarchy and explicit `继续写作` CTA, dangerous `移出书库` moved into a separate row, and stable selectors were added for copy/reveal/continue actions.
+- Verification passed: `node -c src/desktop/desktop-shell.js`, `node -c tests/desktop-library.js`, `npm run desktop-mainline-test`, `npm run unit`, and focused `git diff --check`. Automated screenshot QA could not run because the local Playwright Chromium executable is missing. Review saved as `.ai_state/test_reports/phase36_bookshelf_ui_polish_workbench_codex_review.md`.
+
+### 2026-07-02 08:55:34 | prepackage_manual_test_build | PASS
+- Codex installed/verified Playwright Chromium earlier in the session, then performed the final prepackage check requested by the user.
+- During prepackage audit, `npm run writer-audit` exposed two blocking UI wiring gaps: settings API profile editor actions were not fully connected to the renderer, and compendium injection-policy/person-card controls remained disabled because they were not in the form element set.
+- Codex fixed both blockers directly: writer model selection now uses configured API profiles/provider models/custom model + Thinking capability gating, provider profile management saves/deletes/tests from Settings, and compendium policy/person-card fields render, edit, sync, and save.
+- Verification passed: syntax checks for desktop shell/settings/server files, `npm run unit`, `npm run writer-audit`, `npm run desktop-mainline-test`, Playwright viewport checks at 1366x768/1920x1080/2560x1440 with no horizontal overflow, `npm run dist`, and `npm run packaged-smoke`.
+- Release artifacts refreshed under `release/`: `win-unpacked`, `Writingway Setup 1.0.0.exe`, and `Writingway 1.0.0.exe`. Report saved as `.ai_state/test_reports/prepackage_2026-07-02_codex_report.md`.
+
+### 2026-07-02 | phase37_desktop_ui_productization | PLANNED
+- User reviewed the packaged UI and concluded that, apart from the repeatedly polished Writer and Reader, the remaining modules still feel awkward.
+- Codex agreed this is a product-structure problem rather than a small styling bug: Bookshelf, Compendium, Workshop, Workflow, Recovery, and Settings need a unified desktop-workbench productization pass.
+- Updated `docs/DESKTOP_UI_TODOLIST.md` with Phase 37 in Chinese, including problem judgment, design principles, execution order, and acceptance criteria.
+- Created OpenCode placeholder task `.ai_state/opencode_tasks/phase37_desktop_ui_productization_design_ready.md` so the next implementation can follow Codex design + OpenCode execution workflow.
+
+### 2026-07-02 | phase37A_productization_design_spec | COMPLETE
+- Codex captured baseline Playwright screenshots for Bookshelf, Compendium, Workshop, Workflow, Recovery, and Settings at 1366x768. Metrics showed no horizontal overflow, but confirmed the main issue is module structure and operation hierarchy rather than simple overflow.
+- Added `docs/DESKTOP_UI_PHASE37A_PRODUCTIZATION_SPEC.md`, defining the unified module skeleton, per-module design goals, state requirements, implementation split, and acceptance checks.
+- Updated `docs/DESKTOP_UI_TODOLIST.md`: Phase 37 moved to in-progress and 37A marked complete.
+- Created executable OpenCode task specs for the next implementation slices: `phase37B_bookshelf_compendium_productization`, `phase37C_workshop_workflow_productization`, and `phase37D_recovery_settings_productization`.
+
+### 2026-07-02 | phase37B_bookshelf_compendium_productization | PASS_AFTER_CODEX_FOLLOWUP
+- Codex dispatched `.ai_state/opencode_tasks/phase37B_bookshelf_compendium_productization.md` to OpenCode using `deepseek/deepseek-v4-pro`.
+- OpenCode completed the first pass: bookshelf left actions were reorganized into creation/import/maintenance groups, bookshelf empty state gained executable CTAs, compendium received empty-state handling, content/context section headings, clearer injection badges, trigger-toggle styling, and "人物约束" wording.
+- OpenCode report saved as `.ai_state/test_reports/phase37B_bookshelf_compendium_productization_opencode_report.md`.
+- Codex review found two acceptance issues and fixed them directly: hidden compendium forms were still displayed because CSS overrode `[hidden]`, and `.desktop-main` grid rows made the context strip consume the 1fr content row.
+- Verification passed after Codex follow-up: `node -c src/desktop/desktop-shell.js`, `npm run desktop-mainline-test`, `npm run writer-audit`, and Playwright visual checks for bookshelf/compendium at 1366x768, 1920x1080, and 2560x1440 with no horizontal overflow.
+- Codex review saved as `.ai_state/test_reports/phase37B_bookshelf_compendium_productization_codex_review.md`.
+
+### 2026-07-02 | phase37_visual_recheck | ISSUES_FOUND
+- User reported that the Phase 37B visual result still did not feel good, possibly on a laptop screen.
+- Codex performed an expanded Playwright visual recheck across 1280x720, 1366x768, 1536x864, 1920x1080, and 2560x1440 for Bookshelf, Compendium, Workshop, Workflow, Recovery, and Settings.
+- No horizontal overflow was found, but the user's concern was confirmed: small laptop viewports reveal clipped actions and awkward page structure.
+- Key findings: Bookshelf left maintenance actions are clipped at 1280x720; Settings action buttons are clipped at 1280/1366 and the API profile editor is too exposed; Workshop shows a full input/chat surface even when no project is open; Recovery has weak safety hierarchy and bottom actions near the viewport edge.
+- Added report `.ai_state/test_reports/phase37_visual_recheck_2026-07-02.md` and updated `docs/DESKTOP_UI_TODOLIST.md` with a 37B follow-up item.
+
+### 2026-07-02 | phase37B_followup_laptop_visual_fixes | PASS
+- Codex created and dispatched `.ai_state/opencode_tasks/phase37B_followup_laptop_visual_fixes.md` to OpenCode using `deepseek/deepseek-v4-pro`.
+- OpenCode fixed the small laptop issues: bookshelf left workspace is compact/scrollable at short heights, project save path uses ellipsis with full path in `title`, and compendium tools are hidden when no project is open.
+- OpenCode report saved as `.ai_state/test_reports/phase37B_followup_laptop_visual_fixes_opencode_report.md`.
+- Codex removed the temporary out-of-scope `tests/phase37b_visual_check.js` after using it for validation, preserving screenshots under `.ai_state/test_reports/phase37b_visual_check/`.
+- Verification passed: `npm run desktop-mainline-test`, `npm run writer-audit`, `git diff --check`, and visual review of 1280x720 screenshots for bookshelf and compendium.
+- Codex review saved as `.ai_state/test_reports/phase37B_followup_laptop_visual_fixes_codex_review.md`.
+
+### 2026-07-02 | phase37C_workshop_workflow_productization | PASS_AFTER_CODEX_FOLLOWUP
+- Codex dispatched `.ai_state/opencode_tasks/phase37C_workshop_workflow_productization.md` to OpenCode using `deepseek/deepseek-v4-pro`.
+- OpenCode completed the Workshop and Workflow productization pass: Workshop gained project summary, clearer empty states, avatar/message distinction, and an output conversion panel; Workflow gained a step-board layout, dynamic stage actions, latest-artifact focus, and collapsible event log.
+- OpenCode report saved as `.ai_state/test_reports/phase37C_workshop_workflow_productization_opencode_report.md`.
+- Codex review found two display-state issues and fixed them directly: Workshop empty state still showed the input row with no project/session, and Workflow empty state still showed an empty artifact container.
+- Verification passed after Codex follow-up: `node -c src/desktop/desktop-shell.js`, `npm run desktop-mainline-test`, `npm run writer-audit`, plus Playwright visual checks for Workshop/Workflow at 1280x720, 1366x768, 1536x864, 1920x1080, and 2560x1440 with no horizontal overflow. OpenCode also ran `npm run unit` successfully.
+- Codex review saved as `.ai_state/test_reports/phase37C_workshop_workflow_productization_codex_review.md`.
+
+### 2026-07-02 14:03:23 | phase37_manual_test_package | PASS
+- User requested a package build for manual testing before GitHub commit/push.
+- Verification before packaging passed: `npm run desktop-mainline-test`, `npm run writer-audit`, and `git diff --check`. One initial `writer-audit` attempt failed due to fixed port 8000 being busy from a parallel test; rerun after port release passed.
+- Ran `npm run dist` successfully and refreshed release artifacts under `release/`.
+- Ran `npm run packaged-smoke` successfully.
+- Manual test entry points: `release/win-unpacked/Writingway.exe`, `release/Writingway Setup 1.0.0.exe`, and `release/Writingway 1.0.0.exe`.
+
+### 2026-07-02 14:26:17 | phase38_real_api_generation_fix | PASS
+- User reported writer generation was still unusable and explicitly required real API testing with a provided DeepSeek key.
+- Codex reproduced the root cause by inspecting the runtime path: global "inherit settings" generation recalculated config from public/desensitized settings, so the global API key was lost before calling DeepSeek and the provider returned 401.
+- Fixed `src/desktop/desktop-shell.js` so `nativeGenerationConfig()` uses `runtimeProviderConfig(extras)`, preserving the local runtime provider key while keeping settings UI/API public settings redacted.
+- Added writer audit assertions that global inherit generation and inherit + Thinking generation keep the runtime API key.
+- Real DeepSeek API verification passed for `/models`, `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-v4-pro` Thinking, and a headless writing-page UI generation flow. The API key was not written to repo files or reports.
+- Verification passed: `node -c src/desktop/desktop-shell.js`, `node tests/provider-stream.js`, `npm run writer-audit`, `npm run desktop-mainline-test`, `npm run unit`, `git diff --check`, `npm run dist`, and `npm run packaged-smoke`.
+- Release artifacts refreshed under `release/`: `win-unpacked`, `Writingway Setup 1.0.0.exe`, and `Writingway 1.0.0.exe`. Detailed report saved as `.ai_state/test_reports/phase38_real_api_generation_fix_codex_report.md`.
+
+### 2026-07-02 17:17:25 | phase39_writer_quick_params_inline_confirmation | PASS
+- User noted generated prose looked truncated and requested writer-page access to important AI parameters. User also requested that prose generation stop duplicating output in both the editor and preview box, while keeping rewrite-style preview behavior where useful.
+- Added writer-page quick controls for temperature, max output length, and provider-default parameters. The controls write back to shared `generationDefaults`, so Settings and Writer use the same configuration.
+- Raised the new default max output length from 300 to 2000 tokens.
+- Added DeepSeek Thinking UI gating: temperature is disabled when DeepSeek Thinking is active, with an explanatory hint that Thinking does not send temperature parameters.
+- Changed prose/beat generation confirmation: generated prose streams into the main editor, remains selected/highlighted while pending, and the bottom panel only shows confirmation actions. Rewrite/regenerate-selection still use the preview result panel.
+- Verification passed: `node -c src/desktop/desktop-shell.js`, `npm run writer-audit`, `npm run desktop-mainline-test`, `npm run unit`, `git diff --check`, Playwright visual checks at 1280x720/1366x768/1920x1080, `npm run dist`, and `npm run packaged-smoke`.
+- Release artifacts refreshed under `release/`: `win-unpacked`, `Writingway Setup 1.0.0.exe`, and `Writingway 1.0.0.exe`. Detailed report saved as `.ai_state/test_reports/phase39_writer_quick_params_inline_confirmation_codex_report.md`.
 

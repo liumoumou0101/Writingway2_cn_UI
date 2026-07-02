@@ -21,6 +21,7 @@
     <script defer src="src/core/workflow/workflow-schema.js"></script>
     <script defer src="src/core/workflow/workflow-engine.js"></script>
     <script defer src="src/core/settings/settings-schema.js"></script>
+    <script defer src="src/core/settings/model-catalog.js"></script>
     <script defer src="src/desktop/desktop-state.js"></script>
     <script defer src="src/desktop/desktop-shell.js"></script>
 </head>
@@ -88,42 +89,68 @@
                     <button class="desktop-secondary-action" type="button" data-view-target="writer">写作页</button>
                 </div>
             </header>
+            <div class="desktop-context-strip" data-context-strip hidden>
+                <div class="desktop-context-strip-info">
+                    <span data-context-project-title></span>
+                    <span data-context-scene-title></span>
+                    <span data-context-word-count></span>
+                    <span data-context-compendium-summary></span>
+                </div>
+                <div class="desktop-context-strip-actions">
+                    <button class="desktop-context-action" data-context-goto-writer>写作</button>
+                    <button class="desktop-context-action" data-context-goto-compendium>资料</button>
+                    <button class="desktop-context-action" data-context-goto-workshop>讨论</button>
+                    <button class="desktop-secondary-action" data-context-goto-bookshelf hidden>返回书库</button>
+                </div>
+            </div>
 
             <section class="desktop-view desktop-view-bookshelf is-active" data-view-panel="bookshelf">
                 <div class="desktop-placeholder-layout">
                     <div class="desktop-placeholder-copy">
-                        <p class="desktop-section-kicker">阶段 1 / 本地书库</p>
-                        <h2>打开软件后，先看见自己的书。</h2>
-                        <p>
-                            这里会读取桌面端保存到磁盘的项目快照。当前阶段先提供书籍卡片、封面占位、字数统计和快速进入写作器，后续再加入简介编辑、筛选排序和原生打开流程。
-                        </p>
-                        <div class="desktop-placeholder-actions">
-                            <button class="desktop-primary-action" type="button" data-view-target="writer">打开当前写作功能</button>
-                            <button class="desktop-primary-action" type="button" data-open-new-project>新建项目</button>
+                        <p class="desktop-section-kicker">作品工作台</p>
+                        <h2>书库</h2>
+                        <div class="desktop-library-overview">
+                            <p class="desktop-library-count" data-project-library-count>—</p>
+                            <p class="desktop-library-meta" data-project-library-meta>正在读取本地书库...</p>
+                        </div>
+                        <div class="desktop-action-group desktop-action-group-primary">
+                            <p class="desktop-action-group-label">创作入口</p>
+                            <button class="desktop-primary-action" type="button" data-open-new-project>新建作品</button>
+                            <button class="desktop-secondary-action" type="button" data-view-target="writer">打开写作器</button>
+                        </div>
+                        <div class="desktop-action-group">
+                            <p class="desktop-action-group-label">导入迁移</p>
                             <button class="desktop-secondary-action" type="button" data-import-project-snapshot>导入旧 JSON</button>
                             <button class="desktop-secondary-action" type="button" data-import-project-package>导入项目包</button>
                             <button class="desktop-secondary-action" type="button" data-import-writingway1>导入 W1 文件夹</button>
+                        </div>
+                        <div class="desktop-action-group">
+                            <p class="desktop-action-group-label">维护</p>
                             <button class="desktop-secondary-action" type="button" data-refresh-projects>刷新书库</button>
                             <button class="desktop-secondary-action" type="button" data-open-project-folder>打开项目目录</button>
                         </div>
                         <input type="file" data-import-project-snapshot-file accept="application/json,.json" hidden>
                         <input type="file" data-import-project-package-file accept=".zip,.writingway-project.zip,application/zip" hidden>
                         <input type="file" data-import-writingway1-files webkitdirectory directory multiple hidden>
-                        <p class="desktop-library-meta" data-project-library-meta>正在读取本地书库...</p>
                     </div>
 
                     <div class="desktop-bookshelf-preview" aria-label="Bookshelf projects">
                         <div class="desktop-library-toolbar" aria-label="Bookshelf filters">
-                            <input type="search" data-project-search placeholder="搜索书名或文件名">
-                            <select data-project-sort aria-label="项目排序">
-                                <option value="recent">最近保存</option>
-                                <option value="name">书名</option>
-                                <option value="words">字数</option>
-                                <option value="chapters">章节数</option>
-                            </select>
+                            <div class="desktop-library-toolbar-group">
+                                <input type="search" data-project-search placeholder="搜索书名或文件名">
+                            </div>
+                            <div class="desktop-library-toolbar-group">
+                                <select data-project-sort aria-label="项目排序">
+                                    <option value="recent">最近保存</option>
+                                    <option value="name">书名</option>
+                                    <option value="words">字数</option>
+                                    <option value="chapters">章节数</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="desktop-library-status" data-project-library-status>正在读取项目...</div>
                         <div class="desktop-project-grid" data-project-grid></div>
+                        <div class="desktop-shelf-status" data-project-library-meta-secondary></div>
                     </div>
                 </div>
             </section>
@@ -155,6 +182,8 @@
                             <div class="desktop-native-editor-actions">
                                 <span data-native-save-status></span>
                                 <span class="desktop-native-editor-stats" data-native-editor-stats>0 字</span>
+                                <button class="desktop-mini-action" type="button" data-native-send-to-workshop title="发送到讨论" hidden>发送到讨论</button>
+                                <button class="desktop-mini-action" type="button" data-native-save-to-compendium title="保存为资料" hidden>保存为资料</button>
                                 <button class="desktop-secondary-action" type="button" data-native-read-aloud>朗读</button>
                                 <button class="desktop-secondary-action" type="button" data-native-stop-reading hidden>停止</button>
                                 <button class="desktop-secondary-action" type="button" data-native-toggle-outline>隐藏结构</button>
@@ -254,17 +283,44 @@
                                     </div>
                                     <div class="desktop-native-model-control-row">
                                         <label>
+                                            <span>Provider 配置</span>
+                                            <select data-native-profile-select>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <div class="desktop-native-model-control-row">
+                                        <label>
                                             <span>模型选择</span>
                                             <select data-native-model-select>
-                                                <option value="inherit">继承全局</option>
-                                                <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
-                                                <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
                                             </select>
                                         </label>
                                         <label class="desktop-native-writer-check">
                                             <input type="checkbox" data-native-thinking-toggle>
                                             <span>深度思考</span>
                                         </label>
+                                    </div>
+                                    <div class="desktop-native-model-control-row" data-native-custom-model-group hidden>
+                                        <label>
+                                            <span>自定义模型 ID</span>
+                                            <input type="text" data-native-custom-model placeholder="输入模型名称或 ID">
+                                        </label>
+                                    </div>
+                                    <div class="desktop-native-model-control-row desktop-native-sampling-row">
+                                        <label>
+                                            <span>温度</span>
+                                            <input type="number" data-native-temperature min="0" max="2" step="0.05">
+                                        </label>
+                                        <label>
+                                            <span>最大输出</span>
+                                            <input type="number" data-native-max-tokens min="1" max="200000" step="100">
+                                        </label>
+                                    </div>
+                                    <div class="desktop-native-model-control-row desktop-native-sampling-row">
+                                        <label class="desktop-native-writer-check">
+                                            <input type="checkbox" data-native-provider-defaults>
+                                            <span>使用服务商默认参数</span>
+                                        </label>
+                                        <span class="desktop-native-sampling-hint" data-native-sampling-hint></span>
                                     </div>
                                 </div>
                                 <div class="desktop-native-task-group" data-native-gen-task-group>
@@ -626,10 +682,17 @@
                     <div class="desktop-compendium-list" data-compendium-list></div>
                 </aside>
                 <section class="desktop-compendium-editor">
-                    <form data-compendium-form>
+                    <div class="desktop-compendium-editor-empty" data-compendium-editor-empty>
+                        <div class="desktop-compendium-empty-content">
+                            <p class="desktop-compendium-empty-icon">&#128214;</p>
+                            <h3 data-compendium-empty-title>选择资料条目</h3>
+                            <p data-compendium-empty-desc>从左侧列表中选择资料卡进行编辑，或新建资料。</p>
+                        </div>
+                    </div>
+                    <form data-compendium-form hidden>
                         <header class="desktop-compendium-editor-header">
                             <div>
-                                <p class="desktop-section-kicker">Entry</p>
+                                <p class="desktop-section-kicker">资料编辑</p>
                                 <h2 data-compendium-editor-title>选择资料条目</h2>
                             </div>
                             <div class="desktop-native-editor-actions">
@@ -638,6 +701,7 @@
                             </div>
                         </header>
                         <div class="desktop-compendium-form-grid">
+                            <p class="desktop-compendium-section-heading">资料内容</p>
                             <label>
                                 <span>类型</span>
                                 <select data-compendium-entry-type disabled>
@@ -666,10 +730,81 @@
                                 <span>别名</span>
                                 <input type="text" data-compendium-aliases placeholder="逗号分隔" disabled>
                             </label>
+                            <p class="desktop-compendium-section-heading">写作上下文 · 注入策略</p>
                             <label class="desktop-settings-check">
                                 <input type="checkbox" data-compendium-always disabled>
                                 <span>默认加入生成上下文</span>
                             </label>
+                            <fieldset class="desktop-compendium-policy" data-compendium-policy>
+                                <legend>注入策略</legend>
+                                <label>
+                                    <span>模式</span>
+                                    <select data-compendium-policy-mode disabled>
+                                        <option value="disabled">不自动注入</option>
+                                        <option value="manual">仅手动/明确提及</option>
+                                        <option value="mention">提及时注入</option>
+                                        <option value="auto">条件自动注入</option>
+                                        <option value="always">总是注入</option>
+                                    </select>
+                                </label>
+                                <div class="desktop-compendium-triggers">
+                                    <label class="desktop-settings-check">
+                                        <input type="checkbox" data-compendium-trigger-title disabled>
+                                        <span>标题</span>
+                                    </label>
+                                    <label class="desktop-settings-check">
+                                        <input type="checkbox" data-compendium-trigger-aliases disabled>
+                                        <span>别名</span>
+                                    </label>
+                                    <label class="desktop-settings-check">
+                                        <input type="checkbox" data-compendium-trigger-tags disabled>
+                                        <span>标签</span>
+                                    </label>
+                                    <label class="desktop-settings-check">
+                                        <input type="checkbox" data-compendium-trigger-pov disabled>
+                                        <span>POV 人物匹配</span>
+                                    </label>
+                                    <label class="desktop-settings-check">
+                                        <input type="checkbox" data-compendium-trigger-scene-characters disabled>
+                                        <span>场景人物匹配</span>
+                                    </label>
+                                </div>
+                            </fieldset>
+                            <fieldset class="desktop-compendium-character" data-compendium-character hidden>
+                                <legend>人物约束</legend>
+                                <label>
+                                    <span>角色定位</span>
+                                    <input type="text" data-compendium-character-role maxlength="200" disabled>
+                                </label>
+                                <label>
+                                    <span>目标</span>
+                                    <input type="text" data-compendium-character-goal maxlength="200" disabled>
+                                </label>
+                                <label>
+                                    <span>动机</span>
+                                    <input type="text" data-compendium-character-motivation maxlength="200" disabled>
+                                </label>
+                                <label>
+                                    <span>冲突</span>
+                                    <input type="text" data-compendium-character-conflict maxlength="200" disabled>
+                                </label>
+                                <label>
+                                    <span>语气/声音</span>
+                                    <input type="text" data-compendium-character-voice maxlength="200" disabled>
+                                </label>
+                                <label>
+                                    <span>当前状态</span>
+                                    <input type="text" data-compendium-character-current-state maxlength="300" disabled>
+                                </label>
+                                <label>
+                                    <span>已知信息</span>
+                                    <input type="text" data-compendium-character-knowledge maxlength="300" disabled>
+                                </label>
+                                <label>
+                                    <span>关系备注</span>
+                                    <input type="text" data-compendium-character-relationship maxlength="300" disabled>
+                                </label>
+                            </fieldset>
                             <label class="desktop-form-wide">
                                 <span>正文</span>
                                 <textarea data-compendium-body spellcheck="false" disabled></textarea>
@@ -683,8 +818,13 @@
                 <aside class="desktop-workshop-sidebar">
                     <div>
                         <p class="desktop-section-kicker">Workshop</p>
-                        <h2>创作对话</h2>
+                        <h2>讨论</h2>
                         <p data-workshop-project-label>从书库打开项目后开始讨论。</p>
+                    </div>
+                    <div class="desktop-workshop-project-summary" data-workshop-project-summary hidden>
+                        <p class="desktop-workshop-project-summary-label">作品</p>
+                        <h3 data-workshop-project-name></h3>
+                        <p data-workshop-project-stats></p>
                     </div>
                     <button class="desktop-primary-action" type="button" data-workshop-new>新对话</button>
                     <div class="desktop-compendium-status" data-workshop-status>未打开项目</div>
@@ -693,7 +833,7 @@
                 <section class="desktop-workshop-chat">
                     <header class="desktop-compendium-editor-header">
                         <div>
-                            <p class="desktop-section-kicker">Conversation</p>
+                            <p class="desktop-section-kicker">讨论</p>
                             <h2 data-workshop-title>选择或新建对话</h2>
                         </div>
                         <div class="desktop-native-editor-actions">
@@ -701,10 +841,28 @@
                         </div>
                     </header>
                     <div class="desktop-workshop-messages" data-workshop-messages></div>
-                    <div class="desktop-workshop-output-actions" data-workshop-output-actions>
-                        <button class="desktop-secondary-action" type="button" data-workshop-to-compendium disabled>转为资料</button>
-                        <button class="desktop-secondary-action" type="button" data-workshop-to-summary disabled>转为场景摘要</button>
-                        <button class="desktop-secondary-action" type="button" data-workshop-insert-draft disabled>插入正文</button>
+                    <div class="desktop-workshop-empty-state" data-workshop-empty hidden>
+                        <div class="desktop-workshop-empty-content" data-workshop-empty-content></div>
+                    </div>
+                    <div class="desktop-workshop-output-panel" data-workshop-output-actions hidden>
+                        <p class="desktop-workshop-output-panel-label">输出转化</p>
+                        <div class="desktop-workshop-output-actions-inner">
+                            <button class="desktop-workshop-convert-action" type="button" data-workshop-to-compendium disabled>
+                                <span class="desktop-workshop-convert-icon">&#128196;</span>
+                                <span class="desktop-workshop-convert-label">转为资料</span>
+                                <span class="desktop-workshop-convert-hint">保存到资料库</span>
+                            </button>
+                            <button class="desktop-workshop-convert-action" type="button" data-workshop-to-summary disabled>
+                                <span class="desktop-workshop-convert-icon">&#128278;</span>
+                                <span class="desktop-workshop-convert-label">转为场景摘要</span>
+                                <span class="desktop-workshop-convert-hint">写入当前场景摘要</span>
+                            </button>
+                            <button class="desktop-workshop-convert-action" type="button" data-workshop-insert-draft disabled>
+                                <span class="desktop-workshop-convert-icon">&#128221;</span>
+                                <span class="desktop-workshop-convert-label">插入正文</span>
+                                <span class="desktop-workshop-convert-hint">追加到当前场景</span>
+                            </button>
+                        </div>
                     </div>
                     <div class="desktop-workshop-input-row">
                         <textarea data-workshop-input placeholder="输入想讨论的问题。可用 @[资料标题] 或 #[场景标题] 引用上下文。"></textarea>
@@ -717,70 +875,36 @@
                 <aside class="desktop-workflow-sidebar">
                     <div>
                         <p class="desktop-section-kicker">Workflow</p>
-                        <h2>写作工作流（实验阶段）</h2>
+                        <h2>创作流程</h2>
                         <p data-workflow-project-label>从书库打开项目后启动。</p>
-                        <p class="desktop-workflow-sidebar-note">当前提供按步骤引导的写作流程：设定项目 Brief 后逐步生成正文内容。更多自动化步骤正在规划中。</p>
+                        <p class="desktop-workflow-sidebar-note">按步骤引导的写作流程：设定项目 Brief 后逐步生成正文内容。</p>
                     </div>
                     <label>
-                        <span>项目设定</span>
+                        <span>项目设定 (Brief)</span>
                         <textarea data-workflow-brief rows="8" placeholder="写下本次工作流要遵守的题材、主线、角色、限制和目标。"></textarea>
                     </label>
-                    <button class="desktop-primary-action" type="button" data-workflow-start>开始工作流</button>
+                    <button class="desktop-primary-action" type="button" data-workflow-start>开始创作流程</button>
                     <div class="desktop-compendium-status" data-workflow-status>未打开项目</div>
                     <div class="desktop-workflow-run-list" data-workflow-run-list></div>
                 </aside>
                 <section class="desktop-workflow-main">
                     <header class="desktop-compendium-editor-header">
                         <div>
-                            <p class="desktop-section-kicker">Run</p>
-                            <h2 data-workflow-title>选择或开始一个工作流</h2>
-                        </div>
-                        <div class="desktop-native-editor-actions">
-                            <button class="desktop-secondary-action" type="button" data-workflow-generate disabled>生成当前步骤</button>
-                            <button class="desktop-secondary-action" type="button" data-workflow-apply-artifact disabled>采纳草稿</button>
-                            <button class="desktop-primary-action" type="button" data-workflow-approve disabled>批准步骤</button>
-                            <button class="desktop-secondary-action" type="button" data-workflow-reject disabled>退回步骤</button>
-                            <button class="desktop-secondary-action" type="button" data-workflow-cancel disabled>取消运行</button>
+                            <p class="desktop-section-kicker">流程看板</p>
+                            <h2 data-workflow-title>选择或开始创作流程</h2>
                         </div>
                     </header>
 
-                    <div class="desktop-workflow-steps" data-workflow-steps>
-                        <div class="desktop-workflow-steps-guide">
-                            <p class="desktop-section-kicker">工作流指引</p>
-                            <div class="desktop-workflow-steps-timeline">
-                                <div class="desktop-workflow-milestone">
-                                    <span class="desktop-workflow-milestone-mark">1</span>
-                                    <div>
-                                        <strong>设定 Brief</strong>
-                                        <span>在左侧写下题材、主线、角色、限制和目标</span>
-                                    </div>
-                                </div>
-                                <div class="desktop-workflow-milestone">
-                                    <span class="desktop-workflow-milestone-mark">2</span>
-                                    <div>
-                                        <strong>启动工作流</strong>
-                                        <span>点击「开始工作流」按钮进入引导步骤</span>
-                                    </div>
-                                </div>
-                                <div class="desktop-workflow-milestone">
-                                    <span class="desktop-workflow-milestone-mark">3</span>
-                                    <div>
-                                        <strong>逐步执行</strong>
-                                        <span>按顺序批准、退回或重新生成每个步骤</span>
-                                    </div>
-                                </div>
-                                <div class="desktop-workflow-milestone">
-                                    <span class="desktop-workflow-milestone-mark">4</span>
-                                    <div>
-                                        <strong>采纳产物</strong>
-                                        <span>将生成的正文草稿插入到当前场景</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <div class="desktop-workflow-steps" data-workflow-steps></div>
+                    <div class="desktop-workflow-stage-actions" data-workflow-stage-actions hidden></div>
                     <div class="desktop-workflow-artifacts" data-workflow-artifacts></div>
-                    <div class="desktop-workflow-events" data-workflow-events></div>
+                    <details class="desktop-workflow-events-details" data-workflow-events-details open>
+                        <summary data-workflow-events-summary>
+                            <span class="desktop-workflow-events-title">事件日志</span>
+                            <span class="desktop-workflow-events-count" data-workflow-events-count></span>
+                        </summary>
+                        <div class="desktop-workflow-events" data-workflow-events></div>
+                    </details>
                 </section>
             </section>
 
@@ -826,6 +950,7 @@
 
                 <nav class="desktop-settings-categories" aria-label="设置分类导航">
                     <button type="button" class="desktop-settings-cat-item is-active" data-settings-cat-target="provider">Provider</button>
+                    <button type="button" class="desktop-settings-cat-item" data-settings-cat-target="profiles">配置组</button>
                     <button type="button" class="desktop-settings-cat-item" data-settings-cat-target="generation">生成默认值</button>
                     <button type="button" class="desktop-settings-cat-item" data-settings-cat-target="tts">朗读</button>
                 </nav>
@@ -869,14 +994,57 @@
                         </label>
                     </section>
 
+                    <section class="desktop-settings-section" data-settings-section="profiles">
+                        <h3>API Provider 配置组</h3>
+                        <p class="desktop-settings-desc">保存多组 API provider 配置后，可在写作页的模型控制面板中切换。</p>
+                        <div class="desktop-settings-profiles-list" data-settings-profiles-list></div>
+                        <div class="desktop-settings-actions" data-settings-profile-editor hidden>
+                            <label>
+                                <span>名称</span>
+                                <input type="text" data-settings-profile-name placeholder="例如：我的 DeepSeek">
+                            </label>
+                            <label>
+                                <span>Provider</span>
+                                <select data-settings-profile-provider>
+                                    <option value="deepseek">DeepSeek</option>
+                                    <option value="openai">OpenAI</option>
+                                    <option value="openrouter">OpenRouter</option>
+                                    <option value="nanogpt">NanoGPT</option>
+                                    <option value="openai-compatible">OpenAI-compatible</option>
+                                    <option value="custom">Custom</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>Endpoint</span>
+                                <input type="url" data-settings-profile-endpoint placeholder="https://.../chat/completions">
+                            </label>
+                            <label>
+                                <span>模型 (可选)</span>
+                                <input type="text" data-settings-profile-model placeholder="默认模型（可在写作页切换）">
+                            </label>
+                            <label>
+                                <span>API Key</span>
+                                <input type="password" data-settings-profile-api-key placeholder="留空表示保持现有密钥">
+                            </label>
+                            <div class="desktop-settings-actions">
+                                <button class="desktop-primary-action" type="button" data-settings-profile-save>保存配置组</button>
+                                <button class="desktop-secondary-action" type="button" data-settings-profile-cancel>取消</button>
+                                <button class="desktop-secondary-action" type="button" data-settings-profile-delete hidden>删除此配置组</button>
+                            </div>
+                        </div>
+                        <div class="desktop-settings-actions">
+                            <button class="desktop-secondary-action" type="button" data-settings-profile-add>新建 Provider 配置组</button>
+                        </div>
+                    </section>
+
                     <section class="desktop-settings-section" data-settings-section="generation">
                         <h3>生成默认值</h3>
                         <label>
-                            <span>Temperature</span>
+                            <span>温度</span>
                             <input type="number" data-settings-temperature min="0" max="2" step="0.05">
                         </label>
                         <label>
-                            <span>Max tokens</span>
+                            <span>最大输出长度</span>
                             <input type="number" data-settings-max-tokens min="1" max="200000" step="1">
                         </label>
                         <label class="desktop-settings-check">

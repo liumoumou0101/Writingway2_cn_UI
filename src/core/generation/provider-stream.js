@@ -108,8 +108,8 @@
     }
 
     async function streamOpenAICompatible(messages, onToken, config = {}) {
-        const isDeepSeek = config.provider === 'deepseek';
-        const endpoint = config.endpoint || config.aiEndpoint || (isDeepSeek ? 'https://api.deepseek.com/chat/completions' : '');
+        var isDeepSeek = config.provider === 'deepseek';
+        var endpoint = config.endpoint || config.aiEndpoint || (isDeepSeek ? 'https://api.deepseek.com/chat/completions' : '');
         if (!endpoint) throw new Error('API endpoint is required.');
 
         var enableThinking = false;
@@ -145,7 +145,7 @@
             body.max_tokens = config.maxTokens || 300;
         }
 
-        if (isDeepSeek) {
+        if (isDeepSeek && enableThinking) {
             body = sanitizeStreamBody(body, realModel, enableThinking);
         }
 

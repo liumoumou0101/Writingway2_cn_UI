@@ -67,6 +67,21 @@
                 const title = entry.title || `entry ${entry.id || ''}`;
                 const body = entry.body || entry.content || entry.description || '';
                 userContent += `\n-- ${title} --\n${body}\n`;
+                if (entry.type === 'character' && entry.characterProfile) {
+                    const profile = entry.characterProfile;
+                    const fields = [];
+                    if (profile.role) fields.push(`角色定位: ${profile.role}`);
+                    if (profile.goal) fields.push(`目标: ${profile.goal}`);
+                    if (profile.motivation) fields.push(`动机: ${profile.motivation}`);
+                    if (profile.conflict) fields.push(`冲突: ${profile.conflict}`);
+                    if (profile.voice) fields.push(`语气/声音: ${profile.voice}`);
+                    if (profile.currentState) fields.push(`当前状态: ${profile.currentState}`);
+                    if (profile.knowledge) fields.push(`已知信息: ${profile.knowledge}`);
+                    if (profile.relationshipNotes) fields.push(`关系备注: ${profile.relationshipNotes}`);
+                    if (fields.length) {
+                        userContent += `[${title} 结构化约束]\n${fields.join('\n')}\n`;
+                    }
+                }
             }
         }
 

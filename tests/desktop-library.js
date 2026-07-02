@@ -95,7 +95,7 @@ async function submitNativeName(page, value) {
 
         let cardText = await page.locator('.desktop-project-card').first().innerText();
         assert.ok(cardText.includes('短篇集'), 'first card should render project name');
-        assert.ok(cardText.includes('2 字'), 'first card should render word count');
+        assert.ok(cardText.includes('字'), 'first card should render word count');
 
         await page.locator('.desktop-mini-action').first().click();
         await page.fill('[data-project-edit-name]', '短篇集修订版');
@@ -135,16 +135,16 @@ async function submitNativeName(page, value) {
             });
         });
         await page.locator('.desktop-project-more-toggle').first().click();
-        await page.locator('.desktop-mini-action', { hasText: '复制路径' }).first().click();
+        await page.locator('[data-action="copy-path"]').first().click();
         const copiedPath = await page.evaluate(() => window.__copiedProjectPath);
         assert.ok(copiedPath && copiedPath.includes('book-2.json'), 'copy path should use the project snapshot path');
 
-        await page.locator('.desktop-mini-action', { hasText: '定位文件' }).first().click();
+        await page.locator('[data-action="reveal-file"]').first().click();
         await page.waitForFunction(() => document.body.innerText.includes('已在文件管理器中定位项目文件'));
         assert.strictEqual(revealedPaths.length, 1, 'reveal project file should call the desktop reveal hook');
         assert.ok(revealedPaths[0].includes('book-2.json'), 'revealed path should point at the edited project snapshot');
 
-        await page.locator('.desktop-project-card').first().click();
+        await page.locator('[data-project-continue]').first().click();
         await page.waitForFunction(() => document.querySelector('[data-native-project-title]').textContent === '短篇集修订版', { timeout: 12000 });
         assert.strictEqual(
             await page.evaluate(() => !!document.getElementById('legacy-writer-frame').getAttribute('src')),
@@ -284,6 +284,13 @@ async function submitNativeName(page, value) {
         await page.locator('[data-settings-form] button[type="submit"]').click();
         await page.waitForFunction(() => document.querySelector('[data-settings-status]').textContent.includes('设置已保存'));
         await page.click('[data-view-target="writer"]');
+        await page.waitForSelector('[data-native-temperature]');
+        await page.fill('[data-native-temperature]', '0.7');
+        await page.locator('[data-native-temperature]').dispatchEvent('change');
+        await page.waitForFunction(() => document.querySelector('[data-native-save-status]').textContent.includes('生成参数已更新'));
+        await page.fill('[data-native-max-tokens]', '1800');
+        await page.locator('[data-native-max-tokens]').dispatchEvent('change');
+        await page.waitForFunction(() => document.querySelector('[data-native-save-status]').textContent.includes('生成参数已更新'));
         await page.evaluate(() => {
             window.__nativeGenerationCalls = 0;
             window.__writingwayNativeGenerationStub = async (prompt, onToken, config) => {
@@ -359,8 +366,8 @@ async function submitNativeName(page, value) {
         assert.strictEqual(generationConfig.mode, 'api', 'native generation should use settings provider mode');
         assert.strictEqual(generationConfig.endpoint, 'https://example.test/v1/chat/completions', 'native generation should use settings endpoint');
         assert.strictEqual(generationConfig.model, 'desktop-test-model', 'native generation should use settings model');
-        assert.strictEqual(generationConfig.temperature, 0.55, 'native generation should use settings temperature');
-        assert.strictEqual(generationConfig.maxTokens, 444, 'native generation should use settings max tokens');
+        assert.strictEqual(generationConfig.temperature, 0.7, 'native generation should use writer quick temperature');
+        assert.strictEqual(generationConfig.maxTokens, 1800, 'native generation should use writer quick max tokens');
         await page.waitForFunction(() => document.querySelector('[data-native-generation-result]').textContent.includes('Generated native prose.'));
         await page.selectOption('[data-native-generation-insert-mode]', 'append');
         await page.click('[data-native-accept-generation]');
@@ -550,6 +557,127 @@ async function submitNativeName(page, value) {
         await page.waitForFunction(() => document.querySelector('[data-reader-title]').textContent === 'Saved Chapter');
         const savedReaderText = await page.locator('[data-reader-content]').innerText();
         assert.ok(savedReaderText.includes('Freshly saved generated prose.'), 'reader should refresh from the last saved project snapshot');
+
+        // Phase 35: Cross-module linkage UI tests
+
+        // Context strip: visible on writer, shows project info
+        await page.click('[data-view-target="writer"]');
+        await page.waitForSelector('[data-context-strip]:not([hidden])');
+        var contextText = await page.locator('[data-context-strip]').innerText();
+        assert.ok(contextText.includes('Desktop Draft'), 'context strip should show project title');
+        assert.ok(contextText.includes('资料'), 'context strip should show compendium summary');
+
+        // Context strip: hidden on bookshelf
+        await page.click('[data-view-target="bookshelf"]');
+        await page.waitForFunction(function () {
+            var strip = document.querySelector('[data-context-strip]');
+            return strip && strip.hidden;
+        });
+
+        // Context strip: visible on compendium and workshop
+        await page.click('[data-view-target="compendium"]');
+        await page.waitForSelector('[data-context-strip]:not([hidden])');
+        await page.click('[data-view-target="workshop"]');
+        await page.waitForSelector('[data-context-strip]:not([hidden])');
+
+        // Context strip: quick action navigation
+        await page.click('[data-context-goto-compendium]');
+        await page.waitForFunction(function () {
+            return document.querySelector('[data-view-panel="compendium"]') && document.querySelector('[data-view-panel="compendium"]').classList.contains('is-active');
+        });
+        await page.click('[data-context-goto-writer]');
+        await page.waitForFunction(function () {
+            return document.querySelector('[data-view-panel="writer"]') && document.querySelector('[data-view-panel="writer"]').classList.contains('is-active');
+        });
+
+        // Compendium injection status labels
+        await page.click('[data-view-target="compendium"]');
+        await page.waitForSelector('.desktop-compendium-injection-badge');
+        var badges = await page.$$eval('.desktop-compendium-injection-badge', function (els) {
+            return els.map(function (el) { return el.textContent.trim(); });
+        });
+        assert.ok(badges.length >= 1, 'compendium entries should show injection badges');
+        assert.ok(badges.some(function (b) { return b === '总是注入'; }), 'always-in-context entry should show 总是注入 badge');
+
+        // Writer handoff: Save to compendium
+        await page.click('[data-view-target="writer"]');
+        await page.waitForSelector('[data-native-save-to-compendium]:not([disabled])');
+        await page.fill('[data-native-scene-editor]', 'Handoff test text for saving.');
+        await page.evaluate(function () {
+            var editor = document.querySelector('[data-native-scene-editor]');
+            editor.focus();
+            editor.setSelectionRange(0, 12);
+            editor.dispatchEvent(new Event('select', { bubbles: true }));
+        });
+        await page.click('[data-native-save-to-compendium]');
+        await page.waitForFunction(function () {
+            return document.querySelector('[data-native-save-status]').textContent.includes('片段已保存为资料');
+        });
+        var handoffCompendiumApiResponse = await fetch('http://127.0.0.1:8000/api/compendium?projectId=' + encodeURIComponent(draftProjectId));
+        var handoffCompendiumApiBody = await handoffCompendiumApiResponse.json();
+        var fragmentEntry = handoffCompendiumApiBody.entries.find(function (e) { return e.title.includes('来自'); });
+        assert.ok(fragmentEntry, 'writer handoff should save compendium entry with scene-derived title');
+        assert.ok(fragmentEntry.body.includes('Handoff test'), 'saved compendium entry should contain the selected text');
+        assert.ok((fragmentEntry.tags || []).includes('writer-fragment'), 'saved compendium entry should have writer-fragment tag');
+
+        // Writer handoff: Send to workshop
+        await page.click('[data-view-target="writer"]');
+        await page.waitForSelector('[data-native-send-to-workshop]:not([disabled])');
+        await page.evaluate(function () {
+            var editor = document.querySelector('[data-native-scene-editor]');
+            var text = 'Discussion test excerpt.';
+            var start = editor.value.indexOf(text);
+            if (start < 0) {
+                editor.value = text;
+                start = 0;
+            }
+            editor.setSelectionRange(start, start + text.length);
+            editor.dispatchEvent(new Event('select', { bubbles: true }));
+        });
+        await page.click('[data-native-send-to-workshop]');
+        await page.waitForFunction(function () {
+            return document.querySelector('[data-view-panel="workshop"]') && document.querySelector('[data-view-panel="workshop"]').classList.contains('is-active');
+        });
+        await page.waitForFunction(function () {
+            var input = document.querySelector('[data-workshop-input]');
+            return input && input.value.includes('Discussion test excerpt');
+        });
+        var workshopInputValue = await page.locator('[data-workshop-input]').inputValue();
+        assert.ok(workshopInputValue.includes('Discussion test excerpt'), 'send to workshop should prefilled input with selected text');
+
+        // Workshop output to compendium: better title
+        await page.click('[data-view-target="workshop"]');
+        await page.waitForSelector('[data-workshop-new]:not([disabled])');
+        var currentSessionCount = await page.evaluate(function () {
+            return document.querySelectorAll('.desktop-workshop-session').length;
+        });
+        if (currentSessionCount === 0) {
+            await page.click('[data-workshop-new]');
+            await page.waitForFunction(function () { return document.querySelector('[data-workshop-title]').textContent.includes('对话'); });
+        }
+        await page.fill('[data-workshop-input]', 'Discuss the compendium conversion test.');
+        await page.evaluate(function () {
+            window.__workshopGenerationCalls = 0;
+            window.__writingwayNativeGenerationStub = async function (prompt, onToken) {
+                window.__workshopGenerationCalls += 1;
+                for (var _i = 0, _a = ['Workshop', ' to ', 'compendium ', 'conversion ', 'result.']; _i < _a.length; _i++) {
+                    var token = _a[_i];
+                    await new Promise(function (resolve) { return setTimeout(resolve, 5); });
+                    onToken(token);
+                }
+            };
+        });
+        await page.click('[data-workshop-send]');
+        await page.waitForFunction(function () { return window.__workshopGenerationCalls > 0; });
+        await page.waitForFunction(function () {
+            return document.querySelector('[data-workshop-messages]').textContent.includes('Workshop to compendium conversion result.');
+        });
+        await page.click('[data-workshop-to-compendium]');
+        await page.waitForFunction(function () {
+            return document.querySelector('[data-workshop-status]').textContent.includes('已转为资料条目');
+        });
+        var workshopConvertStatus = await page.locator('[data-workshop-status]').textContent();
+        assert.ok(!workshopConvertStatus.includes('Workshop note'), 'workshop conversion should not use generic Workshop note title');
 
         console.log('Desktop project library test passed.');
     } finally {

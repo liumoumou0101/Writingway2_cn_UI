@@ -31,3 +31,4 @@ node_modules/
 projects/
 project-backups/
 REFACTORING.md
+.ai_state/test_reports/**/*.png
